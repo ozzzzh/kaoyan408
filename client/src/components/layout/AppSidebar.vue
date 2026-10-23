@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import ThemeToggle from './ThemeToggle.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -66,17 +67,17 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
 
 <template>
   <aside
-    class="hidden md:flex w-[248px] shrink-0 flex-col border-r border-[#e2e9f5] bg-white"
+    class="hidden md:flex w-[248px] shrink-0 flex-col border-r border-[var(--k-border)] bg-[var(--k-surface)]"
   >
     <!-- 品牌 -->
     <RouterLink to="/" class="flex items-center gap-3 px-5 py-5 no-underline">
       <span
-        class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#1f49ba] text-[13px] font-bold tracking-tight text-white"
+        class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--k-accent)] text-[13px] font-bold tracking-tight text-white"
         >408</span
       >
       <span class="min-w-0">
-        <span class="block text-[15px] font-bold leading-tight text-[#0b1f45]">考研 408 工作台</span>
-        <span class="block truncate text-[11px] text-[#9aa9c3]">计算机统考备考平台</span>
+        <span class="block text-[15px] font-bold leading-tight text-[var(--k-text)]">考研 408 工作台</span>
+        <span class="block truncate text-[11px] text-[var(--k-text-faint)]">计算机统考备考平台</span>
       </span>
     </RouterLink>
 
@@ -84,7 +85,7 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
     <div class="px-4 pb-4">
       <RouterLink
         to="/practice"
-        class="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#1f49ba] text-sm font-bold text-white no-underline transition hover:bg-[#1a3fa0]"
+        class="flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--k-accent)] text-sm font-bold text-white no-underline transition hover:bg-[var(--k-accent-hover)]"
       >
         <span class="text-base leading-none">＋</span>
         <span>开始刷题</span>
@@ -100,8 +101,8 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
         class="mb-1 flex items-center gap-3 rounded-xl px-3 py-2.5 no-underline transition"
         :class="
           isActive(item.to)
-            ? 'bg-[#e8efff] text-[#1845ad]'
-            : 'text-[#5c6f94] hover:bg-[#f5f8ff] hover:text-[#0b1f45]'
+            ? 'bg-[var(--k-accent-soft)] text-[var(--k-accent-text)]'
+            : 'text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]'
         "
       >
         <svg
@@ -119,42 +120,42 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
           <span class="block text-sm font-semibold leading-tight">{{ item.label }}</span>
           <span
             class="block truncate text-[11px]"
-            :class="isActive(item.to) ? 'text-[#5b7ac4]' : 'text-[#9aa9c3]'"
+            :class="isActive(item.to) ? 'text-[#5b7ac4]' : 'text-[var(--k-text-faint)]'"
             >{{ item.desc }}</span
           >
         </span>
         <span
           v-if="item.to === '/exams'"
-          class="shrink-0 rounded-full bg-[#eef2fa] px-1.5 py-0.5 text-[10px] font-semibold text-[#5c6f94]"
+          class="shrink-0 rounded-full bg-[var(--k-chip)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--k-text-muted)]"
           >18</span
         >
       </RouterLink>
     </nav>
 
     <!-- 进度卡 -->
-    <div class="mx-4 mb-3 rounded-xl border border-[#e2e9f5] bg-[#f8fbff] p-3">
+    <div class="mx-4 mb-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface-soft)] p-3">
       <div class="flex items-baseline justify-between">
-        <span class="text-[11px] text-[#7c8bab]">复习进度</span>
-        <span class="text-[11px] font-semibold text-[#1845ad] tabular-nums">{{ progress }}%</span>
+        <span class="text-[11px] text-[var(--k-text-faint)]">复习进度</span>
+        <span class="text-[11px] font-semibold text-[var(--k-accent-text)] tabular-nums">{{ progress }}%</span>
       </div>
       <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-[#e4ebf7]">
         <div
-          class="h-full rounded-full bg-[#1f49ba] transition-all duration-500"
+          class="h-full rounded-full bg-[var(--k-accent)] transition-all duration-500"
           :style="{ width: Math.max(progress, done > 0 ? 2 : 0) + '%' }"
         />
       </div>
-      <p class="mt-2 text-[11px] text-[#9aa9c3] tabular-nums">已刷 {{ done }} / {{ total }} 题</p>
+      <p class="mt-2 text-[11px] text-[var(--k-text-faint)] tabular-nums">已刷 {{ done }} / {{ total }} 题</p>
     </div>
 
     <!-- 账号 -->
-    <div class="border-t border-[#eef2fa] px-3 py-3">
+    <div class="border-t border-[var(--k-border)] px-3 py-3">
       <RouterLink
         v-for="item in accountNav"
         :key="item.to"
         :to="item.to"
         class="flex items-center gap-3 rounded-xl px-3 py-2 no-underline transition"
         :class="
-          isActive(item.to) ? 'bg-[#e8efff] text-[#1845ad]' : 'text-[#5c6f94] hover:bg-[#f5f8ff]'
+          isActive(item.to) ? 'bg-[var(--k-accent-soft)] text-[var(--k-accent-text)]' : 'text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)]'
         "
       >
         <svg
@@ -171,27 +172,30 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
         <span class="text-sm font-semibold">{{ item.label }}</span>
       </RouterLink>
 
-      <div class="mt-2 flex items-center gap-2.5 rounded-xl bg-[#f8fbff] px-3 py-2.5">
+      <!-- 主题切换（跟随时间 / 日间 / 夜间） -->
+      <ThemeToggle />
+
+      <div class="mt-2 flex items-center gap-2.5 rounded-xl bg-[var(--k-surface-soft)] px-3 py-2.5">
         <span
-          class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#1f49ba] text-xs font-bold text-white"
+          class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--k-accent)] text-xs font-bold text-white"
           >{{ user ? user.username.slice(0, 1).toUpperCase() : '游' }}</span
         >
         <span class="min-w-0 flex-1">
-          <span class="block truncate text-xs font-semibold text-[#0b1f45]">{{
+          <span class="block truncate text-xs font-semibold text-[var(--k-text)]">{{
             user ? user.username : '游客模式'
           }}</span>
-          <span class="block truncate text-[10px] text-[#9aa9c3]">{{
+          <span class="block truncate text-[10px] text-[var(--k-text-faint)]">{{
             user ? '已登录' : '未保存做题记录'
           }}</span>
         </span>
         <button
           v-if="user"
-          class="shrink-0 text-[11px] text-[#c0392b] hover:underline"
+          class="shrink-0 text-[11px] text-[var(--k-danger)] hover:underline"
           @click="userStore.logout()"
         >
           退出
         </button>
-        <RouterLink v-else to="/me" class="shrink-0 text-[11px] font-semibold text-[#1f49ba] no-underline hover:underline">
+        <RouterLink v-else to="/me" class="shrink-0 text-[11px] font-semibold text-[var(--k-accent)] no-underline hover:underline">
           登录
         </RouterLink>
       </div>

@@ -35,9 +35,16 @@ public class StatsService {
             bySubject.put(row.getSubject(), row);
         }
 
+        // 掌握度分桶：subject -> {mastered, shaky, failed, untouched}
+        Map<String, Map<String, Object>> masteryBySubject = new LinkedHashMap<>();
+        for (Map<String, Object> row : questionMapper.masteryBySubject(userId)) {
+            masteryBySubject.put(String.valueOf(row.get("subject")), row);
+        }
+
         long totalQuestions = 0;
         long totalDone = 0;
         long totalCorrect = 0;
+        long totalMastered = 0;
         List<Map<String, Object>> subjects = new ArrayList<>();
         for (String subject : SUBJECTS) {
             SubjectStats row = bySubject.get(subject);
@@ -48,6 +55,13 @@ public class StatsService {
             totalDone += done;
             totalCorrect += correct;
 
+            Map<String, Object> mastery = masteryBySubject.getOrDefault(subject, Map.of());
+            long mastered = toLong(mastery.get("mastered"));
+            long shaky = toLong(mastery.get("shaky"));
+            long failed = toLong(mastery.get("failed"));
+            long untouched = toLong(mastery.get("untouched"));
+            totalMastered += mastered;
+
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("subject", subject);
             item.put("total", total);
@@ -55,6 +69,12 @@ public class StatsService {
             item.put("correct", correct);
             item.put("accuracy", done == 0 ? 0.0 : round(correct * 100.0 / done));
             item.put("progress", total == 0 ? 0.0 : round(done * 100.0 / total));
+            // 掌握率 = 掌握题数 / 总题数（对齐 408os 的「掌握率」口径）
+            item.put("masteryRate", total == 0 ? 0.0 : round(mastered * 100.0 / total));
+            item.put("mastered", mastered);
+            item.put("shaky", shaky);
+            item.put("failed", failed);
+            item.put("untouched", untouched);
             subjects.add(item);
         }
 
@@ -64,12 +84,23 @@ public class StatsService {
         payload.put("correctQuestions", totalCorrect);
         payload.put("accuracy", totalDone == 0 ? 0.0 : round(totalCorrect * 100.0 / totalDone));
         payload.put("progress", totalQuestions == 0 ? 0.0 : round(totalDone * 100.0 / totalQuestions));
+        payload.put("masteryRate", totalQuestions == 0 ? 0.0 : round(totalMastered * 100.0 / totalQuestions));
         payload.put("subjects", subjects);
         payload.put("streakDays", streakDays(userId));
         payload.put("recent", recentDays(userId));
         payload.put("heatmap", heatmap(userId));
         payload.put("activeDays", activeDays(userId));
         return payload;
+    }
+
+    private long toLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(String.valueOf(value));
     }
 
     /**

@@ -12,9 +12,9 @@ const maxDaily = computed(() => {
 })
 
 const subjectMeta: Record<string, { name: string; bar: string; soft: string }> = {
-  ds: { name: '数据结构', bar: 'bg-[#2d68ef]', soft: 'text-[#1845ad]' },
+  ds: { name: '数据结构', bar: 'bg-[#2d68ef]', soft: 'text-[var(--k-accent-text)]' },
   os: { name: '操作系统', bar: 'bg-[#7c5cf0]', soft: 'text-[#5b3fd1]' },
-  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]', soft: 'text-[#b8730a]' },
+  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]', soft: 'text-[var(--k-warn)]' },
   cn: { name: '计算机网络', bar: 'bg-[#12a594]', soft: 'text-[#0b7d70]' },
 }
 </script>
@@ -22,42 +22,42 @@ const subjectMeta: Record<string, { name: string; bar: string; soft: string }> =
 <template>
   <div class="space-y-8">
     <header class="space-y-1">
-      <h1 class="text-2xl font-bold tracking-tight text-[#0b1f45]">学习看板</h1>
-      <p class="text-sm text-[#5c6f94]">按科目与知识块查看掌握度，找出该补的章节。</p>
+      <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)]">学习看板</h1>
+      <p class="text-sm text-[var(--k-text-muted)]">按科目与知识块查看掌握度，找出该补的章节。</p>
     </header>
 
     <div
       v-if="!dashboard"
-      class="rounded-xl border border-dashed border-[#dbe4ef] bg-white p-6 text-sm text-[#9aa9c3]"
+      class="rounded-xl border border-dashed border-[var(--k-border-strong)] bg-[var(--k-surface)] p-6 text-sm text-[var(--k-text-faint)]"
     >
       暂无数据。请先启动后端并导入内容，然后刷新页面。
     </div>
 
     <template v-else>
       <section class="grid gap-4 sm:grid-cols-3">
-        <div class="rounded-xl border border-[#e2e9f5] bg-white p-5">
-          <p class="text-xs text-[#9aa9c3]">总题量</p>
-          <p class="mt-2 text-2xl font-bold tabular-nums text-[#0b1f45]">
+        <div class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5">
+          <p class="text-xs text-[var(--k-text-faint)]">总题量</p>
+          <p class="mt-2 text-2xl font-bold tabular-nums text-[var(--k-text)]">
             {{ dashboard.totalQuestions }}
           </p>
         </div>
-        <div class="rounded-xl border border-[#e2e9f5] bg-white p-5">
-          <p class="text-xs text-[#9aa9c3]">已作答</p>
-          <p class="mt-2 text-2xl font-bold tabular-nums text-[#0b1f45]">
+        <div class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5">
+          <p class="text-xs text-[var(--k-text-faint)]">已作答</p>
+          <p class="mt-2 text-2xl font-bold tabular-nums text-[var(--k-text)]">
             {{ dashboard.doneQuestions }}
           </p>
         </div>
-        <div class="rounded-xl border border-[#e2e9f5] bg-white p-5">
-          <p class="text-xs text-[#9aa9c3]">正确率</p>
-          <p class="mt-2 text-2xl font-bold tabular-nums text-[#0b1f45]">
+        <div class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5">
+          <p class="text-xs text-[var(--k-text-faint)]">正确率</p>
+          <p class="mt-2 text-2xl font-bold tabular-nums text-[var(--k-text)]">
             {{ dashboard.accuracy }}%
           </p>
         </div>
       </section>
 
       <section class="space-y-3">
-        <h2 class="text-sm font-bold text-[#3d4d6b]">近 14 天做题量</h2>
-        <div class="rounded-xl border border-[#e2e9f5] bg-white p-6">
+        <h2 class="text-sm font-bold text-[var(--k-heading)]">近 14 天做题量</h2>
+        <div class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-6">
           <div class="flex h-40 items-end gap-2">
             <div
               v-for="day in dashboard.recent"
@@ -69,17 +69,17 @@ const subjectMeta: Record<string, { name: string; bar: string; soft: string }> =
                 :style="{ height: Math.max(2, (day.questions / maxDaily) * 130) + 'px' }"
                 :title="`${day.date}：${day.questions} 题`"
               />
-              <span class="text-[10px] text-[#9aa9c3]">{{ day.date.slice(5) }}</span>
+              <span class="text-[10px] text-[var(--k-text-faint)]">{{ day.date.slice(5) }}</span>
             </div>
           </div>
         </div>
       </section>
 
       <section class="space-y-3">
-        <h2 class="text-sm font-bold text-[#3d4d6b]">分科目掌握度</h2>
-        <div class="overflow-hidden rounded-xl border border-[#e2e9f5] bg-white">
+        <h2 class="text-sm font-bold text-[var(--k-heading)]">分科目掌握度</h2>
+        <div class="overflow-hidden rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
           <table class="w-full text-sm">
-            <thead class="bg-[#f8fbff] text-xs text-[#9aa9c3]">
+            <thead class="bg-[var(--k-surface-soft)] text-xs text-[var(--k-text-faint)]">
               <tr>
                 <th class="px-5 py-3 text-left font-medium">科目</th>
                 <th class="px-5 py-3 text-right font-medium">已做 / 总量</th>
@@ -91,24 +91,24 @@ const subjectMeta: Record<string, { name: string; bar: string; soft: string }> =
               <tr
                 v-for="item in dashboard.subjects"
                 :key="item.subject"
-                class="border-t border-[#f0f4fa]"
+                class="border-t border-[var(--k-border)]"
               >
                 <td class="px-5 py-3">
                   <span class="inline-flex items-center gap-2">
                     <span
                       class="h-2 w-2 rounded-full"
-                      :class="subjectMeta[item.subject]?.bar ?? 'bg-[#9aa9c3]'"
+                      :class="subjectMeta[item.subject]?.bar ?? 'bg-[var(--k-text-faint)]'"
                     />
-                    <span class="font-medium text-[#0b1f45]">
+                    <span class="font-medium text-[var(--k-text)]">
                       {{ subjectMeta[item.subject]?.name ?? item.subject }}
                     </span>
                   </span>
                 </td>
-                <td class="px-5 py-3 text-right tabular-nums text-[#5c6f94]">
+                <td class="px-5 py-3 text-right tabular-nums text-[var(--k-text-muted)]">
                   {{ item.done }} / {{ item.total }}
                 </td>
-                <td class="px-5 py-3 text-right tabular-nums text-[#5c6f94]">{{ item.accuracy }}%</td>
-                <td class="px-5 py-3 text-right tabular-nums text-[#5c6f94]">{{ item.progress }}%</td>
+                <td class="px-5 py-3 text-right tabular-nums text-[var(--k-text-muted)]">{{ item.accuracy }}%</td>
+                <td class="px-5 py-3 text-right tabular-nums text-[var(--k-text-muted)]">{{ item.progress }}%</td>
               </tr>
             </tbody>
           </table>

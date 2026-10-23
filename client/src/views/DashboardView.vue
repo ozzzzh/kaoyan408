@@ -5,15 +5,16 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import BackgroundFx from '@/components/layout/BackgroundFx.vue'
 import ContributionHeatmap from '@/components/dashboard/ContributionHeatmap.vue'
+import SubjectMasteryPanel from '@/components/dashboard/SubjectMasteryPanel.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 const { user, dashboard } = storeToRefs(userStore)
 
 const subjectMeta: Record<string, { name: string; bar: string; soft: string; text: string }> = {
-  ds: { name: '数据结构', bar: 'bg-[#2d68ef]', soft: 'bg-[#eaf1ff]', text: 'text-[#1845ad]' },
+  ds: { name: '数据结构', bar: 'bg-[#2d68ef]', soft: 'bg-[#eaf1ff]', text: 'text-[var(--k-accent-text)]' },
   os: { name: '操作系统', bar: 'bg-[#7c5cf0]', soft: 'bg-[#f1ecff]', text: 'text-[#5b3fd1]' },
-  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]', soft: 'bg-[#fff5e6]', text: 'text-[#b8730a]' },
+  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]', soft: 'bg-[#fff5e6]', text: 'text-[var(--k-warn)]' },
   cn: { name: '计算机网络', bar: 'bg-[#12a594]', soft: 'bg-[#e6f7f5]', text: 'text-[#0b7d70]' },
 }
 
@@ -32,7 +33,7 @@ const shortcuts = [
     to: '/learn',
     query: { subject: 'ds' },
     tag: '知识点',
-    accent: 'border-[#bcd3ff]',
+    accent: 'border-[var(--k-border-strong)]',
     icon: 'list',
   },
   {
@@ -50,7 +51,7 @@ const shortcuts = [
     to: '/exams',
     query: {},
     tag: '真题卷',
-    accent: 'border-[#ffd9a0]',
+    accent: 'border-[var(--k-warn-border)]',
     icon: 'paper',
   },
 ]
@@ -62,7 +63,7 @@ function go(shortcut: (typeof shortcuts)[number]) {
 const quickSubjects = computed(() =>
   subjects.value.map((item) => ({
     ...item,
-    meta: subjectMeta[item.subject] ?? { name: item.subject, bar: 'bg-[#2d68ef]', soft: 'bg-[#eaf1ff]', text: 'text-[#1845ad]' },
+    meta: subjectMeta[item.subject] ?? { name: item.subject, bar: 'bg-[#2d68ef]', soft: 'bg-[#eaf1ff]', text: 'text-[var(--k-accent-text)]' },
   })),
 )
 </script>
@@ -77,10 +78,10 @@ const quickSubjects = computed(() =>
     <div class="relative space-y-7">
       <!-- 欢迎 -->
       <header>
-      <h1 class="text-2xl font-bold tracking-tight text-[#0b1f45] md:text-[28px]">
+      <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)] md:text-[28px]">
         {{ greeting }}，今天想复习哪一块？
       </h1>
-      <p class="mt-2 text-sm text-[#5c6f94]">
+      <p class="mt-2 text-sm text-[var(--k-text-muted)]">
         <template v-if="dashboard">
           题库共 {{ dashboard.totalQuestions }} 道真题，已刷 {{ dashboard.doneQuestions }} 道；
           每道题都挂在知识点上，做完可以直接看对应正文与动画。
@@ -91,12 +92,12 @@ const quickSubjects = computed(() =>
 
     <!-- 主入口：直接跳刷题 -->
     <section
-      class="rounded-2xl border border-[#dbe4ef] bg-white p-2.5 shadow-[0_10px_30px_rgba(52,87,150,0.07)]"
+      class="rounded-2xl border border-[var(--k-border-strong)] bg-[var(--k-surface)] p-2.5 shadow-[0_10px_30px_rgba(52,87,150,0.07)]"
     >
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div class="flex flex-1 items-center gap-3 px-3 py-2">
           <svg
-            class="h-5 w-5 shrink-0 text-[#7c8bab]"
+            class="h-5 w-5 shrink-0 text-[var(--k-text-faint)]"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -107,14 +108,14 @@ const quickSubjects = computed(() =>
             <path d="m20 20-3.5-3.5" />
           </svg>
           <input
-            class="w-full border-0 bg-transparent text-[15px] text-[#0b1f45] outline-0 placeholder:text-[#9aa9c3]"
+            class="w-full border-0 bg-transparent text-[15px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)]"
             placeholder="输入知识点或题号（如 KMP / 银行家算法 / 2026 第 1 题）"
             @keydown.enter="router.push({ path: '/learn', query: { q: ($event.target as HTMLInputElement).value } })"
           />
         </div>
         <RouterLink
           to="/practice"
-          class="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1f49ba] px-7 text-sm font-bold text-white no-underline transition hover:bg-[#1a3fa0]"
+          class="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--k-accent)] px-7 text-sm font-bold text-white no-underline transition hover:bg-[var(--k-accent-hover)]"
         >
           <span class="text-base leading-none">＋</span>
           <span>开始刷题</span>
@@ -122,40 +123,14 @@ const quickSubjects = computed(() =>
       </div>
     </section>
 
-    <!-- 四科掌握度 -->
-    <section v-if="quickSubjects.length">
-      <div class="mb-3 flex items-baseline justify-between">
-        <h2 class="text-sm font-bold text-[#3d4d6b]">四科掌握度</h2>
-        <RouterLink to="/stats" class="text-xs text-[#1f49ba] no-underline hover:underline">
-          查看完整看板 →
-        </RouterLink>
-      </div>
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <RouterLink
-          v-for="item in quickSubjects"
-          :key="item.subject"
-          :to="{ path: '/learn', query: { subject: item.subject } }"
-          class="rounded-xl border border-[#e2e9f5] bg-white p-4 no-underline transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(52,87,150,0.1)]"
-        >
-          <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full" :class="item.meta.bar" />
-            <span class="text-sm font-semibold text-[#0b1f45]">{{ item.meta.name }}</span>
-          </div>
-          <p class="mt-3 text-2xl font-bold tabular-nums text-[#0b1f45]">
-            {{ item.done }}<span class="text-sm font-normal text-[#9aa9c3]"> / {{ item.total }}</span>
-          </p>
-          <div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#eef2fa]">
-            <div
-              class="h-full rounded-full transition-all duration-500"
-              :class="item.meta.bar"
-              :style="{ width: Math.max(item.progress, item.done > 0 ? 2 : 0) + '%' }"
-            />
-          </div>
-          <p class="mt-2 text-[11px] text-[#9aa9c3]">
-            完成 {{ item.progress }}% · 正确率 {{ item.accuracy }}%
-          </p>
-        </RouterLink>
-      </div>
+    <!-- 四科掌握进度 + 做题贡献并排 -->
+    <section v-if="dashboard" class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <SubjectMasteryPanel :subjects="dashboard.subjects" :mastery-rate="dashboard.masteryRate" />
+      <ContributionHeatmap
+        :heatmap="dashboard.heatmap ?? null"
+        :active-days="dashboard.activeDays"
+        :streak-days="dashboard.streakDays"
+      />
     </section>
 
     <!-- 快捷入口 -->
@@ -168,18 +143,18 @@ const quickSubjects = computed(() =>
         >
           <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
         </svg>
-        <h2 class="text-sm font-bold text-[#3d4d6b]">快捷复习入口</h2>
+        <h2 class="text-sm font-bold text-[var(--k-heading)]">快捷复习入口</h2>
       </div>
       <div class="grid gap-3 md:grid-cols-3">
         <button
           v-for="shortcut in shortcuts"
           :key="shortcut.title"
-          class="group flex flex-col rounded-xl border bg-white p-5 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(52,87,150,0.1)]"
+          class="group flex flex-col rounded-xl border bg-[var(--k-surface)] p-5 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(52,87,150,0.1)]"
           :class="shortcut.accent"
           @click="go(shortcut)"
         >
           <span
-            class="mb-3 grid h-9 w-9 place-items-center rounded-lg bg-[#f0f4ff] text-[#1f49ba]"
+            class="mb-3 grid h-9 w-9 place-items-center rounded-lg bg-[#f0f4ff] text-[var(--k-accent)]"
           >
             <svg
               v-if="shortcut.icon === 'paper'"
@@ -204,24 +179,16 @@ const quickSubjects = computed(() =>
               <path d="M4 6h16M4 12h16M4 18h10" />
             </svg>
           </span>
-          <span class="mb-1 text-[11px] font-semibold text-[#9aa9c3]">{{ shortcut.tag }}</span>
-          <span class="text-[15px] font-bold text-[#0b1f45]">{{ shortcut.title }}</span>
-          <span class="mt-1.5 flex-1 text-xs leading-relaxed text-[#5c6f94]">{{ shortcut.desc }}</span>
-          <span class="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#1f49ba]">
+          <span class="mb-1 text-[11px] font-semibold text-[var(--k-text-faint)]">{{ shortcut.tag }}</span>
+          <span class="text-[15px] font-bold text-[var(--k-text)]">{{ shortcut.title }}</span>
+          <span class="mt-1.5 flex-1 text-xs leading-relaxed text-[var(--k-text-muted)]">{{ shortcut.desc }}</span>
+          <span class="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[var(--k-accent)]">
             立即前往
             <span class="transition-transform group-hover:translate-x-0.5">→</span>
           </span>
         </button>
       </div>
     </section>
-
-    <!-- 做题贡献热力图（最近 90 天） -->
-    <ContributionHeatmap
-      v-if="dashboard"
-      :heatmap="dashboard.heatmap ?? null"
-      :active-days="dashboard.activeDays"
-      :streak-days="dashboard.streakDays"
-    />
     </div>
   </div>
 </template>

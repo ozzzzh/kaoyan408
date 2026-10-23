@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* 深色模式改为按 class 控制（由 theme store 根据时间写入 <html class="dark">） */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-ink-50: #f6f7f9;
   --color-ink-100: #eceef2;
@@ -13,6 +16,56 @@
   --color-salt-600: #1f56bd;
 }
 
+/**
+ * 语义色板：日间 / 夜间两套值。
+ * 组件统一用这些变量而非硬编码色值，切换主题时整体变色。
+ */
+:root {
+  --k-bg: #f7faff;
+  --k-surface: #ffffff;
+  --k-surface-soft: #f8fbff;
+  --k-border: #e2e9f5;
+  --k-border-strong: #dbe4ef;
+  --k-text: #0b1f45;
+  --k-text-muted: #5c6f94;
+  --k-text-faint: #9aa9c3;
+  --k-heading: #3d4d6b;
+  --k-accent: #1f49ba;
+  --k-accent-hover: #1a3fa0;
+  --k-accent-soft: #e8efff;
+  --k-accent-text: #1845ad;
+  --k-chip: #eef2fa;
+  --k-track: #eef2fa;
+  --k-warn: #b8730a;
+  --k-warn-soft: #fff9ef;
+  --k-warn-border: #ffd9a0;
+  --k-danger: #c0392b;
+  --k-shadow: 52 87 150;
+}
+
+.dark {
+  --k-bg: #0d1117;
+  --k-surface: #161b22;
+  --k-surface-soft: #1c2229;
+  --k-border: #262d36;
+  --k-border-strong: #303842;
+  --k-text: #e6edf3;
+  --k-text-muted: #9aa7b8;
+  --k-text-faint: #6e7a8a;
+  --k-heading: #c3ccd8;
+  --k-accent: #3b74e8;
+  --k-accent-hover: #4d84f0;
+  --k-accent-soft: #1b2740;
+  --k-accent-text: #7aa6f5;
+  --k-chip: #222a33;
+  --k-track: #262d36;
+  --k-warn: #e0a458;
+  --k-warn-soft: #2a2216;
+  --k-warn-border: #4a3a20;
+  --k-danger: #f0776a;
+  --k-shadow: 0 0 0;
+}
+
 html,
 body,
 #app {
@@ -21,11 +74,24 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-ink-50);
-  color: var(--color-ink-900);
+  background: var(--k-bg);
+  color: var(--k-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* 主题切换时平滑过渡 */
+  transition:
+    background-color 0.45s ease,
+    color 0.45s ease;
+}
+
+/* 主题切换的过渡：只对颜色生效，避免影响布局与动画性能 */
+.theme-transition,
+.theme-transition * {
+  transition:
+    background-color 0.45s ease,
+    border-color 0.45s ease,
+    color 0.45s ease !important;
 }
 
 /* 题目与知识正文里的代码块 */
@@ -37,4 +103,20 @@ body {
   overflow-x: auto;
   font-size: 0.85rem;
   line-height: 1.6;
+}
+
+/* 深色下的滚动条 */
+.dark ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: var(--k-bg);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #303842;
+  border-radius: 5px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3d4753;
 }

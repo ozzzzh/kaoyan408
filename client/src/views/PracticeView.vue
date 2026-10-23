@@ -54,56 +54,56 @@ onMounted(load)
 <template>
   <div class="space-y-6">
     <header class="space-y-1">
-      <h1 class="text-2xl font-bold tracking-tight text-[#0b1f45]">刷题</h1>
-      <p class="text-sm text-[#5c6f94]">
+      <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)]">刷题</h1>
+      <p class="text-sm text-[var(--k-text-muted)]">
         M0 提供逐题作答闭环；题目队列、错题本与综合题评分在 M1 实现。
       </p>
     </header>
 
     <div class="flex flex-wrap items-end gap-3">
       <label class="text-sm">
-        <span class="text-[#5c6f94]">题目 id</span>
+        <span class="text-[var(--k-text-muted)]">题目 id</span>
         <input
           v-model="examRef"
-          class="ml-2 w-48 rounded-lg border border-[#e2e9f5] px-3 py-1.5 text-sm outline-none focus:border-[#1f49ba]"
+          class="ml-2 w-48 rounded-lg border border-[var(--k-border)] px-3 py-1.5 text-sm outline-none focus:border-[var(--k-accent)]"
           placeholder="exam-2026-1"
           @keyup.enter="load"
         />
       </label>
       <button
-        class="rounded-lg bg-[#1f49ba] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[#1a3fa0]"
+        class="rounded-lg bg-[var(--k-accent)] px-4 py-1.5 text-sm font-semibold text-white hover:bg-[var(--k-accent-hover)]"
         @click="load"
       >
         载入
       </button>
-      <span class="text-xs text-[#9aa9c3]">示例：exam-2026-1、exam-2024-41（综合题）</span>
+      <span class="text-xs text-[var(--k-text-faint)]">示例：exam-2026-1、exam-2024-41（综合题）</span>
     </div>
 
-    <p v-if="loading" class="text-sm text-[#9aa9c3]">加载中…</p>
+    <p v-if="loading" class="text-sm text-[var(--k-text-faint)]">加载中…</p>
     <p
       v-if="message"
-      class="rounded-lg border border-[#ffd9a0] bg-[#fff9ef] px-4 py-3 text-sm text-[#b8730a]"
+      class="rounded-lg border border-[var(--k-warn-border)] bg-[var(--k-warn-soft)] px-4 py-3 text-sm text-[var(--k-warn)]"
     >
       {{ message }}
     </p>
 
-    <article v-if="question" class="space-y-4 rounded-xl border border-[#e2e9f5] bg-white p-6">
-      <div class="flex flex-wrap items-center gap-2 text-xs text-[#9aa9c3]">
-        <span class="rounded bg-[#eef2fa] px-2 py-0.5 font-medium text-[#5c6f94]">{{ question.id }}</span>
+    <article v-if="question" class="space-y-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-6">
+      <div class="flex flex-wrap items-center gap-2 text-xs text-[var(--k-text-faint)]">
+        <span class="rounded bg-[var(--k-chip)] px-2 py-0.5 font-medium text-[var(--k-text-muted)]">{{ question.id }}</span>
         <span>第 {{ question.number }} 题</span>
         <span>{{ question.chapterName }}</span>
-        <span class="font-semibold text-[#1845ad]">{{ question.score }} 分</span>
+        <span class="font-semibold text-[var(--k-accent-text)]">{{ question.score }} 分</span>
         <span v-if="question.difficulty">难度 {{ question.difficulty }}</span>
       </div>
 
-      <pre class="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#0b1f45]">{{ question.stem }}</pre>
+      <pre class="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[var(--k-text)]">{{ question.stem }}</pre>
 
       <img
         v-for="path in question.imagePaths"
         :key="path"
         :src="path"
         :alt="`题目配图 ${question.number}`"
-        class="max-w-full rounded-lg border border-[#e2e9f5]"
+        class="max-w-full rounded-lg border border-[var(--k-border)]"
       />
 
       <div v-if="question.options.length" class="space-y-2">
@@ -113,30 +113,30 @@ onMounted(load)
           class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-2.5 text-sm transition"
           :class="
             selected === option.key
-              ? 'border-[#1f49ba] bg-[#f2f7ff]'
-              : 'border-[#e2e9f5] hover:border-[#bcd3ff]'
+              ? 'border-[var(--k-accent)] bg-[#f2f7ff]'
+              : 'border-[var(--k-border)] hover:border-[var(--k-border-strong)]'
           "
         >
           <input v-model="selected" type="radio" :value="option.key" class="mt-1" />
-          <span class="text-[#0b1f45]"><strong class="mr-1">{{ option.key }}.</strong>{{ option.text }}</span>
+          <span class="text-[var(--k-text)]"><strong class="mr-1">{{ option.key }}.</strong>{{ option.text }}</span>
         </label>
       </div>
 
       <div v-else class="space-y-2">
-        <p class="text-xs text-[#9aa9c3]">综合题：M0 仅记录完成状态，评分在 M1 实现。</p>
+        <p class="text-xs text-[var(--k-text-faint)]">综合题：M0 仅记录完成状态，评分在 M1 实现。</p>
         <div
           v-for="sub in question.subQuestions"
           :key="sub.number"
-          class="rounded-lg bg-[#f8fbff] px-4 py-2 text-sm text-[#0b1f45]"
+          class="rounded-lg bg-[var(--k-surface-soft)] px-4 py-2 text-sm text-[var(--k-text)]"
         >
           <span class="font-semibold">({{ sub.number }})</span> {{ sub.description }}
-          <span class="text-xs text-[#9aa9c3]">（{{ sub.score }} 分）</span>
+          <span class="text-xs text-[var(--k-text-faint)]">（{{ sub.score }} 分）</span>
         </div>
       </div>
 
       <div class="flex items-center gap-3">
         <button
-          class="rounded-lg bg-[#1f49ba] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1a3fa0]"
+          class="rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--k-accent-hover)]"
           @click="submit"
         >
           提交答案
@@ -144,24 +144,24 @@ onMounted(load)
         <span
           v-if="result"
           class="text-sm font-semibold"
-          :class="result.correct ? 'text-[#0b7d70]' : 'text-[#c0392b]'"
+          :class="result.correct ? 'text-[#0b7d70]' : 'text-[var(--k-danger)]'"
         >
           {{ result.correct ? '回答正确' : '回答错误' }}
-          <span v-if="result.standardAnswer" class="font-normal text-[#9aa9c3]">
+          <span v-if="result.standardAnswer" class="font-normal text-[var(--k-text-faint)]">
             （正确答案 {{ result.standardAnswer }}）
           </span>
         </span>
       </div>
 
-      <div v-if="result?.explanation" class="rounded-lg border border-[#e2e9f5] bg-[#f8fbff] p-4">
-        <p class="text-xs font-semibold text-[#9aa9c3]">解析</p>
+      <div v-if="result?.explanation" class="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-soft)] p-4">
+        <p class="text-xs font-semibold text-[var(--k-text-faint)]">解析</p>
         <pre
-          class="prose-code mt-2 whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#3d4d6b]"
+          class="prose-code mt-2 whitespace-pre-wrap font-sans text-sm leading-relaxed text-[var(--k-heading)]"
           >{{ result.explanation }}</pre
         >
       </div>
 
-      <div v-if="question.knowledgeBlockIds.length" class="text-xs text-[#9aa9c3]">
+      <div v-if="question.knowledgeBlockIds.length" class="text-xs text-[var(--k-text-faint)]">
         关联知识块：{{ question.knowledgeBlockIds.join('、') }}
       </div>
     </article>

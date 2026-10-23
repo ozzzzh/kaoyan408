@@ -51,8 +51,8 @@ function select(subject: string) {
 <template>
   <div class="space-y-6">
     <header class="space-y-1">
-      <h1 class="text-2xl font-bold tracking-tight text-[#0b1f45]">知识点</h1>
-      <p class="text-sm text-[#5c6f94]">
+      <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)]">知识点</h1>
+      <p class="text-sm text-[var(--k-text-muted)]">
         按四科知识树组织的正文，每块都可反查关联真题；公式与动画在 M1 接入阅读页。
       </p>
     </header>
@@ -64,22 +64,22 @@ function select(subject: string) {
         class="rounded-lg border px-3 py-1.5 text-sm transition"
         :class="
           activeSubject === subject.code
-            ? 'border-[#1f49ba] bg-[#e8efff] font-semibold text-[#1845ad]'
-            : 'border-[#e2e9f5] bg-white text-[#5c6f94] hover:bg-[#f5f8ff]'
+            ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)] font-semibold text-[var(--k-accent-text)]'
+            : 'border-[var(--k-border)] bg-[var(--k-surface)] text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)]'
         "
         @click="select(subject.code)"
       >
         {{ subject.label }}
       </button>
-      <span v-if="keyword" class="ml-1 rounded-full bg-[#fff5e6] px-2.5 py-1 text-xs text-[#b8730a]">
+      <span v-if="keyword" class="ml-1 rounded-full bg-[#fff5e6] px-2.5 py-1 text-xs text-[var(--k-warn)]">
         搜索「{{ keyword }}」的结果
       </span>
     </div>
 
-    <p v-if="loading" class="text-sm text-[#9aa9c3]">加载中…</p>
+    <p v-if="loading" class="text-sm text-[var(--k-text-faint)]">加载中…</p>
     <p
       v-else-if="error"
-      class="rounded-lg border border-[#ffd9a0] bg-[#fff9ef] px-4 py-3 text-sm text-[#b8730a]"
+      class="rounded-lg border border-[var(--k-warn-border)] bg-[var(--k-warn-soft)] px-4 py-3 text-sm text-[var(--k-warn)]"
     >
       {{ error }}
     </p>
@@ -88,10 +88,10 @@ function select(subject: string) {
       <div
         v-for="point in points"
         :key="point.pointId"
-        class="rounded-xl border border-[#e2e9f5] bg-white px-4 py-3.5 transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(52,87,150,0.08)]"
+        class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3.5 transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(52,87,150,0.08)]"
       >
-        <p class="text-sm font-semibold text-[#0b1f45]">{{ point.title }}</p>
-        <p class="mt-1 text-xs text-[#9aa9c3]">
+        <p class="text-sm font-semibold text-[var(--k-text)]">{{ point.title }}</p>
+        <p class="mt-1 text-xs text-[var(--k-text-faint)]">
           {{ point.pointId }} · {{ point.blockCount }} 个知识块
         </p>
       </div>

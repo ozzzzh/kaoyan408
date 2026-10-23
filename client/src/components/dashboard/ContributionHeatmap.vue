@@ -49,7 +49,7 @@ const levelClass = (level: number) => {
     case 4:
       return 'bg-[#1f7a33]'
     default:
-      return 'bg-[#eef2fa]'
+      return 'bg-[var(--k-chip)]'
   }
 }
 
@@ -61,23 +61,23 @@ const weekdays = ['一', '二', '三', '四', '五', '六', '日']
 </script>
 
 <template>
-  <section class="rounded-xl border border-[#e2e9f5] bg-white p-5">
+  <section class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5">
     <div class="flex flex-wrap items-baseline justify-between gap-2">
-      <h2 class="text-sm font-bold text-[#3d4d6b]">做题贡献（最近 90 天）</h2>
-      <span class="text-xs text-[#9aa9c3]">
-        做题天数 <strong class="font-semibold text-[#1845ad]">{{ activeDays ?? 0 }}</strong>
-        · 连续 <strong class="font-semibold text-[#1845ad]">{{ streakDays ?? 0 }}</strong> 天
+      <h2 class="text-sm font-bold text-[var(--k-heading)]">做题贡献（最近 90 天）</h2>
+      <span class="text-xs text-[var(--k-text-faint)]">
+        做题天数 <strong class="font-semibold text-[var(--k-accent-text)]">{{ activeDays ?? 0 }}</strong>
+        · 连续 <strong class="font-semibold text-[var(--k-accent-text)]">{{ streakDays ?? 0 }}</strong> 天
       </span>
     </div>
 
-    <div v-if="!heatmap || !heatmap.days.length" class="py-8 text-center text-sm text-[#9aa9c3]">
+    <div v-if="!heatmap || !heatmap.days.length" class="py-8 text-center text-sm text-[var(--k-text-faint)]">
       暂无做题记录
     </div>
 
     <div v-else class="mt-4 overflow-x-auto pb-1">
       <div class="inline-flex min-w-full gap-2">
         <!-- 星期标签 -->
-        <div class="flex shrink-0 flex-col gap-[3px] pt-[18px] text-[10px] leading-3 text-[#9aa9c3]">
+        <div class="flex shrink-0 flex-col gap-[3px] pt-[18px] text-[10px] leading-3 text-[var(--k-text-faint)]">
           <template v-for="(label, i) in weekdayLabels" :key="label">
             <span
               class="h-3"
@@ -93,7 +93,7 @@ const weekdays = ['一', '二', '三', '四', '五', '六', '日']
             <span
               v-for="label in monthLabels"
               :key="`${label.index}-${label.text}`"
-              class="absolute text-[10px] text-[#9aa9c3]"
+              class="absolute text-[10px] text-[var(--k-text-faint)]"
               :style="{ left: label.index * 15 + 'px' }"
               >{{ label.text }}</span
             >
@@ -115,9 +115,9 @@ const weekdays = ['一', '二', '三', '四', '五', '六', '日']
       </div>
 
       <!-- 图例 -->
-      <div class="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-[#9aa9c3]">
+      <div class="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-[var(--k-text-faint)]">
         <span>少</span>
-        <span class="h-3 w-3 rounded-[2px] bg-[#eef2fa]" />
+        <span class="h-3 w-3 rounded-[2px] bg-[var(--k-chip)]" />
         <span class="h-3 w-3 rounded-[2px] bg-[#c6e4c9]" />
         <span class="h-3 w-3 rounded-[2px] bg-[#8ecf96]" />
         <span class="h-3 w-3 rounded-[2px] bg-[#4fae5f]" />

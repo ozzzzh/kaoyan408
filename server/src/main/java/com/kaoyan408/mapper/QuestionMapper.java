@@ -35,6 +35,22 @@ public interface QuestionMapper extends BaseMapper<Question> {
             """)
     List<Map<String, Object>> yearStats();
 
+    /**
+     * 各科掌握度分桶（对齐 408os 的「掌握 / 不熟 / 不会 / 未做」）。
+     * 掌握：答对且未用提示；不熟：答对但用过提示；不会：答错；未做：无作答记录。
+     */
+    @Select("""
+            SELECT q.subject AS subject,
+                   SUM(CASE WHEN a.id IS NOT NULL AND a.result = 1 AND COALESCE(a.hints_used, 0) = 0 THEN 1 ELSE 0 END) AS mastered,
+                   SUM(CASE WHEN a.id IS NOT NULL AND a.result = 1 AND COALESCE(a.hints_used, 0) > 0 THEN 1 ELSE 0 END) AS shaky,
+                   SUM(CASE WHEN a.id IS NOT NULL AND a.result = 0 THEN 1 ELSE 0 END) AS failed,
+                   SUM(CASE WHEN a.id IS NULL THEN 1 ELSE 0 END) AS untouched
+            FROM question q
+            LEFT JOIN question_attempt a ON a.question_id = q.id AND a.user_id = #{userId}
+            GROUP BY q.subject
+            """)
+    List<Map<String, Object>> masteryBySubject(@Param("userId") Long userId);
+
     /** 每个知识块的题目总数（含全部年份）。 */
     @Select("""
             SELECT block_id AS blockId, COUNT(*) AS total

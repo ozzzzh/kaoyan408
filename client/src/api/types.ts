@@ -14,6 +14,12 @@ export interface SubjectStat {
   correct: number
   accuracy: number
   progress: number
+  /** 掌握率 = 掌握题数 / 总题数 */
+  masteryRate: number
+  mastered: number
+  shaky: number
+  failed: number
+  untouched: number
 }
 
 export interface DailyPoint {
@@ -43,6 +49,7 @@ export interface Dashboard {
   correctQuestions: number
   accuracy: number
   progress: number
+  masteryRate: number
   subjects: SubjectStat[]
   streakDays: number
   recent: DailyPoint[]
