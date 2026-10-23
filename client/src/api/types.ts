@@ -108,6 +108,21 @@ export interface KnowledgePointView {
   blockCount: number
 }
 
+/** 知识点正文（按顺序的扁平块列表，前端再按 subpointId 分节）。 */
+export interface KnowledgePointResponse {
+  pointId: string
+  title: string | null
+  subject: string | null
+  blocks: Array<{
+    blockId: string
+    subpointId: string | null
+    subpointTitle: string | null
+    order: number
+    type: string
+    content: string
+  }>
+}
+
 export interface KnowledgeBlockView {
   blockId: string
   pointId: string

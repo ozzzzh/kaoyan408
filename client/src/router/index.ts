@@ -10,6 +10,7 @@ const router = createRouter({
     { path: '/', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
     { path: '/dashboard', redirect: '/' },
     { path: '/learn', name: 'learn', component: () => import('@/views/LearnView.vue') },
+    { path: '/learn/:pointId', name: 'learn-detail', component: () => import('@/views/LearnView.vue') },
     { path: '/practice', name: 'practice', component: () => import('@/views/PracticeView.vue') },
     { path: '/exams', name: 'exams', component: () => import('@/views/ExamsView.vue') },
     { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },

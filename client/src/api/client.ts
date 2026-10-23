@@ -5,6 +5,7 @@ import type {
   ExamDetail,
   ExamSummary,
   KnowledgeBlockDetail,
+  KnowledgePointResponse,
   KnowledgePointView,
   LoginResult,
   QuestionView,
@@ -109,4 +110,8 @@ export const api = {
 
   knowledgeBlock: (blockId: string) =>
     request<KnowledgeBlockDetail>(`/api/v1/knowledge/block/${encodeURIComponent(blockId)}`),
+
+  /** 某知识点的全部正文块（按 subpoint 分节，用于知识阅读页）。 */
+  knowledgePoint: (pointId: string) =>
+    request<KnowledgePointResponse>(`/api/v1/knowledge/point/${encodeURIComponent(pointId)}`),
 }
