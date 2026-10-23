@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { api } from '@/api/client'
-import type { PracticeEntrances } from '@/api/types'
+import type { MemorySummary, PracticeEntrances } from '@/api/types'
 import BackgroundFx from '@/components/layout/BackgroundFx.vue'
 import ContributionHeatmap from '@/components/dashboard/ContributionHeatmap.vue'
 import SubjectMasteryPanel from '@/components/dashboard/SubjectMasteryPanel.vue'
@@ -72,11 +72,21 @@ const quickSubjects = computed(() =>
 
 /** 刷题入口汇总（按科目 / 错题 / 未做），登录后才有个人数据。 */
 const entrances = ref<PracticeEntrances | null>(null)
+/** 背诵概览：只在登录后加载 */
+const memory = ref<MemorySummary | null>(null)
+
 onMounted(async () => {
   try {
     entrances.value = await api.practiceEntrances()
   } catch {
     entrances.value = null
+  }
+  if (user.value) {
+    try {
+      memory.value = await api.memorySummary()
+    } catch {
+      memory.value = null
+    }
   }
 })
 </script>
@@ -174,6 +184,32 @@ onMounted(async () => {
           <span class="text-sm font-bold tabular-nums text-[var(--k-accent-text)]">18 卷</span>
         </RouterLink>
       </div>
+
+      <!-- 背诵入口：登录后显示到期数 -->
+      <RouterLink
+        v-if="memory"
+        :to="{ path: '/memory' }"
+        class="mt-3 flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[var(--k-accent)]"
+      >
+        <span class="min-w-0">
+          <span class="block text-sm font-semibold text-[var(--k-text)]">背诵复习</span>
+          <span class="block text-[11px] text-[var(--k-text-faint)]">
+            <template v-if="memory.total > 0">
+              共 {{ memory.total }} 张 · 牢固 {{ memory.solid }} 张
+            </template>
+            <template v-else>把要点与公式加入记忆曲线</template>
+          </span>
+        </span>
+        <span class="flex shrink-0 items-center gap-2">
+          <span
+            v-if="memory.due > 0"
+            class="rounded-full bg-[var(--k-accent)] px-2.5 py-0.5 text-xs font-bold text-white"
+          >
+            {{ memory.due }} 张到期
+          </span>
+          <span v-else class="text-xs font-semibold text-[#0f7a4d]">今日已清空</span>
+        </span>
+      </RouterLink>
     </section>
 
     <!-- 四科掌握进度 + 做题贡献并排 -->

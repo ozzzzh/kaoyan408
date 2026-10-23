@@ -10,6 +10,7 @@ import type {
   LoginResult,
   MemoryDue,
   MemorySummary,
+  PointMastery,
   PracticeEntrances,
   PracticeQueue,
   QuestionView,
@@ -183,4 +184,10 @@ export const api = {
   /** 背诵：移除一张卡片。 */
   memoryRemove: (cardId: number) =>
     post<{ deleted: number }>(`/api/v1/memory/remove?cardId=${cardId}`, {}),
+
+  /** 学习看板：知识点级掌握与薄弱点。 */
+  statsPoints: (subject?: string) =>
+    request<PointMastery>(
+      `/api/v1/stats/points${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`,
+    ),
 }

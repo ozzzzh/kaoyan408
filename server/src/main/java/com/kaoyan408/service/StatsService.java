@@ -157,6 +157,63 @@ public class StatsService {
         return payload;
     }
 
+    /**
+     * 知识点级掌握看板：找出该补的章节。
+     *
+     * <p>重点输出「薄弱知识点」——已做但正确率低的知识点，按正确率升序、题量降序排列。
+     * 只统计已做题数 ≥ 1 的知识点，未做的单列（那是「还没开始」，不是「薄弱」）。
+     */
+    public Map<String, Object> pointMastery(Long userId, String subject) {
+        List<Map<String, Object>> rows = questionMapper.pointMastery(
+                userId, subject == null || subject.isBlank() ? null : subject);
+
+        List<Map<String, Object>> points = new ArrayList<>();
+        List<Map<String, Object>> weak = new ArrayList<>();
+        List<Map<String, Object>> untouched = new ArrayList<>();
+
+        for (Map<String, Object> row : rows) {
+            long total = toLong(row.get("total"));
+            long done = toLong(row.get("done"));
+            long correct = toLong(row.get("correct"));
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("pointId", row.get("pointId"));
+            item.put("title", row.get("title"));
+            item.put("subject", row.get("subject"));
+            item.put("total", total);
+            item.put("done", done);
+            item.put("correct", correct);
+            item.put("accuracy", done == 0 ? null : round(correct * 100.0 / done));
+            item.put("progress", total == 0 ? 0.0 : round(done * 100.0 / total));
+            points.add(item);
+
+            if (done == 0) {
+                untouched.add(item);
+            } else if (done >= 1) {
+                weak.add(item);
+            }
+        }
+
+        // 薄弱排序：正确率低的优先；正确率相同则题量多的优先（更有代表性）
+        weak.sort((a, b) -> {
+            double accA = a.get("accuracy") == null ? 0 : ((Number) a.get("accuracy")).doubleValue();
+            double accB = b.get("accuracy") == null ? 0 : ((Number) b.get("accuracy")).doubleValue();
+            if (accA != accB) {
+                return Double.compare(accA, accB);
+            }
+            return Long.compare(toLong(b.get("done")), toLong(a.get("done")));
+        });
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("totalPoints", points.size());
+        payload.put("startedPoints", weak.size());
+        payload.put("untouchedPoints", untouched.size());
+        payload.put("points", points);
+        // 只回前 15 个薄弱点，避免前端一次渲染过多
+        payload.put("weakest", weak.stream().limit(15).toList());
+        return payload;
+    }
+
     /** 按当日题量占最大值的比例分 5 级（0 为无记录）。 */
     private int levelOf(int questions, int max) {
         if (questions <= 0) {

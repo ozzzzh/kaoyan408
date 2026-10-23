@@ -56,7 +56,7 @@ public class SecurityConfig {
                                 "/api/v1/exams", "/api/v1/exams/**",
                                 "/api/v1/questions/**",
                                 "/api/v1/knowledge", "/api/v1/knowledge/**",
-                                "/api/v1/stats/dash").permitAll()
+                                "/api/v1/stats/dash", "/api/v1/stats/points").permitAll()
                         // 只保护「明确的写操作与个人数据」端点，其余交给 MVC 返回统一 404 文案
                         .requestMatchers("/api/v1/user/**").authenticated()
                         // 背诵卡片是用户私有数据，全部需要登录

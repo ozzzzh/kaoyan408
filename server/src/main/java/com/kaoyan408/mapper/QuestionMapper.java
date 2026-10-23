@@ -72,6 +72,35 @@ public interface QuestionMapper extends BaseMapper<Question> {
     List<Map<String, Object>> blockProgressOfUser(@Param("userId") Long userId);
 
     /**
+     * 知识点级掌握情况：按知识点聚合其下所有块的做题数据。
+     *
+     * <p>题量按 COUNT(DISTINCT question_id) 去重：一道题可能挂在同一知识点的多个块上，
+     * 若直接对块计数会把同一题重复计入（实测 co-vm-impl 求和 468 / 去重仅 61）。
+     */
+    @Select("""
+            <script>
+            SELECT p.point_id   AS pointId,
+                   p.title      AS title,
+                   p.subject    AS subject,
+                   COUNT(DISTINCT q.id)                                   AS total,
+                   COUNT(DISTINCT CASE WHEN a.id IS NOT NULL THEN q.id END) AS done,
+                   COUNT(DISTINCT CASE WHEN a.result = 1 THEN q.id END)     AS correct
+            FROM knowledge_point p
+            JOIN knowledge_block b ON b.point_id = p.point_id
+            JOIN question_knowledge qk ON qk.block_id = b.block_id
+            JOIN question q ON q.id = qk.question_id
+            LEFT JOIN question_attempt a ON a.question_id = q.id AND a.user_id = #{userId}
+            <where>
+              <if test="subject != null and subject != ''">AND p.subject = #{subject}</if>
+            </where>
+            GROUP BY p.point_id, p.title, p.subject
+            ORDER BY p.sort_order ASC
+            </script>
+            """)
+    List<Map<String, Object>> pointMastery(@Param("userId") Long userId,
+                                           @Param("subject") String subject);
+
+    /**
      * 刷题队列：按条件筛出题目，并带出当前用户的作答状态。
      * 只返回渲染列表与导航所需的轻量字段（不下发题干与解析）。
      *

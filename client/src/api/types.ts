@@ -263,6 +263,28 @@ export interface MemorySummary {
   subjects: Array<{ subject: string; name: string; total: number }>
 }
 
+/** 知识点级掌握度。 */
+export interface PointMasteryItem {
+  pointId: string
+  title: string
+  subject: string
+  total: number
+  done: number
+  correct: number
+  /** 未做过时为 null */
+  accuracy: number | null
+  progress: number
+}
+
+export interface PointMastery {
+  totalPoints: number
+  startedPoints: number
+  untouchedPoints: number
+  points: PointMasteryItem[]
+  /** 已做但正确率最低的知识点（最多 15 个） */
+  weakest: PointMasteryItem[]
+}
+
 export interface KnowledgeBlockView {
   blockId: string
   pointId: string
