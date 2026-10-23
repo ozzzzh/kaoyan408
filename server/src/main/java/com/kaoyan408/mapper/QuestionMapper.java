@@ -93,6 +93,9 @@ public interface QuestionMapper extends BaseMapper<Question> {
                    q.difficulty    AS difficulty,
                    e.year          AS year,
                    a.result        AS result,
+                   a.wrong_count   AS wrongCount,
+                   a.retry_correct_count AS retryCorrectCount,
+                   a.mastered_at   AS masteredAt,
                    CASE WHEN a.id IS NULL THEN 1 ELSE 0 END AS untouched
             FROM question q
             JOIN exam_year e ON e.id = q.exam_id
@@ -107,12 +110,17 @@ public interface QuestionMapper extends BaseMapper<Question> {
               <if test="year != null">AND e.year = #{year}</if>
               <if test="subject != null and subject != ''">AND q.subject = #{subject}</if>
               <if test="blockId != null and blockId != ''">AND qk.block_id = #{blockId}</if>
-              <if test="onlyWrong">AND a.result = 0</if>
+              <if test="onlyWrong">AND a.wrong_count &gt; 0</if>
               <if test="onlyUntouched">AND a.id IS NULL</if>
+              <if test="onlyPendingWrong">AND a.wrong_count &gt; 0 AND a.mastered_at IS NULL</if>
+              <if test="onlyMasteredWrong">AND a.wrong_count &gt; 0 AND a.mastered_at IS NOT NULL</if>
             </where>
             GROUP BY q.id, q.exam_ref, q.exam_number, q.subject, q.chapter_name,
-                     q.question_type, q.score, q.difficulty, e.year, a.result, untouched
-            ORDER BY e.year DESC, q.exam_number ASC
+                     q.question_type, q.score, q.difficulty, e.year, a.result, untouched,
+                     a.wrong_count, a.retry_correct_count, a.mastered_at, a.first_wrong_at
+            ORDER BY
+              <if test="onlyPendingWrong">a.first_wrong_at ASC,</if>
+              e.year DESC, q.exam_number ASC
             </script>
             """)
     List<Map<String, Object>> queue(@Param("userId") Long userId,
@@ -121,17 +129,9 @@ public interface QuestionMapper extends BaseMapper<Question> {
                                     @Param("blockId") String blockId,
                                     @Param("pointId") String pointId,
                                     @Param("onlyWrong") boolean onlyWrong,
-                                    @Param("onlyUntouched") boolean onlyUntouched);
-
-    /** 错题本统计：按科目汇总答错题数。 */
-    @Select("""
-            SELECT q.subject AS subject, COUNT(*) AS wrong
-            FROM question_attempt a
-            JOIN question q ON q.id = a.question_id
-            WHERE a.user_id = #{userId} AND a.result = 0
-            GROUP BY q.subject
-            """)
-    List<Map<String, Object>> wrongBySubject(@Param("userId") Long userId);
+                                    @Param("onlyUntouched") boolean onlyUntouched,
+                                    @Param("onlyPendingWrong") boolean onlyPendingWrong,
+                                    @Param("onlyMasteredWrong") boolean onlyMasteredWrong);
 
     /** 某个知识块的关联真题（轻量字段，用于正文页的「本节关联 N 道真题」）。 */
     @Select("""

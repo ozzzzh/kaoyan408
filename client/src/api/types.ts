@@ -139,6 +139,12 @@ export interface PracticeQueueItem {
   difficulty: number | null
   answered: boolean
   correct: boolean
+  /** 累计答错次数（答对不清零） */
+  wrongCount: number
+  /** 答错之后重做答对的次数 */
+  retryCorrectCount: number
+  /** 错题是否已订正（移出错题本） */
+  mastered: boolean
 }
 
 export interface PracticeQueue {
@@ -154,8 +160,12 @@ export interface PracticeQueue {
 }
 
 export interface WrongBook {
+  /** 待订正的错题数 */
+  pending: number
+  /** 已订正的错题数 */
+  mastered: number
   total: number
-  subjects: Array<{ subject: string; name: string; wrong: number }>
+  subjects: Array<{ subject: string; name: string; pending: number; mastered: number }>
 }
 
 export interface PracticeEntrances {
@@ -163,6 +173,8 @@ export interface PracticeEntrances {
   years: Array<{ year: number; total: number }>
   untouched: number
   wrong: number
+  wrongPending: number
+  wrongMastered: number
 }
 
 /** 搜索命中的知识点。 */

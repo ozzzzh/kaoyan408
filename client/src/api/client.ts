@@ -126,7 +126,7 @@ export const api = {
     subject?: string
     blockId?: string
     pointId?: string
-    scope?: 'all' | 'wrong' | 'untouched'
+    scope?: 'all' | 'wrong' | 'untouched' | 'wrong-pending' | 'wrong-mastered'
   }) => {
     const query = new URLSearchParams()
     if (params.year != null) query.set('year', String(params.year))

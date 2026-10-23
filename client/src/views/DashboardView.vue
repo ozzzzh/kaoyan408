@@ -147,15 +147,23 @@ onMounted(async () => {
           </span>
         </RouterLink>
         <RouterLink
-          :to="{ path: '/practice', query: { scope: 'wrong' } }"
+          :to="{ path: '/practice', query: { scope: 'wrong-pending' } }"
           class="flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[#b23c3c]"
         >
-          <span class="text-sm font-semibold text-[var(--k-text)]">错题本</span>
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold text-[var(--k-text)]">错题本</span>
+            <span
+              v-if="entrances.wrongMastered > 0"
+              class="block text-[11px] text-[var(--k-text-faint)]"
+            >
+              已订正 {{ entrances.wrongMastered }} 题
+            </span>
+          </span>
           <span
-            class="text-sm font-bold tabular-nums"
-            :class="entrances.wrong > 0 ? 'text-[#b23c3c]' : 'text-[var(--k-text-faint)]'"
+            class="shrink-0 text-sm font-bold tabular-nums"
+            :class="entrances.wrongPending > 0 ? 'text-[#b23c3c]' : 'text-[var(--k-text-faint)]'"
           >
-            {{ entrances.wrong }}
+            {{ entrances.wrongPending }}
           </span>
         </RouterLink>
         <RouterLink

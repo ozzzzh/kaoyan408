@@ -17,6 +17,10 @@ public class PracticeService {
     private static final String SCOPE_ALL = "all";
     private static final String SCOPE_WRONG = "wrong";
     private static final String SCOPE_UNTOUCHED = "untouched";
+    /** 错题本中尚未订正的错题 */
+    private static final String SCOPE_WRONG_PENDING = "wrong-pending";
+    /** 错题本中已订正掌握的错题（用于回顾） */
+    private static final String SCOPE_WRONG_MASTERED = "wrong-mastered";
 
     private static final String[] SUBJECTS = {"ds", "os", "co", "cn"};
     private static final Map<String, String> SUBJECT_NAMES = Map.of(
@@ -37,11 +41,14 @@ public class PracticeService {
      */
     public Map<String, Object> queue(Long userId, Integer year, String subject,
                                      String blockId, String pointId, String scope) {
+        // wrong = 所有错过的题（含已订正）；wrong-pending = 待订正；wrong-mastered = 已订正
         boolean onlyWrong = SCOPE_WRONG.equalsIgnoreCase(scope);
         boolean onlyUntouched = SCOPE_UNTOUCHED.equalsIgnoreCase(scope);
+        boolean onlyPendingWrong = SCOPE_WRONG_PENDING.equalsIgnoreCase(scope);
+        boolean onlyMasteredWrong = SCOPE_WRONG_MASTERED.equalsIgnoreCase(scope);
 
         // 游客看错题本没有意义，直接回空队列而不是回全量
-        if (onlyWrong && userId == null) {
+        if ((onlyWrong || onlyPendingWrong || onlyMasteredWrong) && userId == null) {
             return payload(List.of(), year, subject, blockId, pointId, scope);
         }
 
@@ -49,7 +56,7 @@ public class PracticeService {
                 userId, year, isEmpty(subject) ? null : subject,
                 isEmpty(blockId) ? null : blockId,
                 isEmpty(pointId) ? null : pointId,
-                onlyWrong, onlyUntouched);
+                onlyWrong, onlyUntouched, onlyPendingWrong, onlyMasteredWrong);
 
         List<Map<String, Object>> items = new ArrayList<>();
         for (Map<String, Object> row : rows) {
@@ -65,6 +72,10 @@ public class PracticeService {
             Object result = row.get("result");
             item.put("answered", result != null);
             item.put("correct", result != null && ((Number) result).intValue() == 1);
+            // 错题闭环状态
+            item.put("wrongCount", toLong(row.get("wrongCount")));
+            item.put("retryCorrectCount", toLong(row.get("retryCorrectCount")));
+            item.put("mastered", row.get("masteredAt") != null);
             items.add(item);
         }
         return payload(items, year, subject, blockId, pointId, scope);
@@ -88,20 +99,25 @@ public class PracticeService {
         return payload;
     }
 
-    /** 错题本：总错题数与分科目分布。 */
+    /**
+     * 错题本：待订正 / 已订正的数量与分科目分布。
+     * 待订正 = 曾答错且尚未在重做中答对；已订正 = 重做已答对。
+     */
     public Map<String, Object> wrongBook(Long userId) {
-        Map<String, Long> bySubject = new LinkedHashMap<>();
-        for (String subject : SUBJECTS) {
-            bySubject.put(subject, 0L);
+        List<Map<String, Object>> pending = userId == null
+                ? List.of()
+                : questionMapper.queue(userId, null, null, null, null, false, false, true, false);
+        List<Map<String, Object>> mastered = userId == null
+                ? List.of()
+                : questionMapper.queue(userId, null, null, null, null, false, false, false, true);
+
+        Map<String, Long> pendingBySubject = new LinkedHashMap<>();
+        Map<String, Long> masteredBySubject = new LinkedHashMap<>();
+        for (Map<String, Object> row : pending) {
+            pendingBySubject.merge(String.valueOf(row.get("subject")), 1L, Long::sum);
         }
-        long total = 0;
-        if (userId != null) {
-            for (Map<String, Object> row : questionMapper.wrongBySubject(userId)) {
-                String key = String.valueOf(row.get("subject"));
-                long count = toLong(row.get("wrong"));
-                bySubject.put(key, count);
-                total += count;
-            }
+        for (Map<String, Object> row : mastered) {
+            masteredBySubject.merge(String.valueOf(row.get("subject")), 1L, Long::sum);
         }
 
         List<Map<String, Object>> subjects = new ArrayList<>();
@@ -109,12 +125,15 @@ public class PracticeService {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("subject", subject);
             item.put("name", SUBJECT_NAMES.getOrDefault(subject, subject));
-            item.put("wrong", bySubject.getOrDefault(subject, 0L));
+            item.put("pending", pendingBySubject.getOrDefault(subject, 0L));
+            item.put("mastered", masteredBySubject.getOrDefault(subject, 0L));
             subjects.add(item);
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("total", total);
+        payload.put("pending", (long) pending.size());
+        payload.put("mastered", (long) mastered.size());
+        payload.put("total", (long) pending.size() + mastered.size());
         payload.put("subjects", subjects);
         return payload;
     }
@@ -124,7 +143,7 @@ public class PracticeService {
         List<Map<String, Object>> subjects = new ArrayList<>();
         for (String subject : SUBJECTS) {
             List<Map<String, Object>> rows = questionMapper.queue(
-                    userId, null, subject, null, null, false, false);
+                    userId, null, subject, null, null, false, false, false, false);
             long done = rows.stream().filter(r -> r.get("result") != null).count();
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("subject", subject);
@@ -142,16 +161,21 @@ public class PracticeService {
             years.add(item);
         }
 
-        long untouched = questionMapper.queue(userId, null, null, null, null, false, true).size();
-        long wrong = userId == null
+        long untouched = questionMapper.queue(userId, null, null, null, null, false, true, false, false).size();
+        long wrongPending = userId == null
                 ? 0
-                : questionMapper.queue(userId, null, null, null, null, true, false).size();
+                : questionMapper.queue(userId, null, null, null, null, false, false, true, false).size();
+        long wrongMastered = userId == null
+                ? 0
+                : questionMapper.queue(userId, null, null, null, null, false, false, false, true).size();
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("subjects", subjects);
         payload.put("years", years);
         payload.put("untouched", untouched);
-        payload.put("wrong", wrong);
+        payload.put("wrong", wrongPending);
+        payload.put("wrongPending", wrongPending);
+        payload.put("wrongMastered", wrongMastered);
         return payload;
     }
 

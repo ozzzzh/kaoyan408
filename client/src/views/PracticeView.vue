@@ -43,13 +43,19 @@ const examRefParam = computed(() =>
 
 const scopeLabel = computed(() => {
   if (examRefParam.value) return '搜索结果'
-  if (scope.value === 'wrong') return '错题本'
+  if (scope.value === 'wrong' || scope.value === 'wrong-pending') return '错题本 · 待订正'
+  if (scope.value === 'wrong-mastered') return '错题本 · 已订正'
   if (scope.value === 'untouched') return '未做的题'
   if (blockIdParam.value || pointIdParam.value) return '知识点练习'
   if (yearParam.value) return `${yearParam.value} 年真题`
   if (subjectParam.value) return subjectName(subjectParam.value)
   return '全部题目'
 })
+
+/** 当前是否处于错题范围，用于切换「含已订正」 */
+const isWrongScope = computed(() =>
+  ['wrong', 'wrong-pending', 'wrong-mastered'].includes(scope.value),
+)
 
 const progressText = computed(() =>
   queue.value ? `${index.value + 1} / ${queue.value.total}` : '—',
@@ -83,7 +89,7 @@ async function loadQueue() {
       subject: subjectParam.value,
       blockId: blockIdParam.value,
       pointId: pointIdParam.value,
-      scope: scope.value as 'all' | 'wrong' | 'untouched',
+      scope: scope.value as 'all' | 'wrong' | 'untouched' | 'wrong-pending' | 'wrong-mastered',
     })
     index.value = 0
     await loadQuestion()
@@ -136,8 +142,35 @@ async function submit() {
     if (queue.value && target) {
       if (!target.answered) queue.value.answered += 1
       target.answered = true
+      const wasCorrect = target.correct
       target.correct = answer.correct
+      // 错题闭环状态本地推演，避免整队列重取
+      if (!answer.correct) {
+        target.wrongCount += 1
+        target.mastered = false
+      } else if (target.wrongCount > 0 && !wasCorrect) {
+        target.retryCorrectCount += 1
+        target.mastered = true
+      }
       queue.value.correct = queue.value.items.filter((i) => i.correct).length
+    }
+    // 在错题范围内，订正成功后该题应移出列表——重新拉取以反映新成员
+    if (isWrongScope.value && answer.correct) {
+      const currentRef = item.examRef
+      const fresh = await api.practiceQueue({
+        subject: subjectParam.value,
+        scope: scope.value as 'wrong' | 'wrong-pending' | 'wrong-mastered',
+      })
+      queue.value = fresh
+      // 尽量停在同一题；若已移出列表则停在原位置或最后一题
+      const stillIndex = fresh.items.findIndex((i) => i.examRef === currentRef)
+      index.value =
+        stillIndex >= 0 ? stillIndex : Math.min(index.value, Math.max(0, fresh.items.length - 1))
+      if (fresh.items.length) {
+        await loadQuestion()
+      } else {
+        question.value = null
+      }
     }
     await userStore.loadDashboard()
   } catch (e) {
@@ -200,6 +233,46 @@ watch(
       </div>
     </header>
 
+    <!-- 错题本子视图切换 -->
+    <div v-if="isWrongScope" class="flex flex-wrap items-center gap-2">
+      <RouterLink
+        :to="{ path: '/practice', query: { scope: 'wrong-pending' } }"
+        class="rounded-lg border px-3 py-1.5 text-xs no-underline transition"
+        :class="
+          scope !== 'wrong-mastered'
+            ? 'border-[#b23c3c]/40 bg-[#b23c3c]/10 font-semibold text-[#b23c3c]'
+            : 'border-[var(--k-border)] text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)]'
+        "
+      >
+        待订正
+      </RouterLink>
+      <RouterLink
+        :to="{ path: '/practice', query: { scope: 'wrong-mastered' } }"
+        class="rounded-lg border px-3 py-1.5 text-xs no-underline transition"
+        :class="
+          scope === 'wrong-mastered'
+            ? 'border-[#0f7a4d]/40 bg-[#0f7a4d]/10 font-semibold text-[#0f7a4d]'
+            : 'border-[var(--k-border)] text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)]'
+        "
+      >
+        已订正
+      </RouterLink>
+      <RouterLink
+        :to="{ path: '/practice', query: { scope: 'wrong' } }"
+        class="rounded-lg border px-3 py-1.5 text-xs no-underline transition"
+        :class="
+          scope === 'wrong'
+            ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)] font-semibold text-[var(--k-accent-text)]'
+            : 'border-[var(--k-border)] text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)]'
+        "
+      >
+        全部错题
+      </RouterLink>
+      <span class="text-[11px] text-[var(--k-text-faint)]">
+        重做答对即移入「已订正」；再次答错会退回「待订正」
+      </span>
+    </div>
+
     <p v-if="loadingQueue" class="py-10 text-center text-sm text-[var(--k-text-faint)]">加载中…</p>
 
     <div
@@ -207,8 +280,25 @@ watch(
       class="rounded-xl border border-dashed border-[var(--k-border-strong)] bg-[var(--k-surface)] px-6 py-12 text-center"
     >
       <p class="text-sm text-[var(--k-text-muted)]">
-        {{ scope === 'wrong' ? '错题本是空的 —— 还没有答错的题。' : '该范围内暂无题目。' }}
+        {{
+          scope === 'wrong-mastered'
+            ? '还没有已订正的错题 —— 把待订正的错题重做答对后会出现在这里。'
+            : scope === 'untouched'
+              ? '所有题目都做过了。'
+              : scope === 'wrong-pending'
+                ? '待订正的错题已清空。已订正的错题可在「已订正」中回顾。'
+                : isWrongScope
+                  ? '还没有答错过的题。'
+                  : '该范围内暂无题目。'
+        }}
       </p>
+      <RouterLink
+        v-if="scope === 'wrong-pending'"
+        :to="{ path: '/practice', query: { scope: 'wrong-mastered' } }"
+        class="mt-3 inline-block rounded-lg border border-[var(--k-border)] px-4 py-2 text-sm font-semibold text-[var(--k-accent-text)] no-underline transition hover:bg-[var(--k-surface-soft)]"
+      >
+        查看已订正的错题
+      </RouterLink>
       <RouterLink
         to="/dashboard"
         class="mt-4 inline-block rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-white no-underline hover:bg-[var(--k-accent-hover)]"
@@ -246,6 +336,18 @@ watch(
               :class="current.correct ? 'bg-[#0f7a4d]/12 text-[#0f7a4d]' : 'bg-[#b23c3c]/12 text-[#b23c3c]'"
             >
               {{ current.correct ? '已答对' : '曾答错' }}
+            </span>
+            <span
+              v-if="current && current.wrongCount > 0"
+              class="rounded bg-[#b23c3c]/12 px-2 py-0.5 font-semibold text-[#b23c3c]"
+            >
+              错过 {{ current.wrongCount }} 次
+            </span>
+            <span
+              v-if="current && current.mastered"
+              class="rounded bg-[#0f7a4d]/12 px-2 py-0.5 font-semibold text-[#0f7a4d]"
+            >
+              已订正
             </span>
           </div>
 
@@ -370,13 +472,19 @@ watch(
                 i === index
                   ? 'ring-2 ring-[var(--k-accent)] ring-offset-1 ring-offset-[var(--k-surface)]'
                   : '',
-                item.correct
+                item.mastered
                   ? 'bg-[#0f7a4d]/15 text-[#0f7a4d]'
-                  : item.answered
-                    ? 'bg-[#b23c3c]/15 text-[#b23c3c]'
-                    : 'bg-[var(--k-chip)] text-[var(--k-text-faint)]',
+                  : item.correct
+                    ? 'bg-[#0f7a4d]/15 text-[#0f7a4d]'
+                    : item.answered
+                      ? 'bg-[#b23c3c]/15 text-[#b23c3c]'
+                      : 'bg-[var(--k-chip)] text-[var(--k-text-faint)]',
               ]"
-              :title="`第 ${item.number} 题`"
+              :title="
+                `第 ${item.number} 题` +
+                (item.wrongCount > 0 ? ` · 错过 ${item.wrongCount} 次` : '') +
+                (item.mastered ? ' · 已订正' : '')
+              "
               @click="jumpTo(i)"
             >
               {{ item.number }}

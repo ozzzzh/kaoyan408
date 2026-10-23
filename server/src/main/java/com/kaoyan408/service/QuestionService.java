@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -93,19 +94,55 @@ public class QuestionService {
 
         QuestionAttempt attempt = attemptOf(userId, question.getId());
         boolean firstAttempt = attempt == null;
+        // 本次作答前是否已经答错过（用于识别「订正」）
+        boolean wasWrongBefore = !firstAttempt && attempt.getWrongCount() != null
+                && attempt.getWrongCount() > 0;
+
         if (attempt == null) {
             attempt = new QuestionAttempt();
             attempt.setUserId(userId);
             attempt.setQuestionId(question.getId());
             attempt.setHintsUsed(0);
+            attempt.setWrongCount(0);
+            attempt.setRetryCorrectCount(0);
         }
         attempt.setResult(correct ? 1 : 0);
         attempt.setAnswer(answer);
         attempt.setDurationMs(durationMs);
+
+        // 错题重做闭环的状态维护：
+        //   答错 → wrongCount 累加、记录首次答错时间、清空已掌握标记（重新回到错题本）
+        //   答对且此前错过 → retryCorrectCount 累加、标记已掌握（移出错题本）
+        //   答对且从未错过 → 不改动上述字段
+        if (!correct) {
+            attempt.setWrongCount((attempt.getWrongCount() == null ? 0 : attempt.getWrongCount()) + 1);
+            if (attempt.getFirstWrongAt() == null) {
+                attempt.setFirstWrongAt(LocalDateTime.now());
+            }
+            // 再次答错说明并未真正掌握，撤销已掌握标记
+            attempt.setMasteredAt(null);
+        } else if (wasWrongBefore) {
+            attempt.setRetryCorrectCount(
+                    (attempt.getRetryCorrectCount() == null ? 0 : attempt.getRetryCorrectCount()) + 1);
+            if (attempt.getMasteredAt() == null) {
+                attempt.setMasteredAt(LocalDateTime.now());
+            }
+        }
+
         if (firstAttempt) {
             attemptMapper.insert(attempt);
         } else {
-            attemptMapper.updateById(attempt);
+            // mastered_at 可能从有值改为 null，updateById 默认忽略 null 字段，
+            // 因此这里用 UpdateWrapper 显式写入，避免「撤销掌握」失效。
+            attemptMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<QuestionAttempt>()
+                    .eq("id", attempt.getId())
+                    .set("result", attempt.getResult())
+                    .set("answer", attempt.getAnswer())
+                    .set("duration_ms", attempt.getDurationMs())
+                    .set("wrong_count", attempt.getWrongCount())
+                    .set("retry_correct_count", attempt.getRetryCorrectCount())
+                    .set("mastered_at", attempt.getMasteredAt())
+                    .set("first_wrong_at", attempt.getFirstWrongAt()));
         }
 
         List<String> blockIds = blockIdsOf(question.getId());
@@ -113,9 +150,8 @@ public class QuestionService {
         for (String blockId : blockIds) {
             blocks.add(refreshBlockProgress(userId, blockId));
         }
-        if (firstAttempt) {
-            refreshDailyStat(userId, correct);
-        }
+        // 重做也算练习量：只统计首次会让「错题重做」不计入打卡与热力图
+        refreshDailyStat(userId, correct);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("questionId", question.getExamRef());
