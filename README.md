@@ -26,8 +26,8 @@
 | 前端 | Vue 3.5 + Vite 8 + TypeScript + Tailwind CSS 4 + Pinia + vue-router |
 | 渲染 | KaTeX（公式）、marked + DOMPurify（正文）、manim-web（动画） |
 | 后端 | Spring Boot 3.4 + Spring Security + MyBatis-Plus + Flyway |
-| 存储 | MySQL 8（内容与做题数据）、Redis 7（预留） |
-| 部署 | Docker Compose（nginx + api + mysql + redis） |
+| 存储 | MySQL 8（内容与做题数据） |
+| 部署 | Docker Compose（nginx + api + mysql） |
 
 ## 目录结构
 
@@ -90,20 +90,68 @@ npm run dev
 | --- | --- |
 | 前端 dev server | 5173 |
 | 后端 API（本地） | 8080 |
-| nginx（容器部署） | 8080 |
-| MySQL（容器，映射到宿主） | 33061 |
-| Redis（容器，映射到宿主） | 63791 |
+| nginx（容器部署） | 18080（`WEB_PORT` 可覆盖） |
+| MySQL（容器，映射到宿主） | 33061（`DB_PORT` 可覆盖） |
 
 ## Docker 部署
 
 ```bash
-cp .env.example .env         # 修改 DB_PASSWORD 与 JWT_SECRET
+cp .env.example .env            # 修改 DB_PASSWORD 与 JWT_SECRET
 npm --prefix client install
 npm --prefix client run build   # 产出 client/dist，由 nginx 挂载
 docker compose up -d --build
 ```
 
-访问 <http://服务器地址:8080>。数据库表结构与内容种子由 Flyway 在 api 容器启动时自动应用。
+访问 <http://服务器地址:18080>（默认端口 18080，避开本机开发常用的 8080）。
+
+首次启动 api 容器时，Flyway 应用表结构迁移（V1 表结构、V2 错题重做字段），
+随后 `ContentSeedConfig` 在题库为空时灌入内容种子（约 3MB，实测耗时约 23 秒）。
+
+### 部署实测结论（本机验证过一次完整流程）
+
+以下三点是实际部署时踩到或需要预先知道的，不是推测：
+
+1. **nginx 配置必须覆盖 `default.conf`，不能并排新增。**
+   官方 nginx 镜像自带 `/etc/nginx/conf.d/default.conf`，同样声明
+   `listen 80; server_name _;`。两个 server 块条件完全相同时 nginx 只采用
+   **先加载**的那个（按文件名排序，`default.conf` 在前），
+   结果是 `location /api/` 反代规则被整体绕过，`/api/v1/health` 被当作静态文件
+   返回 404。compose 中因此挂载到 `default.conf` 而非 `kaoyan.conf`。
+
+2. **内容种子不在 Flyway 版本链中。**
+   种子由 `scripts/import-content.mjs` 生成到 `server/src/main/resources/seed/content.sql`，
+   运行时由 `ContentSeedConfig` 加载（题库非空则跳过；
+   `kaoyan.seed.force=true` 可强制重灌）。
+   内容属于数据而非表结构，若作为迁移会因频繁重生成导致 checksum 漂移、应用无法启动。
+
+3. **无外网时需自备基础镜像。**
+   若环境无法访问 `registry-1.docker.io`（DNS 解析失败），可用镜像站拉取后重新打标签：
+
+   ```bash
+   docker pull docker.m.daocloud.io/library/eclipse-temurin:17-jre
+   docker tag  docker.m.daocloud.io/library/eclipse-temurin:17-jre eclipse-temurin:17-jre
+   docker pull docker.m.daocloud.io/library/nginx:1.27-alpine
+   docker tag  docker.m.daocloud.io/library/nginx:1.27-alpine nginx:1.27-alpine
+   ```
+
+   构建阶段与数据库使用的 `maven:3.9.10-eclipse-temurin-17`、`mysql:8.0`
+   通常已在本机镜像缓存中。
+
+### 常用运维命令
+
+```bash
+docker compose -p kaoyan408 ps                    # 查看状态
+docker compose -p kaoyan408 logs -f api           # 跟踪后端日志
+docker compose -p kaoyan408 up -d --build api     # 只重建后端
+docker compose -p kaoyan408 down                  # 停止（不加 -v，保留数据卷）
+```
+
+改过 `web/nginx.conf` 后必须重建 web 容器（挂载为只读文件，不会自动重载），
+并确认经 nginx 的 `/api` 链路仍然可用：
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/api/v1/health
+```
 
 ## 接口约定
 
