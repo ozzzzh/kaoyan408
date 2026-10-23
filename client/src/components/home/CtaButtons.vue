@@ -5,10 +5,10 @@
 <template>
   <div class="flex justify-center gap-[18px] mt-[34px] max-md:flex-col max-md:items-center">
     <RouterLink
-      to="/practice"
+      to="/dashboard"
       class="cta-btn cta-btn-primary h-[62px] min-w-[235px] px-[34px] rounded-[999px] border border-[#3260df] inline-flex items-center justify-center gap-7 no-underline text-lg font-bold cursor-pointer bg-[#1f49ba] text-white shadow-[0_14px_28px_rgba(31,73,186,0.18)] max-md:w-full max-md:max-w-[420px]"
     >
-      <span>开始刷题</span>
+      <span>进入工作台</span>
       <span class="cta-arrow">→</span>
     </RouterLink>
     <RouterLink

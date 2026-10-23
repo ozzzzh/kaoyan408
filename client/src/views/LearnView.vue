@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { api } from '@/api/client'
 import type { KnowledgePointView } from '@/api/types'
 
+const route = useRoute()
 const points = ref<KnowledgePointView[]>([])
 const activeSubject = ref<string>('')
+const keyword = ref('')
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -28,7 +31,16 @@ async function load(subject: string) {
   }
 }
 
-onMounted(() => load(''))
+/** 支持从工作台/首页带参数进入：#/learn?subject=ds&q=KMP */
+function syncFromRoute() {
+  const subject = typeof route.query.subject === 'string' ? route.query.subject : ''
+  keyword.value = typeof route.query.q === 'string' ? route.query.q : ''
+  activeSubject.value = subject
+  void load(subject)
+}
+
+onMounted(syncFromRoute)
+watch(() => route.query, syncFromRoute)
 
 function select(subject: string) {
   activeSubject.value = subject
@@ -39,41 +51,49 @@ function select(subject: string) {
 <template>
   <div class="space-y-6">
     <header class="space-y-1">
-      <h1 class="text-2xl font-semibold tracking-tight">知识体系</h1>
-      <p class="text-sm text-ink-600">
+      <h1 class="text-2xl font-bold tracking-tight text-[#0b1f45]">知识点</h1>
+      <p class="text-sm text-[#5c6f94]">
         按四科知识树组织的正文，每块都可反查关联真题；公式与动画在 M1 接入阅读页。
       </p>
     </header>
 
-    <div class="flex flex-wrap gap-2">
+    <div class="flex flex-wrap items-center gap-2">
       <button
         v-for="subject in subjects"
         :key="subject.code"
         class="rounded-lg border px-3 py-1.5 text-sm transition"
         :class="
           activeSubject === subject.code
-            ? 'border-salt-500 bg-salt-500/10 text-salt-600 font-medium'
-            : 'border-ink-200 text-ink-600 hover:bg-ink-50'
+            ? 'border-[#1f49ba] bg-[#e8efff] font-semibold text-[#1845ad]'
+            : 'border-[#e2e9f5] bg-white text-[#5c6f94] hover:bg-[#f5f8ff]'
         "
         @click="select(subject.code)"
       >
         {{ subject.label }}
       </button>
+      <span v-if="keyword" class="ml-1 rounded-full bg-[#fff5e6] px-2.5 py-1 text-xs text-[#b8730a]">
+        搜索「{{ keyword }}」的结果
+      </span>
     </div>
 
-    <p v-if="loading" class="text-sm text-ink-400">加载中…</p>
-    <p v-else-if="error" class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+    <p v-if="loading" class="text-sm text-[#9aa9c3]">加载中…</p>
+    <p
+      v-else-if="error"
+      class="rounded-lg border border-[#ffd9a0] bg-[#fff9ef] px-4 py-3 text-sm text-[#b8730a]"
+    >
       {{ error }}
     </p>
 
-    <div v-else class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div v-else class="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
       <div
         v-for="point in points"
         :key="point.pointId"
-        class="rounded-lg border border-ink-200 bg-white px-4 py-3"
+        class="rounded-xl border border-[#e2e9f5] bg-white px-4 py-3.5 transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(52,87,150,0.08)]"
       >
-        <p class="text-sm font-medium text-ink-900">{{ point.title }}</p>
-        <p class="mt-1 text-xs text-ink-400">{{ point.pointId }} · {{ point.blockCount }} 个知识块</p>
+        <p class="text-sm font-semibold text-[#0b1f45]">{{ point.title }}</p>
+        <p class="mt-1 text-xs text-[#9aa9c3]">
+          {{ point.pointId }} · {{ point.blockCount }} 个知识块
+        </p>
       </div>
     </div>
   </div>
