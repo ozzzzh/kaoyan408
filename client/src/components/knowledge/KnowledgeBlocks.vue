@@ -1,22 +1,14 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue'
+import { computed } from 'vue'
 import katex from 'katex'
 import KnowledgeMarkdown from './KnowledgeMarkdown.vue'
-import { getAnimation } from './animationRegistry'
-import type { KnowledgeArticleData, KnowledgeBlock } from './types'
-
-/** 动画播放器体积较大（含 manim-web），异步加载避免拖慢正文首屏。 */
-const ManimCodePlayer = defineAsyncComponent(() => import('./ManimCodePlayer.vue'))
+import AnimationBlock from './AnimationBlock.vue'
+import { hasAnimation } from './animationLoader'
+import type { KnowledgeArticleData } from './types'
 
 const props = defineProps<{
   article: KnowledgeArticleData
 }>()
-
-/** 该动画块能否解析出渲染函数（解析不到的会显示占位说明）。 */
-function animationOf(block: KnowledgeBlock) {
-  if (block.type !== 'animation') return null
-  return getAnimation(block.animationId)
-}
 
 function renderFormula(latex: string): string {
   try {
@@ -146,7 +138,11 @@ const subpointCount = computed(() => props.article.subpoints.length)
           </aside>
 
           <figure v-else-if="block.type === 'animation'" class="my-5">
-            <ManimCodePlayer v-if="animationOf(block)" :animation="animationOf(block)!" />
+            <AnimationBlock
+              v-if="hasAnimation(block.animationId)"
+              :animation-id="block.animationId"
+              :aria-label="block.ariaLabel"
+            />
             <div
               v-else
               class="rounded-xl border border-dashed border-[var(--k-border-strong)] bg-[var(--k-surface-soft)] px-4 py-6 text-center text-[13px] text-[var(--k-text-faint)]"
