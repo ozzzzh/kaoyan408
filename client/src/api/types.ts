@@ -231,6 +231,38 @@ export interface SearchSuggestion {
   to: string
 }
 
+/** 一张背诵卡片（到期队列中的一项）。 */
+export interface MemoryCardItem {
+  cardId: number
+  blockId: string
+  type: string
+  /** 块的 content_json 原文，前端解析后展示要点/公式 */
+  content: string
+  subpointTitle: string | null
+  pointId: string
+  pointTitle: string
+  subject: string
+  /** 记忆盒序号 0-7 */
+  box: number
+  reviewCount: number
+  correctCount: number
+}
+
+export interface MemoryDue {
+  total: number
+  items: MemoryCardItem[]
+}
+
+export interface MemorySummary {
+  total: number
+  due: number
+  solid: number
+  reviews: number
+  corrects: number
+  accuracy: number
+  subjects: Array<{ subject: string; name: string; total: number }>
+}
+
 export interface KnowledgeBlockView {
   blockId: string
   pointId: string

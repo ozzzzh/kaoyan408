@@ -8,6 +8,8 @@ import type {
   KnowledgePointResponse,
   KnowledgePointView,
   LoginResult,
+  MemoryDue,
+  MemorySummary,
   PracticeEntrances,
   PracticeQueue,
   QuestionView,
@@ -150,4 +152,35 @@ export const api = {
   /** 搜索联想（输入框下拉）。 */
   searchSuggest: (q: string) =>
     request<SearchSuggestion[]>(`/api/v1/search/suggest?q=${encodeURIComponent(q)}`),
+
+  /** 背诵：到期复习队列。 */
+  memoryDue: (subject?: string) =>
+    request<MemoryDue>(`/api/v1/memory/due${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`),
+
+  /** 背诵：概览统计。 */
+  memorySummary: () => request<MemorySummary>('/api/v1/memory/summary'),
+
+  /** 背诵：复习一张卡片（记住了 / 没记住）。 */
+  memoryReview: (cardId: number, remembered: boolean) =>
+    post<{ cardId: number; box: number; nextReviewDate: string; intervalDays: number }>(
+      '/api/v1/memory/review',
+      { cardId, remembered },
+    ),
+
+  /** 背诵：把知识点下的要点/公式加入卡片。 */
+  memoryAdd: (params: { pointId?: string; subject?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (params.pointId) query.set('pointId', params.pointId)
+    if (params.subject) query.set('subject', params.subject)
+    if (params.limit != null) query.set('limit', String(params.limit))
+    const suffix = query.toString()
+    return post<{ added: number; candidates: number }>(
+      `/api/v1/memory/add${suffix ? `?${suffix}` : ''}`,
+      {},
+    )
+  },
+
+  /** 背诵：移除一张卡片。 */
+  memoryRemove: (cardId: number) =>
+    post<{ deleted: number }>(`/api/v1/memory/remove?cardId=${cardId}`, {}),
 }

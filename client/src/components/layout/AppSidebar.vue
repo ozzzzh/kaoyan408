@@ -37,6 +37,12 @@ const primaryNav: NavItem[] = [
     icon: 'M4 5h16v3H4V5Zm0 6h16v3H4v-3Zm0 6h10v3H4v-3Z',
   },
   {
+    to: '/memory',
+    label: '背诵',
+    desc: '要点与公式记忆',
+    icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0v18M3 12h18',
+  },
+  {
     to: '/exams',
     label: '真题卷',
     desc: '2009–2026 共 18 卷',

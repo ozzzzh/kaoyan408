@@ -59,6 +59,8 @@ public class SecurityConfig {
                                 "/api/v1/stats/dash").permitAll()
                         // 只保护「明确的写操作与个人数据」端点，其余交给 MVC 返回统一 404 文案
                         .requestMatchers("/api/v1/user/**").authenticated()
+                        // 背诵卡片是用户私有数据，全部需要登录
+                        .requestMatchers("/api/v1/memory/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/questions/*/answer").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

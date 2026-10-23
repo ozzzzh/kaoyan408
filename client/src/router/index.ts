@@ -13,6 +13,7 @@ const router = createRouter({
     { path: '/learn/:pointId', name: 'learn-detail', component: () => import('@/views/LearnView.vue') },
     { path: '/search', name: 'search', component: () => import('@/views/SearchView.vue') },
     { path: '/practice', name: 'practice', component: () => import('@/views/PracticeView.vue') },
+    { path: '/memory', name: 'memory', component: () => import('@/views/MemoryView.vue') },
     { path: '/exams', name: 'exams', component: () => import('@/views/ExamsView.vue') },
     { path: '/exams/:year', name: 'exam-detail', component: () => import('@/views/ExamDetailView.vue') },
     { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
