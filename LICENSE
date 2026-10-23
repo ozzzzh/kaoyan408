@@ -1,0 +1,37 @@
+408 考盐 (408 Kaoyan)
+
+本仓库中的知识正文、历年真题题面、选项、答案与解析等内容，
+来源于 simple408 项目（https://github.com/liangbohan/postgraduate-exam-website），
+采用 Creative Commons Attribution 4.0 International (CC BY 4.0) 许可。
+
+真题内容同时以 408os 作为官方参照进行校准。
+
+本仓库对上述内容进行了结构化二次组织（拆分为题库、知识块并建立关联），
+用于计算机统考 408 的复习用途。
+
+CC BY 4.0 许可全文见：
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+--------------------------------------------------------------------------
+Creative Commons Attribution 4.0 International Public License
+
+By exercising the Licensed Rights (defined below), You accept and agree to
+be bound by the terms and conditions of this Creative Commons Attribution
+4.0 International Public License ("Public License").
+
+You are free to:
+  Share — copy and redistribute the material in any medium or format
+  Adapt — remix, transform, and build upon the material for any purpose,
+          even commercially.
+
+Under the following terms:
+  Attribution — You must give appropriate credit, provide a link to the
+  license, and indicate if changes were made. You may do so in any
+  reasonable manner, but not in any way that suggests the licensor
+  endorses you or your use.
+
+  No additional restrictions — You may not apply legal terms or
+  technological measures that legally restrict others from doing anything
+  the license permits.
+
+Full license text: https://creativecommons.org/licenses/by/4.0/legalcode

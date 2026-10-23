@@ -1,0 +1,131 @@
+/**
+ * 与后端约定的统一响应体：{ code, msg, data }，HTTP 状态恒为 200。
+ */
+export interface ApiEnvelope<T> {
+  code: number
+  msg: string | null
+  data: T
+}
+
+export interface SubjectStat {
+  subject: 'ds' | 'os' | 'co' | 'cn'
+  total: number
+  done: number
+  correct: number
+  accuracy: number
+  progress: number
+}
+
+export interface DailyPoint {
+  date: string
+  questions: number
+  correct: number
+}
+
+export interface Dashboard {
+  totalQuestions: number
+  doneQuestions: number
+  correctQuestions: number
+  accuracy: number
+  progress: number
+  subjects: SubjectStat[]
+  streakDays: number
+  recent: DailyPoint[]
+}
+
+export interface QuestionOption {
+  key: string
+  text: string
+}
+
+export interface SubQuestion {
+  number: number
+  score: number | null
+  description: string | null
+}
+
+export interface QuestionView {
+  id: string
+  number: number
+  subject: string
+  chapterName: string | null
+  questionType: 'choice' | 'comprehensive' | string
+  score: number
+  stem: string
+  difficulty: number | null
+  tags: string[]
+  imagePaths: string[]
+  knowledgeBlockIds: string[]
+  answered: boolean
+  options: QuestionOption[]
+  subQuestions: SubQuestion[]
+  answer?: string | null
+  explanation?: string | null
+}
+
+export interface ExamSummary {
+  year: number
+  title: string
+  questionCount: number
+  subjects: Record<string, number>
+}
+
+export interface ExamDetail {
+  year: number
+  title: string
+  questionCount: number
+  questions: QuestionView[]
+}
+
+export interface KnowledgePointView {
+  pointId: string
+  subject: string
+  title: string
+  blockCount: number
+}
+
+export interface KnowledgeBlockView {
+  blockId: string
+  pointId: string
+  pointTitle: string | null
+  subpointId: string | null
+  subpointTitle: string | null
+  type: string
+  content: string
+}
+
+export interface KnowledgeBlockDetail {
+  block: KnowledgeBlockView
+  relatedQuestions: Array<{
+    id: string
+    number: number
+    year: string | null
+    subject: string
+    questionType: string
+    hasImage: boolean
+  }>
+}
+
+export interface AnswerResult {
+  questionId: string
+  correct: boolean
+  standardAnswer: string | null
+  explanation: string | null
+  firstAttempt: boolean
+  blocks: Array<{ blockId: string; total: number; done: number; correct: number }>
+  stats: Dashboard
+}
+
+export interface AuthUser {
+  id: number
+  username: string
+  email: string | null
+  createdAt: string | null
+}
+
+export interface LoginResult {
+  token: string
+  expiresAt: number
+  expiresIn: number
+  user: AuthUser
+}

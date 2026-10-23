@@ -1,0 +1,112 @@
+import type {
+  AnswerResult,
+  ApiEnvelope,
+  Dashboard,
+  ExamDetail,
+  ExamSummary,
+  KnowledgeBlockDetail,
+  KnowledgePointView,
+  LoginResult,
+  QuestionView,
+  AuthUser,
+} from './types'
+
+const TOKEN_KEY = 'kaoyan408.token'
+
+/** 后端异常：携带业务 code，便于页面区分 401 与其它错误。 */
+export class ApiError extends Error {
+  readonly code: number
+
+  constructor(code: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+  }
+}
+
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    /* 忽略隐私模式下的存储异常 */
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'application/json')
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  let response: Response
+  try {
+    response = await fetch(path, { ...init, headers })
+  } catch {
+    throw new ApiError(-1, '网络异常，请检查后端服务是否已启动。')
+  }
+
+  let envelope: ApiEnvelope<T> | null = null
+  try {
+    envelope = (await response.json()) as ApiEnvelope<T>
+  } catch {
+    envelope = null
+  }
+
+  if (!envelope || typeof envelope.code !== 'number') {
+    throw new ApiError(response.status, `响应格式异常（HTTP ${response.status}）`)
+  }
+  if (envelope.code !== 0) {
+    throw new ApiError(envelope.code, envelope.msg ?? '请求失败')
+  }
+  return envelope.data
+}
+
+const post = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+
+export const api = {
+  health: () => request<{ name: string; version: string; status: string }>('/api/v1/health'),
+
+  login: (username: string, password: string) =>
+    post<LoginResult>('/api/v1/auth/login', { username, password }),
+
+  register: (username: string, email: string, password: string) =>
+    post<LoginResult>('/api/v1/auth/register', { username, email, password }),
+
+  currentUser: () => request<AuthUser>('/api/v1/user/current'),
+
+  dashboard: () => request<Dashboard>('/api/v1/stats/dash'),
+
+  exams: () => request<ExamSummary[]>('/api/v1/exams'),
+
+  exam: (year: number) => request<ExamDetail>(`/api/v1/exams/${year}`),
+
+  question: (examRef: string, reveal = 0) =>
+    request<QuestionView>(`/api/v1/questions/${encodeURIComponent(examRef)}?reveal=${reveal}`),
+
+  submitAnswer: (examRef: string, answer: string, durationMs?: number) =>
+    post<AnswerResult>(`/api/v1/questions/${encodeURIComponent(examRef)}/answer`, {
+      answer,
+      durationMs,
+    }),
+
+  knowledgePoints: (subject?: string) =>
+    request<KnowledgePointView[]>(
+      `/api/v1/knowledge${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`,
+    ),
+
+  knowledgeBlock: (blockId: string) =>
+    request<KnowledgeBlockDetail>(`/api/v1/knowledge/block/${encodeURIComponent(blockId)}`),
+}

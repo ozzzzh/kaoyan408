@@ -1,0 +1,30 @@
+# 依赖与构建产物
+node_modules/
+client/dist/
+client/content-bundle/
+server/target/
+dist/
+
+# 环境与凭据
+.env
+*.env
+!.env.example
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# 本地测试与覆盖率（按仓库约定不入库）
+tests/
+__tests__/
+coverage/
+.nyc_output/

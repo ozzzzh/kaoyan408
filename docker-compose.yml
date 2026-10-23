@@ -1,0 +1,66 @@
+services:
+  web:
+    image: nginx:1.27-alpine
+    container_name: kaoyan408-web
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/conf.d/kaoyan.conf:ro
+      - ./client/dist:/usr/share/nginx/html:ro
+      - ./client/public/exams:/usr/share/nginx/html/exams:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./server
+    container_name: kaoyan408-api
+    expose:
+      - "8080"
+    environment:
+      SERVER_PORT: "8080"
+      DB_URL: "jdbc:mysql://db:3306/kaoyan_db?characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
+      DB_USER: kaoyan
+      DB_PASSWORD: "${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}"
+      JWT_EXPIRE_SECONDS: "604800"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: kaoyan408-db
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}"
+      MYSQL_DATABASE: kaoyan_db
+      MYSQL_USER: kaoyan
+      MYSQL_PASSWORD: "${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}"
+    ports:
+      - "33061:3306"
+    volumes:
+      - kaoyan_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -ukaoyan -p$$MYSQL_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: kaoyan408-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "63791:6379"
+    volumes:
+      - kaoyan_redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  kaoyan_db_data:
+  kaoyan_redis_data:

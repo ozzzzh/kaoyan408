@@ -1,0 +1,40 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink-50: #f6f7f9;
+  --color-ink-100: #eceef2;
+  --color-ink-200: #d6dae2;
+  --color-ink-400: #8b93a3;
+  --color-ink-600: #4c5567;
+  --color-ink-800: #232a36;
+  --color-ink-900: #161b23;
+  --color-salt-400: #4f8ef7;
+  --color-salt-500: #2f6fe4;
+  --color-salt-600: #1f56bd;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-50);
+  color: var(--color-ink-900);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 题目与知识正文里的代码块 */
+.prose-code pre {
+  background: var(--color-ink-900);
+  color: #e6e9ef;
+  padding: 0.85rem 1rem;
+  border-radius: 0.6rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
