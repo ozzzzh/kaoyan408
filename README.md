@@ -153,6 +153,37 @@ docker compose -p kaoyan408 down                  # 停止（不加 -v，保留�
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/api/v1/health
 ```
 
+### 修改已应用的迁移会导致服务无法启动
+
+Flyway 对每个已应用的迁移记录 checksum，**文件内容任何改动都会使其失配**，
+包括只改注释、改空行。此时启动直接失败：
+
+```
+Migration checksum mismatch for migration version N
+-> Applied to database : ...
+-> Resolved locally    : ...
+```
+
+本项目在 V1、V4、V5 上各踩到一次（都只是改了注释）。规则：
+
+- **已应用（已入库）的迁移一律视为不可变**，需要调整就追加新迁移。
+  例如删除某次迁移里多加的索引，正确做法是新增一个 `DROP INDEX` 迁移，
+  而不是回头删掉那一行。
+- 若确认**只改了注释或空白、DDL 完全没变**，可用 repair 对齐 checksum：
+
+  ```bash
+  cd server
+  FLYWAY_URL='jdbc:mysql://127.0.0.1:3306/kaoyan_db?characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true' \
+  FLYWAY_USER=root FLYWAY_PASSWORD='<密码>' \
+  mvn -B flyway:repair
+  ```
+
+  容器环境同理，把 URL 换成容器内可达的地址即可。
+- **DDL 有实质变化时禁止用 repair 蒙混**：repair 只改记录、不动表结构，
+  会让数据库与迁移文件长期不一致。这种情况必须新增迁移来纠正。
+- 迁移失败会在 `flyway_schema_history` 留下 `success=0` 的记录，需先删除该行
+  （确认表结构未被部分改动）后再重试。
+
 ## 接口约定
 
 所有接口返回 **HTTP 200** + 统一响应体，业务语义由 `code` 表达：
@@ -182,7 +213,11 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/api/v1/health
 | GET | `/api/v1/questions/{examRef}` | 单题（未作答不下发答案与解析） |
 | POST | `/api/v1/questions/{examRef}/answer` | 提交答案 |
 | GET | `/api/v1/knowledge` · `/knowledge/point/{pointId}` · `/knowledge/block/{blockId}` | 知识树 / 知识点正文 / 知识块与关联真题 |
-| GET | `/api/v1/stats/dash` | 学习看板 |
+| GET | `/api/v1/search` · `/search/suggest` | 全文搜索（知识点 / 题目 / 正文片段）与输入联想 |
+| GET | `/api/v1/practice/queue` | 刷题队列（scope：all / wrong / untouched / wrong-pending / wrong-mastered） |
+| GET | `/api/v1/practice/wrong-book` · `/practice/entrances` | 错题本（待订正 / 已订正）、刷题入口汇总 |
+| GET | `/api/v1/stats/dash` · `/stats/points` | 学习看板、知识点级掌握与薄弱点 |
+| GET · POST | `/api/v1/memory/due` · `/summary` · `/review` · `/add` · `/remove` | 背诵卡片与间隔重复（需登录） |
 
 ## 内容数据来源与许可
 
@@ -195,9 +230,11 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18080/api/v1/health
 
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
-| M0 | 仓库骨架、表结构、内容入库（846 题 / 知识块 / 关联）、认证与看板接口、可跑通的前后端 | ✅ 本次 |
-| M1 | 知识阅读页（公式 + 动画）、搜索、刷题队列与错题本、整卷模拟 | 计划中 |
-| M2 | 掌握度聚合与复习计划、间隔重复卡片、综合题评分 | 计划中 |
-| M3 | 上线（域名 / HTTPS / 备案检查）、CC BY 署名策略复核 | 计划中 |
+| M0 | 仓库骨架、表结构、内容入库（846 题 / 1634 知识块 / 1030 条关联）、认证与看板接口 | ✅ 完成 |
+| M1 | 知识阅读页（KaTeX 公式 + 42 个 manim 动画）、全文搜索、刷题队列、错题重做闭环、真题卷整卷阅读 | ✅ 完成 |
+| M2 | 学习看板深化（知识点级薄弱点）、间隔重复背诵卡片 | ✅ 完成 |
+| — | Docker 部署实测跑通（含 nginx 反代与迁移流程） | ✅ 完成 |
+| 待定 | 计时模拟考试（答题卡 / 自动评分 / 成绩单） | 暂缓，按需再评估 |
+| 待定 | 上线（域名 / HTTPS / 备案检查）、CC BY 署名策略复核 | 未开始 |
 
 规划全文见 [`docs/考研408工作台规划书.md`](./docs/考研408工作台规划书.md)。
