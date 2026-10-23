@@ -41,10 +41,11 @@ onMounted(async () => {
     </p>
 
     <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <article
+      <RouterLink
         v-for="exam in exams"
         :key="exam.year"
-        class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5 transition hover:-translate-y-0.5 hover:border-[var(--k-border-strong)] hover:shadow-[0_12px_28px_rgba(52,87,150,0.1)]"
+        :to="`/exams/${exam.year}`"
+        class="block rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5 no-underline transition hover:-translate-y-0.5 hover:border-[var(--k-accent)] hover:shadow-[0_12px_28px_rgba(52,87,150,0.1)]"
       >
         <div class="flex items-baseline justify-between">
           <h2 class="text-lg font-bold text-[var(--k-text)]">{{ exam.year }}</h2>
@@ -61,11 +62,12 @@ onMounted(async () => {
             {{ subjectMeta[subject]?.name ?? subject }} {{ count }}
           </span>
         </div>
-      </article>
+        <p class="mt-3 text-xs font-semibold text-[var(--k-accent-text)]">查看整卷 →</p>
+      </RouterLink>
     </div>
 
     <p class="text-xs text-[var(--k-text-faint)]">
-      整卷练习页与逐题作答界面在 M1 实现；当前已可从接口读取全部题干、选项与知识点关联。
+      点任意年份可查看整卷。答案与解析需先作答该题后才会显示。
     </p>
   </div>
 </template>
