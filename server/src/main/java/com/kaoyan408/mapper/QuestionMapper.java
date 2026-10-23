@@ -70,4 +70,108 @@ public interface QuestionMapper extends BaseMapper<Question> {
             GROUP BY qk.block_id
             """)
     List<Map<String, Object>> blockProgressOfUser(@Param("userId") Long userId);
+
+    /**
+     * 刷题队列：按条件筛出题目，并带出当前用户的作答状态。
+     * 只返回渲染列表与导航所需的轻量字段（不下发题干与解析）。
+     *
+     * <p>过滤条件全部可选：year / subject / blockId / pointId /
+     * onlyWrong（仅错题）/ onlyUntouched（仅未做）。
+     *
+     * <p>pointId 必须经 knowledge_block.point_id 关联，
+     * 不能按 block_id 前缀猜测：块的命名（如 kb-crc-basics-1）与知识点 id（kp-crc）无前缀关系。
+     */
+    @Select("""
+            <script>
+            SELECT q.id            AS id,
+                   q.exam_ref      AS examRef,
+                   q.exam_number   AS number,
+                   q.subject       AS subject,
+                   q.chapter_name  AS chapterName,
+                   q.question_type AS questionType,
+                   q.score         AS score,
+                   q.difficulty    AS difficulty,
+                   e.year          AS year,
+                   a.result        AS result,
+                   CASE WHEN a.id IS NULL THEN 1 ELSE 0 END AS untouched
+            FROM question q
+            JOIN exam_year e ON e.id = q.exam_id
+            LEFT JOIN question_attempt a ON a.question_id = q.id AND a.user_id = #{userId}
+            <if test="blockId != null or pointId != null">
+              JOIN question_knowledge qk ON qk.question_id = q.id
+            </if>
+            <if test="pointId != null">
+              JOIN knowledge_block kb ON kb.block_id = qk.block_id AND kb.point_id = #{pointId}
+            </if>
+            <where>
+              <if test="year != null">AND e.year = #{year}</if>
+              <if test="subject != null and subject != ''">AND q.subject = #{subject}</if>
+              <if test="blockId != null and blockId != ''">AND qk.block_id = #{blockId}</if>
+              <if test="onlyWrong">AND a.result = 0</if>
+              <if test="onlyUntouched">AND a.id IS NULL</if>
+            </where>
+            GROUP BY q.id, q.exam_ref, q.exam_number, q.subject, q.chapter_name,
+                     q.question_type, q.score, q.difficulty, e.year, a.result, untouched
+            ORDER BY e.year DESC, q.exam_number ASC
+            </script>
+            """)
+    List<Map<String, Object>> queue(@Param("userId") Long userId,
+                                    @Param("year") Integer year,
+                                    @Param("subject") String subject,
+                                    @Param("blockId") String blockId,
+                                    @Param("pointId") String pointId,
+                                    @Param("onlyWrong") boolean onlyWrong,
+                                    @Param("onlyUntouched") boolean onlyUntouched);
+
+    /** 错题本统计：按科目汇总答错题数。 */
+    @Select("""
+            SELECT q.subject AS subject, COUNT(*) AS wrong
+            FROM question_attempt a
+            JOIN question q ON q.id = a.question_id
+            WHERE a.user_id = #{userId} AND a.result = 0
+            GROUP BY q.subject
+            """)
+    List<Map<String, Object>> wrongBySubject(@Param("userId") Long userId);
+
+    /** 某个知识块的关联真题（轻量字段，用于正文页的「本节关联 N 道真题」）。 */
+    @Select("""
+            SELECT q.exam_ref AS examRef, q.exam_number AS number, e.year AS year,
+                   q.subject AS subject, q.question_type AS questionType
+            FROM question_knowledge qk
+            JOIN question q ON q.id = qk.question_id
+            JOIN exam_year e ON e.id = q.exam_id
+            WHERE qk.block_id = #{blockId}
+            ORDER BY e.year DESC, q.exam_number ASC
+            """)
+    List<Map<String, Object>> questionsOfBlock(@Param("blockId") String blockId);
+
+    /** 一批知识块的关联真题去重计数，避免 N+1 查询。 */
+    @Select("""
+            <script>
+            SELECT qk.block_id AS blockId,
+                   COUNT(DISTINCT q.id) AS total
+            FROM question_knowledge qk
+            JOIN question q ON q.id = qk.question_id
+            WHERE qk.block_id IN
+            <foreach item="id" collection="blockIds" open="(" separator="," close=")">#{id}</foreach>
+            GROUP BY qk.block_id
+            </script>
+            """)
+    List<Map<String, Object>> questionCountsOfBlocks(@Param("blockIds") List<String> blockIds);
+
+    /**
+     * 某知识点关联的真题**去重**总数。
+     *
+     * <p>不能把各块的关联数相加：一道题可能同时挂在同一知识点的多个块上
+     * （实测 co-vm-impl 求和 468 / 去重仅 61），相加会严重虚高。
+     * 也不能按 block_id 前缀猜测归属：块 id（kb-crc-basics-1）与知识点 id（kp-crc）无前缀关系，
+     * 必须经 knowledge_block.point_id 关联。
+     */
+    @Select("""
+            SELECT COUNT(DISTINCT qk.question_id) AS total
+            FROM knowledge_block kb
+            JOIN question_knowledge qk ON qk.block_id = kb.block_id
+            WHERE kb.point_id = #{pointId}
+            """)
+    long distinctQuestionsOfPoint(@Param("pointId") String pointId);
 }

@@ -8,8 +8,11 @@ import type {
   KnowledgePointResponse,
   KnowledgePointView,
   LoginResult,
+  PracticeEntrances,
+  PracticeQueue,
   QuestionView,
   AuthUser,
+  WrongBook,
 } from './types'
 
 const TOKEN_KEY = 'kaoyan408.token'
@@ -114,4 +117,28 @@ export const api = {
   /** 某知识点的全部正文块（按 subpoint 分节，用于知识阅读页）。 */
   knowledgePoint: (pointId: string) =>
     request<KnowledgePointResponse>(`/api/v1/knowledge/point/${encodeURIComponent(pointId)}`),
+
+  /** 刷题队列（按年 / 科目 / 知识点 / 错题 / 未做筛选）。 */
+  practiceQueue: (params: {
+    year?: number
+    subject?: string
+    blockId?: string
+    pointId?: string
+    scope?: 'all' | 'wrong' | 'untouched'
+  }) => {
+    const query = new URLSearchParams()
+    if (params.year != null) query.set('year', String(params.year))
+    if (params.subject) query.set('subject', params.subject)
+    if (params.blockId) query.set('blockId', params.blockId)
+    if (params.pointId) query.set('pointId', params.pointId)
+    if (params.scope) query.set('scope', params.scope)
+    const suffix = query.toString()
+    return request<PracticeQueue>(`/api/v1/practice/queue${suffix ? `?${suffix}` : ''}`)
+  },
+
+  /** 错题本概览。 */
+  wrongBook: () => request<WrongBook>('/api/v1/practice/wrong-book'),
+
+  /** 各刷题入口的题量汇总。 */
+  practiceEntrances: () => request<PracticeEntrances>('/api/v1/practice/entrances'),
 }

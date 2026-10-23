@@ -113,6 +113,8 @@ export interface KnowledgePointResponse {
   pointId: string
   title: string | null
   subject: string | null
+  /** 该知识点下所有块关联真题的去重总数。 */
+  questionCount?: number
   blocks: Array<{
     blockId: string
     subpointId: string | null
@@ -120,7 +122,47 @@ export interface KnowledgePointResponse {
     order: number
     type: string
     content: string
+    /** 该块关联的真题数。 */
+    questionCount?: number
   }>
+}
+
+/** 刷题队列中的一道题（轻量，不含题干与解析）。 */
+export interface PracticeQueueItem {
+  examRef: string
+  year: number
+  number: number
+  subject: string
+  chapterName: string | null
+  questionType: string
+  score: number
+  difficulty: number | null
+  answered: boolean
+  correct: boolean
+}
+
+export interface PracticeQueue {
+  scope: string
+  year: number | null
+  subject: string | null
+  blockId: string | null
+  pointId: string | null
+  total: number
+  answered: number
+  correct: number
+  items: PracticeQueueItem[]
+}
+
+export interface WrongBook {
+  total: number
+  subjects: Array<{ subject: string; name: string; wrong: number }>
+}
+
+export interface PracticeEntrances {
+  subjects: Array<{ subject: string; name: string; total: number; done: number }>
+  years: Array<{ year: number; total: number }>
+  untouched: number
+  wrong: number
 }
 
 export interface KnowledgeBlockView {

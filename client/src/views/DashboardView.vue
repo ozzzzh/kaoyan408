@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import { api } from '@/api/client'
+import type { PracticeEntrances } from '@/api/types'
 import BackgroundFx from '@/components/layout/BackgroundFx.vue'
 import ContributionHeatmap from '@/components/dashboard/ContributionHeatmap.vue'
 import SubjectMasteryPanel from '@/components/dashboard/SubjectMasteryPanel.vue'
@@ -66,6 +68,16 @@ const quickSubjects = computed(() =>
     meta: subjectMeta[item.subject] ?? { name: item.subject, bar: 'bg-[#2d68ef]', soft: 'bg-[#eaf1ff]', text: 'text-[var(--k-accent-text)]' },
   })),
 )
+
+/** 刷题入口汇总（按科目 / 错题 / 未做），登录后才有个人数据。 */
+const entrances = ref<PracticeEntrances | null>(null)
+onMounted(async () => {
+  try {
+    entrances.value = await api.practiceEntrances()
+  } catch {
+    entrances.value = null
+  }
+})
 </script>
 
 <template>
@@ -119,6 +131,55 @@ const quickSubjects = computed(() =>
         >
           <span class="text-base leading-none">＋</span>
           <span>开始刷题</span>
+        </RouterLink>
+      </div>
+    </section>
+
+    <!-- 刷题入口 -->
+    <section v-if="entrances">
+      <h2 class="mb-3 text-sm font-bold text-[var(--k-heading)]">按范围刷题</h2>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <RouterLink
+          v-for="item in entrances.subjects"
+          :key="item.subject"
+          :to="{ path: '/practice', query: { subject: item.subject } }"
+          class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 no-underline transition hover:-translate-y-0.5 hover:border-[var(--k-accent)]"
+        >
+          <p class="text-sm font-semibold text-[var(--k-text)]">{{ item.name }}</p>
+          <p class="mt-1.5 text-xs text-[var(--k-text-faint)] tabular-nums">
+            已做 {{ item.done }} / {{ item.total }}
+          </p>
+        </RouterLink>
+      </div>
+
+      <div class="mt-3 grid gap-3 sm:grid-cols-3">
+        <RouterLink
+          :to="{ path: '/practice', query: { scope: 'untouched' } }"
+          class="flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[var(--k-accent)]"
+        >
+          <span class="text-sm font-semibold text-[var(--k-text)]">未做的题</span>
+          <span class="text-sm font-bold tabular-nums text-[var(--k-accent-text)]">
+            {{ entrances.untouched }}
+          </span>
+        </RouterLink>
+        <RouterLink
+          :to="{ path: '/practice', query: { scope: 'wrong' } }"
+          class="flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[#b23c3c]"
+        >
+          <span class="text-sm font-semibold text-[var(--k-text)]">错题本</span>
+          <span
+            class="text-sm font-bold tabular-nums"
+            :class="entrances.wrong > 0 ? 'text-[#b23c3c]' : 'text-[var(--k-text-faint)]'"
+          >
+            {{ entrances.wrong }}
+          </span>
+        </RouterLink>
+        <RouterLink
+          :to="{ path: '/exams' }"
+          class="flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[var(--k-accent)]"
+        >
+          <span class="text-sm font-semibold text-[var(--k-text)]">按年份刷整卷</span>
+          <span class="text-sm font-bold tabular-nums text-[var(--k-accent-text)]">18 卷</span>
         </RouterLink>
       </div>
     </section>

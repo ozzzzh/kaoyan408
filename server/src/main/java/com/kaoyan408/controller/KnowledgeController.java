@@ -100,6 +100,16 @@ public class KnowledgeController {
         }
         KnowledgePoint point = pointMapper.selectOne(new QueryWrapper<KnowledgePoint>()
                 .eq("point_id", pointId).last("LIMIT 1"));
+
+        // 每个知识块关联的真题数（一次批量查询，避免 N+1）
+        List<String> blockIds = blocks.stream().map(KnowledgeBlock::getBlockId).toList();
+        Map<String, Long> linkCounts = new LinkedHashMap<>();
+        if (!blockIds.isEmpty()) {
+            for (Map<String, Object> row : questionMapper.questionCountsOfBlocks(blockIds)) {
+                linkCounts.put(String.valueOf(row.get("blockId")), toLong(row.get("total")));
+            }
+        }
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("pointId", pointId);
         payload.put("title", point == null ? null : point.getTitle());
@@ -112,9 +122,25 @@ public class KnowledgeController {
             view.put("order", block.getBlockOrder());
             view.put("type", block.getType());
             view.put("content", block.getContentJson());
+            view.put("questionCount", linkCounts.getOrDefault(block.getBlockId(), 0L));
             return view;
         }).toList());
+
+        // 该知识点关联真题的去重总数。
+        // 不能用各块关联数相加：一题可能挂在同一知识点的多个块上，相加会虚高
+        //（实测 co-vm-impl 求和 468 / 去重 61）。
+        payload.put("questionCount", questionMapper.distinctQuestionsOfPoint(pointId));
         return Result.ok(payload);
+    }
+
+    private long toLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(String.valueOf(value));
     }
 
     private List<Map<String, Object>> relatedQuestions(String blockId) {

@@ -12,6 +12,7 @@ const router = useRouter()
 const points = ref<KnowledgePointView[]>([])
 const article = ref<ReturnType<typeof toArticle> | null>(null)
 const pointTitle = ref<string>('')
+const questionCount = ref(0)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
@@ -70,6 +71,7 @@ async function loadArticle(pointId: string) {
     const response = await api.knowledgePoint(pointId)
     article.value = toArticle(response)
     pointTitle.value = response.title ?? pointId
+    questionCount.value = response.questionCount ?? 0
   } catch (e) {
     article.value = null
     error.value = e instanceof Error ? e.message : '加载失败'
@@ -198,7 +200,17 @@ watch(
           <h1 class="mb-1 text-[1.7rem] font-bold leading-tight text-[var(--k-text)]">
             {{ pointTitle }}
           </h1>
-          <p class="mb-6 font-mono text-[11px] text-[var(--k-text-faint)]">{{ currentPointId }}</p>
+          <div class="mb-6 flex flex-wrap items-center gap-3">
+            <p class="m-0 font-mono text-[11px] text-[var(--k-text-faint)]">{{ currentPointId }}</p>
+            <RouterLink
+              v-if="questionCount > 0"
+              :to="{ path: '/practice', query: { pointId: currentPointId } }"
+              class="group inline-flex items-center gap-1 rounded-full border border-[var(--k-border)] px-3 py-1 text-[11px] font-semibold text-[var(--k-accent-text)] no-underline transition hover:border-[var(--k-accent)] hover:bg-[var(--k-accent-soft)]"
+            >
+              本节关联 {{ questionCount }} 道真题
+              <span class="transition-transform group-hover:translate-x-0.5">→</span>
+            </RouterLink>
+          </div>
 
           <KnowledgeBlocks :article="article" />
         </article>
