@@ -1765,7 +1765,7 @@
     },
     {
       "number": 44,
-      "score": 13,
+      "score": 12,
       "questionType": "comprehensive",
       "subject": "co",
       "chapterName": "中央处理器",
@@ -1795,7 +1795,7 @@
     },
     {
       "number": 45,
-      "score": 12,
+      "score": 11,
       "questionType": "comprehensive",
       "subject": "co",
       "chapterName": "存储器层次结构",
@@ -1850,7 +1850,7 @@
     },
     {
       "number": 46,
-      "score": 8,
+      "score": 7,
       "questionType": "comprehensive",
       "subject": "os",
       "chapterName": "文件管理",

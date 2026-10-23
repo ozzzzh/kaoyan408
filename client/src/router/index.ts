@@ -6,8 +6,9 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', name: 'home', component: () => import('@/views/HomeView.vue') },
-    { path: '/dashboard', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
+    // 首页即工作台：不再保留独立的营销落地页
+    { path: '/', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
+    { path: '/dashboard', redirect: '/' },
     { path: '/learn', name: 'learn', component: () => import('@/views/LearnView.vue') },
     { path: '/practice', name: 'practice', component: () => import('@/views/PracticeView.vue') },
     { path: '/exams', name: 'exams', component: () => import('@/views/ExamsView.vue') },

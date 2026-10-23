@@ -1708,7 +1708,7 @@
     },
     {
       "number": 42,
-      "score": 12,
+      "score": 13,
       "questionType": "comprehensive",
       "subject": "ds",
       "chapterName": "线性表",
@@ -1736,7 +1736,7 @@
     },
     {
       "number": 43,
-      "score": 13,
+      "score": 10,
       "questionType": "comprehensive",
       "subject": "co",
       "chapterName": "存储器层次结构",
@@ -1771,7 +1771,7 @@
     },
     {
       "number": 44,
-      "score": 13,
+      "score": 10,
       "questionType": "comprehensive",
       "subject": "co",
       "chapterName": "中央处理器",
@@ -1800,7 +1800,7 @@
     },
     {
       "number": 45,
-      "score": 7,
+      "score": 8,
       "questionType": "comprehensive",
       "subject": "os",
       "chapterName": "内存管理",

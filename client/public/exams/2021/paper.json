@@ -1735,7 +1735,7 @@
     },
     {
       "number": 42,
-      "score": 8,
+      "score": 6,
       "questionType": "comprehensive",
       "subject": "ds",
       "chapterName": "排序",

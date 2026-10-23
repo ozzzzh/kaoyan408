@@ -445,7 +445,7 @@
           "text": "仅 II、III"
         }
       ],
-      "answer": "C",
+      "answer": "A",
       "difficulty": 3,
       "tags": [
         "数据结构",
@@ -687,7 +687,7 @@
           "text": "Ⅱ、Ⅳ"
         }
       ],
-      "answer": "B",
+      "answer": "A",
       "difficulty": 4,
       "tags": [
         "计算机组成原理",
@@ -812,7 +812,7 @@
           "text": "Ⅰ、Ⅱ、Ⅲ"
         }
       ],
-      "answer": "D",
+      "answer": "A",
       "difficulty": 2,
       "tags": [
         "计算机组成原理",
@@ -1196,7 +1196,7 @@
           "text": "Ⅰ、Ⅱ、Ⅳ"
         }
       ],
-      "answer": "C",
+      "answer": "D",
       "difficulty": 3,
       "tags": [
         "操作系统",
@@ -1536,7 +1536,7 @@
           "text": "6"
         }
       ],
-      "answer": "C",
+      "answer": "B",
       "difficulty": 4,
       "tags": [
         "计算机网络",
@@ -1787,7 +1787,7 @@
     },
     {
       "number": 43,
-      "score": 11,
+      "score": 10,
       "questionType": "comprehensive",
       "subject": "co",
       "chapterName": "指令系统",
@@ -1849,7 +1849,7 @@
     },
     {
       "number": 44,
-      "score": 14,
+      "score": 13,
       "questionType": "comprehensive",
       "subject": "co",
       "chapterName": "中央处理器",
@@ -1908,7 +1908,7 @@
     },
     {
       "number": 45,
-      "score": 7,
+      "score": 10,
       "questionType": "comprehensive",
       "subject": "os",
       "chapterName": "进程与线程",
@@ -1955,7 +1955,7 @@
     },
     {
       "number": 46,
-      "score": 8,
+      "score": 10,
       "questionType": "comprehensive",
       "subject": "os",
       "chapterName": "文件管理",
@@ -1998,7 +1998,7 @@
     },
     {
       "number": 47,
-      "score": 9,
+      "score": 10,
       "questionType": "comprehensive",
       "subject": "cn",
       "chapterName": "传输层",

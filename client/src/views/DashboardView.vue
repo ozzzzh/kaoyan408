@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import BackgroundFx from '@/components/layout/BackgroundFx.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -66,9 +67,15 @@ const quickSubjects = computed(() =>
 </script>
 
 <template>
-  <div class="space-y-7">
-    <!-- 欢迎 -->
-    <header>
+  <div class="relative space-y-7">
+    <!-- 鼠标跟随背景：只铺在工作台首屏区域，位于内容之下 -->
+    <div class="pointer-events-none absolute inset-x-0 -top-6 -bottom-24 overflow-hidden">
+      <BackgroundFx />
+    </div>
+
+    <div class="relative space-y-7">
+      <!-- 欢迎 -->
+      <header>
       <h1 class="text-2xl font-bold tracking-tight text-[#0b1f45] md:text-[28px]">
         {{ greeting }}，今天想复习哪一块？
       </h1>
@@ -231,5 +238,6 @@ const quickSubjects = computed(() =>
         </div>
       </div>
     </section>
+    </div>
   </div>
 </template>
