@@ -165,6 +165,60 @@ export interface PracticeEntrances {
   wrong: number
 }
 
+/** 搜索命中的知识点。 */
+export interface SearchPointHit {
+  kind: 'point'
+  pointId: string
+  title: string
+  subject: string
+  blockCount: number
+  score: number
+  bodyHits: number
+}
+
+/** 搜索命中的题目。 */
+export interface SearchQuestionHit {
+  kind: 'question'
+  examRef: string
+  number: number
+  subject: string
+  chapterName: string | null
+  questionType: string
+  score: number
+  year: number
+  title: string
+  hint: string
+  snippet: string | null
+}
+
+/** 搜索命中的正文片段。 */
+export interface SearchBlockHit {
+  kind: 'block'
+  blockId: string
+  pointId: string
+  subpointTitle: string | null
+  type: string
+  pointTitle: string
+  subject: string
+  score: number
+  snippet: string
+}
+
+export interface SearchResult {
+  query: string
+  total: number
+  points: SearchPointHit[]
+  questions: SearchQuestionHit[]
+  blocks: SearchBlockHit[]
+}
+
+export interface SearchSuggestion {
+  type: 'point' | 'question'
+  label: string
+  hint: string
+  to: string
+}
+
 export interface KnowledgeBlockView {
   blockId: string
   pointId: string

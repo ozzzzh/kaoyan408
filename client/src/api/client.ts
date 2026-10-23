@@ -11,6 +11,8 @@ import type {
   PracticeEntrances,
   PracticeQueue,
   QuestionView,
+  SearchResult,
+  SearchSuggestion,
   AuthUser,
   WrongBook,
 } from './types'
@@ -141,4 +143,11 @@ export const api = {
 
   /** 各刷题入口的题量汇总。 */
   practiceEntrances: () => request<PracticeEntrances>('/api/v1/practice/entrances'),
+
+  /** 全文搜索：知识点 / 题目 / 正文片段。 */
+  search: (q: string) => request<SearchResult>(`/api/v1/search?q=${encodeURIComponent(q)}`),
+
+  /** 搜索联想（输入框下拉）。 */
+  searchSuggest: (q: string) =>
+    request<SearchSuggestion[]>(`/api/v1/search/suggest?q=${encodeURIComponent(q)}`),
 }

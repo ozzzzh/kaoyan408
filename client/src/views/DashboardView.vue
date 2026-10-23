@@ -8,6 +8,7 @@ import type { PracticeEntrances } from '@/api/types'
 import BackgroundFx from '@/components/layout/BackgroundFx.vue'
 import ContributionHeatmap from '@/components/dashboard/ContributionHeatmap.vue'
 import SubjectMasteryPanel from '@/components/dashboard/SubjectMasteryPanel.vue'
+import SearchBox from '@/components/dashboard/SearchBox.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -107,24 +108,7 @@ onMounted(async () => {
       class="rounded-2xl border border-[var(--k-border-strong)] bg-[var(--k-surface)] p-2.5 shadow-[0_10px_30px_rgba(52,87,150,0.07)]"
     >
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div class="flex flex-1 items-center gap-3 px-3 py-2">
-          <svg
-            class="h-5 w-5 shrink-0 text-[var(--k-text-faint)]"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-          <input
-            class="w-full border-0 bg-transparent text-[15px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)]"
-            placeholder="输入知识点或题号（如 KMP / 银行家算法 / 2026 第 1 题）"
-            @keydown.enter="router.push({ path: '/learn', query: { q: ($event.target as HTMLInputElement).value } })"
-          />
-        </div>
+        <SearchBox />
         <RouterLink
           to="/practice"
           class="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--k-accent)] px-7 text-sm font-bold text-white no-underline transition hover:bg-[var(--k-accent-hover)]"

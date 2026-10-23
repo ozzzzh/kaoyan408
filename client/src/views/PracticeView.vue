@@ -36,8 +36,13 @@ const blockIdParam = computed(() =>
 const pointIdParam = computed(() =>
   typeof route.query.pointId === 'string' ? route.query.pointId : undefined,
 )
+/** 从搜索结果直接跳到某一道题：?examRef=exam-2026-3 */
+const examRefParam = computed(() =>
+  typeof route.query.examRef === 'string' ? route.query.examRef : undefined,
+)
 
 const scopeLabel = computed(() => {
+  if (examRefParam.value) return '搜索结果'
   if (scope.value === 'wrong') return '错题本'
   if (scope.value === 'untouched') return '未做的题'
   if (blockIdParam.value || pointIdParam.value) return '知识点练习'
@@ -56,11 +61,23 @@ function subjectName(code: string): string {
   )
 }
 
-/** 载入队列：按 URL 参数筛选。 */
+/** 载入队列：按 URL 参数筛选；带 examRef 时只放这一道题。 */
 async function loadQueue() {
   loadingQueue.value = true
   message.value = null
   try {
+    if (examRefParam.value) {
+      // 搜索直达单题：取所在年份的队列后定位到该题，
+      // 这样仍可用上一题/下一题在同年份里继续刷。
+      const detail = await api.question(examRefParam.value)
+      const yearQueue = await api.practiceQueue({ year: detail.year ?? undefined })
+      const found = yearQueue.items.findIndex((i) => i.examRef === examRefParam.value)
+      queue.value = yearQueue
+      index.value = found >= 0 ? found : 0
+      await loadQuestion()
+      return
+    }
+
     queue.value = await api.practiceQueue({
       year: yearParam.value,
       subject: subjectParam.value,
@@ -152,6 +169,7 @@ watch(
     route.query.subject,
     route.query.blockId,
     route.query.pointId,
+    route.query.examRef,
   ],
   () => {
     void loadQueue()

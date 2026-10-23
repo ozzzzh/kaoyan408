@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/dashboard', redirect: '/' },
     { path: '/learn', name: 'learn', component: () => import('@/views/LearnView.vue') },
     { path: '/learn/:pointId', name: 'learn-detail', component: () => import('@/views/LearnView.vue') },
+    { path: '/search', name: 'search', component: () => import('@/views/SearchView.vue') },
     { path: '/practice', name: 'practice', component: () => import('@/views/PracticeView.vue') },
     { path: '/exams', name: 'exams', component: () => import('@/views/ExamsView.vue') },
     { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },

@@ -43,6 +43,12 @@ const primaryNav: NavItem[] = [
     icon: 'M6 2h9l5 5v15H6V2Zm8 1v5h5M9 13h7M9 17h7',
   },
   {
+    to: '/search',
+    label: '搜索',
+    desc: '知识点与题目',
+    icon: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm9 16-3.5-3.5',
+  },
+  {
     to: '/stats',
     label: '学习看板',
     desc: '掌握度与打卡',
