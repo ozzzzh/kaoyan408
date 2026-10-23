@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "408 考盐 · 计算机统考 408 学习平台",
+  "description": "考研 408 工作台 · 计算机统考备考平台",
   "scripts": {
     "bundle:content": "node scripts/bundle-content.mjs",
     "import:content": "npm run bundle:content && node scripts/import-content.mjs",

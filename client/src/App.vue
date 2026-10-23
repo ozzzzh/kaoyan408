@@ -26,7 +26,7 @@ onMounted(async () => {
 
         <footer class="mx-auto w-full max-w-[1180px] px-4 pb-8 md:px-8">
           <div class="border-t border-[#e2e9f5] pt-5 text-xs leading-relaxed text-[#9aa9c3]">
-            <p>408 考盐 · 真题 2009–2026 共 18 卷。</p>
+            <p>考研 408 工作台 · 真题 2009–2026 共 18 卷。</p>
             <p class="mt-1">
               知识正文与真题数据源自
               <a

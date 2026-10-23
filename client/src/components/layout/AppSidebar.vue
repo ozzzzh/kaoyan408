@@ -71,11 +71,11 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
     <!-- 品牌 -->
     <RouterLink to="/" class="flex items-center gap-3 px-5 py-5 no-underline">
       <span
-        class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#1f49ba] text-base font-bold text-white"
-        >盐</span
+        class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#1f49ba] text-[13px] font-bold tracking-tight text-white"
+        >408</span
       >
       <span class="min-w-0">
-        <span class="block text-[15px] font-bold leading-tight text-[#0b1f45]">408 考盐</span>
+        <span class="block text-[15px] font-bold leading-tight text-[#0b1f45]">考研 408 工作台</span>
         <span class="block truncate text-[11px] text-[#9aa9c3]">计算机统考备考平台</span>
       </span>
     </RouterLink>

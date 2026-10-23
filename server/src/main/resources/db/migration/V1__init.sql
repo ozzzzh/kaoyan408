@@ -1,4 +1,4 @@
--- 408 考盐：初始表结构（内容库 + 用户与做题数据）
+-- 考研 408 工作台：初始表结构（内容库 + 用户与做题数据）
 -- 内容由 scripts/import-content.mjs 生成的 V2__seed_content.sql 灌入。
 
 CREATE TABLE exam_year (

@@ -25,8 +25,8 @@ const isActive = (to: string) => route.path === to || route.path.startsWith(to +
   <header class="md:hidden sticky top-0 z-30 border-b border-[#e2e9f5] bg-white/95 backdrop-blur">
     <div class="flex h-14 items-center gap-3 px-4">
       <RouterLink to="/" class="flex items-center gap-2 no-underline">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-[#1f49ba] text-sm font-bold text-white">盐</span>
-        <span class="text-[15px] font-bold text-[#0b1f45]">408 考盐</span>
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-[#1f49ba] text-[11px] font-bold tracking-tight text-white">408</span>
+        <span class="text-[15px] font-bold text-[#0b1f45]">考研 408 工作台</span>
       </RouterLink>
 
       <div class="ml-auto flex items-center gap-3">

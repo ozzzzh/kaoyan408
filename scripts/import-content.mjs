@@ -269,7 +269,7 @@ const summary = {
 /* ---------------------------------- 生成 SQL ---------------------------------- */
 
 const lines = []
-lines.push('-- 408 考盐：内容种子数据（由 scripts/import-content.mjs 自动生成，请勿手改）')
+lines.push('-- 考研 408 工作台：内容种子数据（由 scripts/import-content.mjs 自动生成，请勿手改）')
 lines.push(`-- 真题 ${summary.years} 卷 / ${summary.questions} 题（选择题 ${summary.choice}，综合题 ${summary.comprehensive}）`)
 lines.push(`-- 知识点 ${summary.points} 个 / 知识块 ${summary.blocks} 块（含动画块 ${summary.animations}）/ 题目-知识关联 ${summary.questionKnowledge} 条`)
 lines.push('-- 数据来源：simple408（CC BY 4.0）；真题以 408os 为官方参照。')
