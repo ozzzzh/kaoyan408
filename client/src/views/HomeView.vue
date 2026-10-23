@@ -2,107 +2,152 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/user'
+import BackgroundFx from '@/components/home/BackgroundFx.vue'
+import LogoBrand from '@/components/home/LogoBrand.vue'
+import TypeWriter from '@/components/home/TypeWriter.vue'
+import SearchBox from '@/components/home/SearchBox.vue'
+import CtaButtons from '@/components/home/CtaButtons.vue'
 
 const userStore = useUserStore()
 const { dashboard, user } = storeToRefs(userStore)
 
-const subjectMeta: Record<string, { name: string; accent: string }> = {
-  ds: { name: '数据结构', accent: 'from-sky-500/15 to-sky-500/0 text-sky-700' },
-  os: { name: '操作系统', accent: 'from-violet-500/15 to-violet-500/0 text-violet-700' },
-  co: { name: '计算机组成原理', accent: 'from-amber-500/15 to-amber-500/0 text-amber-700' },
-  cn: { name: '计算机网络', accent: 'from-emerald-500/15 to-emerald-500/0 text-emerald-700' },
+const subjectMeta: Record<string, { name: string; bar: string }> = {
+  ds: { name: '数据结构', bar: 'bg-[#2d68ef]' },
+  os: { name: '操作系统', bar: 'bg-[#7c5cf0]' },
+  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]' },
+  cn: { name: '计算机网络', bar: 'bg-[#12a594]' },
 }
 
 const subjects = computed(() => dashboard.value?.subjects ?? [])
+
+const features = [
+  {
+    title: '题与知识双向互链',
+    desc: '846 道真题每题都挂到知识块上：做完题直接看对应正文，看正文时也能反查考过的真题。',
+  },
+  {
+    title: '四科掌握度看板',
+    desc: '按知识块聚合正确率，数据结构 / 操作系统 / 组成原理 / 计算机网络各自看到进度与薄弱点。',
+  },
+  {
+    title: '公式与交互动画',
+    desc: '知识点正文支持 KaTeX 公式与 manim 交互动画，把抽象的算法过程直接演给你看。',
+  },
+]
 </script>
 
 <template>
-  <div class="space-y-10">
-    <section class="rounded-2xl border border-ink-200 bg-white p-8 shadow-sm">
-      <p class="text-sm font-medium text-salt-600">2009 – 2026 · 18 卷真题 · 复习主线</p>
-      <h1 class="mt-3 text-3xl font-semibold tracking-tight text-ink-900">
-        把真题、知识体系和掌握度连成一条线
+  <main
+    class="home-page relative min-h-screen overflow-hidden px-6 pt-14 pb-16 font-sans text-[#0b1f45]"
+  >
+    <BackgroundFx />
+
+    <!-- 首屏 Hero -->
+    <section class="relative z-[1] w-full max-w-[980px] mx-auto text-center">
+      <div class="text-sm tracking-[0.28em] text-[#5c6f94] font-bold">真题 · 知识 · 掌握度</div>
+
+      <LogoBrand />
+
+      <h1
+        class="mt-[42px] mb-[18px] text-[clamp(48px,7vw,102px)] leading-[1.05] tracking-[-0.045em] font-[850]"
+      >
+        把<span class="text-[#1B3FA1] font-mono mx-3">408</span>学薄一点
       </h1>
-      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-ink-600">
-        每道题都挂到知识点上：做完题就能看到相关正文与动画，看板上按知识块显示掌握度，
-        薄弱点直接回流到复习计划。
-      </p>
 
-      <div class="mt-6 flex flex-wrap gap-3">
-        <RouterLink
-          to="/practice"
-          class="rounded-lg bg-salt-500 px-4 py-2 text-sm font-medium text-white hover:bg-salt-600 transition"
-        >
-          开始刷题
-        </RouterLink>
-        <RouterLink
-          to="/exams"
-          class="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium text-ink-800 hover:bg-ink-50 transition"
-        >
-          按年份刷整卷
-        </RouterLink>
-        <RouterLink
-          to="/learn"
-          class="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium text-ink-800 hover:bg-ink-50 transition"
-        >
-          先看知识正文
-        </RouterLink>
-      </div>
+      <TypeWriter />
 
-      <p v-if="!user" class="mt-4 text-xs text-ink-400">
-        当前为游客模式：题库与知识正文可直接浏览，做题记录需要
-        <RouterLink to="/me" class="text-salt-600 hover:underline">登录</RouterLink> 后保存。
+      <SearchBox />
+
+      <CtaButtons />
+
+      <p v-if="!user" class="mt-6 text-sm text-[#7c8bab]">
+        当前为游客模式：题库与知识可直接浏览，做题记录需要
+        <RouterLink to="/me" class="text-[#1f49ba] font-semibold hover:underline">登录</RouterLink>
+        后保存
       </p>
     </section>
 
-    <section v-if="dashboard" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <div class="rounded-xl border border-ink-200 bg-white p-5">
-        <p class="text-xs text-ink-400">题库总量</p>
-        <p class="mt-2 text-2xl font-semibold text-ink-900">{{ dashboard.totalQuestions }}</p>
-        <p class="mt-1 text-xs text-ink-400">题（{{ subjects.length }} 个科目）</p>
+    <!-- 数据面板 -->
+    <section v-if="dashboard" class="relative z-[1] w-full max-w-[980px] mx-auto mt-20">
+      <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div class="rounded-2xl border border-[#e2e9f5] bg-white/80 px-5 py-4 backdrop-blur">
+          <p class="text-xs text-[#7c8bab]">题库总量</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums">{{ dashboard.totalQuestions }}</p>
+          <p class="mt-0.5 text-xs text-[#9aa9c3]">道正式真题</p>
+        </div>
+        <div class="rounded-2xl border border-[#e2e9f5] bg-white/80 px-5 py-4 backdrop-blur">
+          <p class="text-xs text-[#7c8bab]">已作答</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums">{{ dashboard.doneQuestions }}</p>
+          <p class="mt-0.5 text-xs text-[#9aa9c3]">完成度 {{ dashboard.progress }}%</p>
+        </div>
+        <div class="rounded-2xl border border-[#e2e9f5] bg-white/80 px-5 py-4 backdrop-blur">
+          <p class="text-xs text-[#7c8bab]">正确率</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums">{{ dashboard.accuracy }}%</p>
+          <p class="mt-0.5 text-xs text-[#9aa9c3]">答对 {{ dashboard.correctQuestions }} 题</p>
+        </div>
+        <div class="rounded-2xl border border-[#e2e9f5] bg-white/80 px-5 py-4 backdrop-blur">
+          <p class="text-xs text-[#7c8bab]">连续打卡</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums">{{ dashboard.streakDays }}</p>
+          <p class="mt-0.5 text-xs text-[#9aa9c3]">天</p>
+        </div>
       </div>
-      <div class="rounded-xl border border-ink-200 bg-white p-5">
-        <p class="text-xs text-ink-400">已作答</p>
-        <p class="mt-2 text-2xl font-semibold text-ink-900">{{ dashboard.doneQuestions }}</p>
-        <p class="mt-1 text-xs text-ink-400">完成度 {{ dashboard.progress }}%</p>
-      </div>
-      <div class="rounded-xl border border-ink-200 bg-white p-5">
-        <p class="text-xs text-ink-400">正确率</p>
-        <p class="mt-2 text-2xl font-semibold text-ink-900">{{ dashboard.accuracy }}%</p>
-        <p class="mt-1 text-xs text-ink-400">答对 {{ dashboard.correctQuestions }} 题</p>
-      </div>
-      <div class="rounded-xl border border-ink-200 bg-white p-5">
-        <p class="text-xs text-ink-400">连续打卡</p>
-        <p class="mt-2 text-2xl font-semibold text-ink-900">{{ dashboard.streakDays }}</p>
-        <p class="mt-1 text-xs text-ink-400">天</p>
-      </div>
-    </section>
 
-    <section v-if="subjects.length" class="space-y-3">
-      <h2 class="text-sm font-medium text-ink-600">四科掌握度</h2>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div
-          v-for="item in subjects"
-          :key="item.subject"
-          class="rounded-xl border border-ink-200 bg-gradient-to-br p-5"
-          :class="subjectMeta[item.subject]?.accent"
-        >
-          <div class="flex items-baseline justify-between">
-            <span class="font-medium">{{ subjectMeta[item.subject]?.name ?? item.subject }}</span>
-            <span class="text-xs opacity-70">{{ item.done }} / {{ item.total }}</span>
+      <!-- 四科掌握度 -->
+      <div class="mt-4 rounded-2xl border border-[#e2e9f5] bg-white/80 p-6 backdrop-blur">
+        <div class="flex items-baseline justify-between">
+          <h2 class="text-sm font-bold text-[#3d4d6b]">四科掌握度</h2>
+          <RouterLink to="/stats" class="text-xs text-[#1f49ba] hover:underline">
+            查看学习看板 →
+          </RouterLink>
+        </div>
+        <div class="mt-5 grid gap-x-8 gap-y-5 md:grid-cols-2">
+          <div v-for="item in subjects" :key="item.subject">
+            <div class="flex items-baseline justify-between text-sm">
+              <span class="font-semibold">{{ subjectMeta[item.subject]?.name ?? item.subject }}</span>
+              <span class="text-xs text-[#7c8bab] tabular-nums">
+                {{ item.done }} / {{ item.total }}
+              </span>
+            </div>
+            <div class="mt-2 h-2 overflow-hidden rounded-full bg-[#eef2fa]">
+              <div
+                class="h-full rounded-full transition-all duration-500"
+                :class="subjectMeta[item.subject]?.bar ?? 'bg-[#2d68ef]'"
+                :style="{ width: Math.max(item.progress, item.done > 0 ? 2 : 0) + '%' }"
+              />
+            </div>
+            <p class="mt-1.5 text-xs text-[#9aa9c3]">
+              完成 {{ item.progress }}% · 正确率 {{ item.accuracy }}%
+            </p>
           </div>
-          <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/70">
-            <div class="h-full rounded-full bg-current opacity-70" :style="{ width: item.progress + '%' }" />
-          </div>
-          <p class="mt-2 text-xs opacity-70">
-            完成 {{ item.progress }}% · 正确率 {{ item.accuracy }}%
-          </p>
         </div>
       </div>
     </section>
 
-    <section v-else class="rounded-xl border border-dashed border-ink-200 bg-white p-6 text-sm text-ink-400">
-      暂无统计数据。请确认后端服务已启动（默认 http://127.0.0.1:8080），并已导入内容数据。
+    <section
+      v-else
+      class="relative z-[1] mx-auto mt-20 w-full max-w-[980px] rounded-2xl border border-dashed border-[#dbe4ef] bg-white/70 p-6 text-center text-sm text-[#7c8bab]"
+    >
+      统计数据加载中或后端未启动（默认 http://127.0.0.1:8080）
     </section>
-  </div>
+
+    <!-- 特性 -->
+    <section class="relative z-[1] w-full max-w-[980px] mx-auto mt-14">
+      <div class="grid gap-4 md:grid-cols-3">
+        <article
+          v-for="feature in features"
+          :key="feature.title"
+          class="rounded-2xl border border-[#e2e9f5] bg-white/80 p-6 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(52,87,150,0.1)]"
+        >
+          <h3 class="text-base font-bold text-[#14306b]">{{ feature.title }}</h3>
+          <p class="mt-2 text-sm leading-relaxed text-[#5c6f94]">{{ feature.desc }}</p>
+        </article>
+      </div>
+    </section>
+  </main>
 </template>
+
+<style scoped>
+.home-page {
+  background: #fbfdff;
+}
+</style>
