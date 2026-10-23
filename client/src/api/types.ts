@@ -22,6 +22,21 @@ export interface DailyPoint {
   correct: number
 }
 
+/** 热力图单元格：level 0–4，0 表示当日无做题记录。 */
+export interface HeatmapDay {
+  date: string
+  questions: number
+  correct: number
+  level: number
+}
+
+export interface Heatmap {
+  start: string
+  end: string
+  max: number
+  days: HeatmapDay[]
+}
+
 export interface Dashboard {
   totalQuestions: number
   doneQuestions: number
@@ -31,6 +46,8 @@ export interface Dashboard {
   subjects: SubjectStat[]
   streakDays: number
   recent: DailyPoint[]
+  heatmap: Heatmap | null
+  activeDays: number
 }
 
 export interface QuestionOption {

@@ -67,7 +67,96 @@ public class StatsService {
         payload.put("subjects", subjects);
         payload.put("streakDays", streakDays(userId));
         payload.put("recent", recentDays(userId));
+        payload.put("heatmap", heatmap(userId));
+        payload.put("activeDays", activeDays(userId));
         return payload;
+    }
+
+    /**
+     * 近 90 天做题热力图（对齐周列，非 0 日期按题量分 4 级）。
+     * 从「今天所在周的周日」往前推 13 周，共 13×7=91 格，便于前端直接按周渲染。
+     */
+    public Map<String, Object> heatmap(Long userId) {
+        Map<LocalDate, DailyStat> byDate = new LinkedHashMap<>();
+        if (userId != null) {
+            for (DailyStat stat : dailyStatMapper.recent(userId, 100)) {
+                byDate.put(stat.getStatDate(), stat);
+            }
+        }
+
+        LocalDate today = LocalDate.now();
+        // 以周一为一周起点（中国习惯），回溯到 12 周前的周一
+        LocalDate thisMonday = today.minusDays((today.getDayOfWeek().getValue() + 6) % 7);
+        LocalDate start = thisMonday.minusWeeks(12);
+
+        List<Map<String, Object>> days = new ArrayList<>();
+        int max = 0;
+        for (int offset = 0; offset < 91; offset++) {
+            LocalDate date = start.plusDays(offset);
+            if (date.isAfter(today)) {
+                break;
+            }
+            DailyStat stat = byDate.get(date);
+            int questions = stat == null || stat.getQuestions() == null ? 0 : stat.getQuestions();
+            max = Math.max(max, questions);
+        }
+
+        for (int offset = 0; offset < 91; offset++) {
+            LocalDate date = start.plusDays(offset);
+            if (date.isAfter(today)) {
+                break;
+            }
+            DailyStat stat = byDate.get(date);
+            int questions = stat == null || stat.getQuestions() == null ? 0 : stat.getQuestions();
+            int correct = stat == null || stat.getCorrect() == null ? 0 : stat.getCorrect();
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("date", date.toString());
+            item.put("questions", questions);
+            item.put("correct", correct);
+            item.put("level", levelOf(questions, max));
+            days.add(item);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("start", start.toString());
+        payload.put("end", today.toString());
+        payload.put("max", max);
+        payload.put("days", days);
+        return payload;
+    }
+
+    /** 按当日题量占最大值的比例分 5 级（0 为无记录）。 */
+    private int levelOf(int questions, int max) {
+        if (questions <= 0) {
+            return 0;
+        }
+        if (max <= 4) {
+            return 4;
+        }
+        double ratio = questions * 1.0 / max;
+        if (ratio <= 0.25) {
+            return 1;
+        }
+        if (ratio <= 0.5) {
+            return 2;
+        }
+        if (ratio <= 0.75) {
+            return 3;
+        }
+        return 4;
+    }
+
+    /** 近 90 天内有做题记录的天数。 */
+    public long activeDays(Long userId) {
+        if (userId == null) {
+            return 0;
+        }
+        LocalDate since = LocalDate.now().minusDays(89);
+        return dailyStatMapper.recent(userId, 100).stream()
+                .filter(stat -> !stat.getStatDate().isBefore(since))
+                .filter(stat -> stat.getQuestions() != null && stat.getQuestions() > 0)
+                .count();
     }
 
     /** 连续打卡天数：从今天（或昨天）往前数，遇到空档即停。 */

@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import BackgroundFx from '@/components/layout/BackgroundFx.vue'
+import ContributionHeatmap from '@/components/dashboard/ContributionHeatmap.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -214,30 +215,13 @@ const quickSubjects = computed(() =>
       </div>
     </section>
 
-    <!-- 最近做题曲线 -->
-    <section v-if="dashboard?.recent?.length">
-      <h2 class="mb-3 text-sm font-bold text-[#3d4d6b]">近 14 天做题量</h2>
-      <div class="rounded-xl border border-[#e2e9f5] bg-white p-5">
-        <div class="flex h-24 items-end gap-1.5">
-          <div
-            v-for="day in dashboard.recent"
-            :key="day.date"
-            class="group flex flex-1 flex-col items-center gap-1.5"
-          >
-            <div
-              class="w-full rounded-t bg-[#2d68ef]/70 transition group-hover:bg-[#2d68ef]"
-              :style="{
-                height:
-                  Math.max(2, (day.questions / Math.max(1, ...dashboard.recent.map((d) => d.questions))) * 72) +
-                  'px',
-              }"
-              :title="`${day.date}：${day.questions} 题`"
-            />
-            <span class="text-[10px] text-[#9aa9c3]">{{ day.date.slice(5) }}</span>
-          </div>
-        </div>
-      </div>
-    </section>
+    <!-- 做题贡献热力图（最近 90 天） -->
+    <ContributionHeatmap
+      v-if="dashboard"
+      :heatmap="dashboard.heatmap ?? null"
+      :active-days="dashboard.activeDays"
+      :streak-days="dashboard.streakDays"
+    />
     </div>
   </div>
 </template>

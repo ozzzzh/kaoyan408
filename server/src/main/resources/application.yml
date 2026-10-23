@@ -32,6 +32,14 @@ spring:
     baseline: true
     baseline-on-migrate: true
 
+# 内容种子（846 题等）由 scripts/import-content.mjs 生成到 resources/seed/content.sql，
+# 刻意不进 Flyway 版本链（内容会频繁重生成，作为迁移会导致 checksum 漂移）。
+# force=true 时每次启动都重灌，用于内容更新后刷新。
+kaoyan:
+  seed:
+    enabled: true
+    force: false
+
 logging:
   level:
     com.kaoyan408: INFO

@@ -1,5 +1,6 @@
 -- 考研 408 工作台：初始表结构（内容库 + 用户与做题数据）
--- 内容由 scripts/import-content.mjs 生成的 V2__seed_content.sql 灌入。
+-- 内容种子由 scripts/import-content.mjs 生成到 resources/seed/content.sql，
+-- 由 ContentSeedConfig 在题库为空时加载（刻意不入 Flyway 版本链）。
 
 CREATE TABLE exam_year (
     id     BIGINT AUTO_INCREMENT PRIMARY KEY,

@@ -24,7 +24,7 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const EXAMS_DIR = join(ROOT, 'client/public/exams')
-const OUT_SQL = join(ROOT, 'server/src/main/resources/db/migration/V2__seed_content.sql')
+const OUT_SQL = join(ROOT, 'server/src/main/resources/seed/content.sql')
 
 const BOOK_SUBJECT = {
   'data-structures': 'ds',
