@@ -184,7 +184,10 @@ public class QuestionService {
         } else {
             stat.setQuestions(stat.getQuestions() + 1);
             stat.setCorrect(stat.getCorrect() + (correct ? 1 : 0));
-            dailyStatMapper.updateById(stat);
+            // daily_stat 是复合主键(user_id, stat_date)，没有 @TableId，
+            // 因此不能用 updateById，必须用 QueryWrapper 指定条件。
+            dailyStatMapper.update(stat, new QueryWrapper<DailyStat>()
+                    .eq("user_id", userId).eq("stat_date", today));
         }
     }
 
