@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import type { ExamSummary } from '@/api/types'
@@ -26,7 +26,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-5">
     <header class="space-y-1">
       <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)]">历年真题</h1>
       <p class="text-sm text-[var(--k-text-muted)]">2009 – 2026 共 18 卷，每卷 47 题（选择 40 + 综合 7）。</p>

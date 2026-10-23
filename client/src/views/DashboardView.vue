@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
@@ -14,11 +14,15 @@ const router = useRouter()
 const userStore = useUserStore()
 const { user, dashboard } = storeToRefs(userStore)
 
+/**
+ * 四科配色。soft 用「主色 + 透明度」而非固定浅色，
+ * 这样在夜间模式下也会自动变成合适的深色底，不必维护两套色值。
+ */
 const subjectMeta: Record<string, { name: string; bar: string; soft: string; text: string }> = {
-  ds: { name: '数据结构', bar: 'bg-[#2d68ef]', soft: 'bg-[#eaf1ff]', text: 'text-[var(--k-accent-text)]' },
-  os: { name: '操作系统', bar: 'bg-[#7c5cf0]', soft: 'bg-[#f1ecff]', text: 'text-[#5b3fd1]' },
-  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]', soft: 'bg-[#fff5e6]', text: 'text-[var(--k-warn)]' },
-  cn: { name: '计算机网络', bar: 'bg-[#12a594]', soft: 'bg-[#e6f7f5]', text: 'text-[#0b7d70]' },
+  ds: { name: '数据结构', bar: 'bg-[#2d68ef]', soft: 'bg-[#2d68ef]/12', text: 'text-[var(--k-accent-text)]' },
+  os: { name: '操作系统', bar: 'bg-[#7c5cf0]', soft: 'bg-[#7c5cf0]/12', text: 'text-[#7c5cf0]' },
+  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]', soft: 'bg-[#f0a020]/12', text: 'text-[var(--k-warn)]' },
+  cn: { name: '计算机网络', bar: 'bg-[#12a594]', soft: 'bg-[#12a594]/12', text: 'text-[#12a594]' },
 }
 
 const subjects = computed(() => dashboard.value?.subjects ?? [])
@@ -45,7 +49,7 @@ const shortcuts = [
     to: '/learn',
     query: { subject: 'os' },
     tag: '知识点',
-    accent: 'border-[#d6c9ff]',
+    accent: 'border-[#7c5cf0]/40',
     icon: 'list',
   },
   {
@@ -66,7 +70,7 @@ function go(shortcut: (typeof shortcuts)[number]) {
 const quickSubjects = computed(() =>
   subjects.value.map((item) => ({
     ...item,
-    meta: subjectMeta[item.subject] ?? { name: item.subject, bar: 'bg-[#2d68ef]', soft: 'bg-[#eaf1ff]', text: 'text-[var(--k-accent-text)]' },
+    meta: subjectMeta[item.subject] ?? { name: item.subject, bar: 'bg-[#2d68ef]', soft: 'bg-[#2d68ef]/12', text: 'text-[var(--k-accent-text)]' },
   })),
 )
 
@@ -92,13 +96,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="relative space-y-7">
+  <div class="relative space-y-5">
     <!-- 鼠标跟随背景：只铺在工作台首屏区域，位于内容之下 -->
     <div class="pointer-events-none absolute inset-x-0 -top-6 -bottom-24 overflow-hidden">
       <BackgroundFx />
     </div>
 
-    <div class="relative space-y-7">
+    <div class="relative space-y-5">
       <!-- 欢迎 -->
       <header>
       <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)] md:text-[28px]">
@@ -243,7 +247,7 @@ onMounted(async () => {
           @click="go(shortcut)"
         >
           <span
-            class="mb-3 grid h-9 w-9 place-items-center rounded-lg bg-[#f0f4ff] text-[var(--k-accent)]"
+            class="mb-3 grid h-9 w-9 place-items-center rounded-lg bg-[var(--k-accent-soft)] text-[var(--k-accent)]"
           >
             <svg
               v-if="shortcut.icon === 'paper'"

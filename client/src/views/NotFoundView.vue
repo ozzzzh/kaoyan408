@@ -1,6 +1,6 @@
-<template>
-  <div class="mx-auto max-w-md space-y-4 py-16 text-center">
-    <p class="text-5xl font-bold text-[#dbe4ef]">404</p>
+﻿<template>
+  <div class="mx-auto max-w-md space-y-5 py-16 text-center">
+    <p class="text-5xl font-bold text-[var(--k-border-strong)]">404</p>
     <h1 class="text-lg font-semibold text-[var(--k-text)]">页面不存在</h1>
     <p class="text-sm text-[var(--k-text-muted)]">链接可能已失效，或该功能尚未实现。</p>
     <RouterLink

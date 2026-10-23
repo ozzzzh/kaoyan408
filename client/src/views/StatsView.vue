@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/user'
@@ -85,7 +85,7 @@ watch(subjectFilter, loadPoints)
 </script>
 
 <template>
-  <div class="space-y-8">
+  <div class="space-y-5">
     <header class="space-y-1">
       <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)]">学习看板</h1>
       <p class="text-sm text-[var(--k-text-muted)]">

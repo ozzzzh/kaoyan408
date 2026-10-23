@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
@@ -132,7 +132,7 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
           <span class="block text-sm font-semibold leading-tight">{{ item.label }}</span>
           <span
             class="block truncate text-[11px]"
-            :class="isActive(item.to) ? 'text-[#5b7ac4]' : 'text-[var(--k-text-faint)]'"
+            :class="isActive(item.to) ? 'text-[var(--k-accent-text)]' : 'text-[var(--k-text-faint)]'"
             >{{ item.desc }}</span
           >
         </span>
@@ -150,7 +150,7 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
         <span class="text-[11px] text-[var(--k-text-faint)]">复习进度</span>
         <span class="text-[11px] font-semibold text-[var(--k-accent-text)] tabular-nums">{{ progress }}%</span>
       </div>
-      <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-[#e4ebf7]">
+      <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--k-track)]">
         <div
           class="h-full rounded-full bg-[var(--k-accent)] transition-all duration-500"
           :style="{ width: Math.max(progress, done > 0 ? 2 : 0) + '%' }"

@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed } from 'vue'
 import type { Heatmap, HeatmapDay } from '@/api/types'
 
@@ -105,7 +105,7 @@ const weekdays = ['一', '二', '三', '四', '五', '六', '日']
               <div
                 v-for="(day, di) in week"
                 :key="day.date"
-                class="h-3 w-3 rounded-[2px] transition hover:ring-2 hover:ring-[#1f49ba]/30"
+                class="h-3 w-3 rounded-[2px] transition hover:ring-2 hover:ring-[var(--k-accent)]/30"
                 :class="levelClass(day.level)"
                 :title="`${tooltip(day)}（周${weekdays[di]}）`"
               />

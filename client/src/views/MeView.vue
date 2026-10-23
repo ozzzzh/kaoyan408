@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/user'
@@ -105,7 +105,7 @@ async function submit() {
         />
       </label>
 
-      <p v-if="error" class="rounded-lg border border-[#ffc9c9] bg-[var(--k-warn-soft)] px-3 py-2 text-sm text-[var(--k-danger)]">
+      <p v-if="error" class="rounded-lg border border-[var(--k-danger)]/30 bg-[var(--k-warn-soft)] px-3 py-2 text-sm text-[var(--k-danger)]">
         {{ error }}
       </p>
 
