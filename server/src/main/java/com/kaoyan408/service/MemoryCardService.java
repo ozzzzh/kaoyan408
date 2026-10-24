@@ -129,9 +129,16 @@ public class MemoryCardService {
         long corrects = row == null ? 0 : toLong(row.get("corrects"));
 
         Map<String, Long> bySubject = new LinkedHashMap<>();
+        Map<String, Long> addableBySubject = new LinkedHashMap<>();
         if (userId != null) {
             for (Map<String, Object> r : cardMapper.cardsBySubject(userId)) {
                 bySubject.put(String.valueOf(r.get("subject")), toLong(r.get("total")));
+            }
+            // 该科还能加入多少张：可加块数 - 已加卡片数。
+            // 界面据此显示「+ 数据结构要点 (12)」，用户才知道点了会发生什么。
+            for (String subject : SUBJECTS) {
+                int addable = cardMapper.addableBlocks(userId, null, subject, Integer.MAX_VALUE).size();
+                addableBySubject.put(subject, (long) addable);
             }
         }
 
@@ -141,6 +148,7 @@ public class MemoryCardService {
             item.put("subject", subject);
             item.put("name", SUBJECT_NAMES.getOrDefault(subject, subject));
             item.put("total", bySubject.getOrDefault(subject, 0L));
+            item.put("addable", addableBySubject.getOrDefault(subject, 0L));
             subjects.add(item);
         }
 
@@ -152,7 +160,34 @@ public class MemoryCardService {
         payload.put("corrects", corrects);
         payload.put("accuracy", reviews == 0 ? 0.0 : Math.round(corrects * 1000.0 / reviews) / 10.0);
         payload.put("subjects", subjects);
+        // 各盒卡片数，下标即盒号（0..7），用于展示记忆分布。
+        payload.put("boxes", boxesOf(userId));
         return payload;
+    }
+
+    /**
+     * 各盒的卡片数，下标即盒号（0..7）。
+     *
+     * 莱特纳盒把「记忆牢固程度」离散成 8 档，间隔为 0/1/2/4/7/15/30/60 天。
+     * 展示成分布比单一的「牢固 N 张」更能说明进度：用户能看到卡片确实在
+     * 往右边的盒子里移动，而不是只有「还没牢固」这一个模糊状态。
+     */
+    private List<Long> boxesOf(Long userId) {
+        long[] counts = new long[BOX_INTERVALS.length];
+        if (userId != null) {
+            for (Map<String, Object> r : cardMapper.cardBoxDistribution(userId)) {
+                int box = (int) toLong(r.get("box"));
+                long total = toLong(r.get("total"));
+                if (box >= 0 && box < counts.length) {
+                    counts[box] += total;
+                }
+            }
+        }
+        List<Long> result = new ArrayList<>(counts.length);
+        for (long count : counts) {
+            result.add(count);
+        }
+        return result;
     }
 
     /**

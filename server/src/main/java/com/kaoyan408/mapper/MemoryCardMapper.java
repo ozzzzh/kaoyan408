@@ -63,6 +63,16 @@ public interface MemoryCardMapper extends BaseMapper<MemoryCard> {
             """)
     List<Map<String, Object>> cardsBySubject(@Param("userId") Long userId);
 
+    /** 各记忆盒的卡片数，用于展示记忆分布（盒号 0–7，对应 0/1/2/4/7/15/30/60 天）。 */
+    @Select("""
+            SELECT c.box AS box, COUNT(*) AS total
+            FROM memory_card c
+            WHERE c.user_id = #{userId}
+            GROUP BY c.box
+            ORDER BY c.box
+            """)
+    List<Map<String, Object>> cardBoxDistribution(@Param("userId") Long userId);
+
     /**
      * 尚未加入背诵、但适合做成卡片的块（callout / formula）。
      * 用于「一键添加」时按知识点批量加入。

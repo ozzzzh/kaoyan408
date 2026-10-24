@@ -271,7 +271,9 @@ export interface MemorySummary {
   reviews: number
   corrects: number
   accuracy: number
-  subjects: Array<{ subject: string; name: string; total: number }>
+  subjects: Array<{ subject: string; name: string; total: number; addable: number }>
+  /** 各记忆盒的卡片数，下标即盒号 0–7（间隔 0/1/2/4/7/15/30/60 天） */
+  boxes: number[]
 }
 
 /** 知识点级掌握度。 */
