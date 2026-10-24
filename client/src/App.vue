@@ -28,19 +28,17 @@ onMounted(async () => {
         </div>
 
         <footer class="mx-auto w-full max-w-[1180px] px-4 pb-8 md:px-8">
-          <div class="border-t border-[var(--k-border)] pt-5 text-xs leading-relaxed text-[var(--k-text-faint)]">
+          <div
+            class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--k-border)] pt-5 text-xs leading-relaxed text-[var(--k-text-faint)]"
+          >
             <p>考研 408 工作台 · 真题 2009–2026 共 18 卷。</p>
-            <p class="mt-1">
-              知识正文与真题数据源自
-              <a
-                class="text-[var(--k-accent)] hover:underline"
-                href="https://github.com/liangbohan/postgraduate-exam-website"
-                target="_blank"
-                rel="noreferrer"
-                >simple408</a
-              >
-              （CC BY 4.0），本站为复习用途的二次组织。
-            </p>
+            <!--
+              内容来源说明（simple408，CC BY 4.0）的完整声明放在仓库的 LICENSE 与 README 中。
+              CC BY 4.0 只要求「以合理方式署名」，未要求逐页展示，因此此处仅保留一句指路。
+            -->
+            <RouterLink to="/about" class="text-[var(--k-text-faint)] no-underline hover:text-[var(--k-accent)]">
+              数据说明
+            </RouterLink>
           </div>
         </footer>
       </main>

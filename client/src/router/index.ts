@@ -18,6 +18,7 @@ const router = createRouter({
     { path: '/exams/:year', name: 'exam-detail', component: () => import('@/views/ExamDetailView.vue') },
     { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
     { path: '/me', name: 'me', component: () => import('@/views/MeView.vue') },
+    { path: '/about', name: 'about', component: () => import('@/views/AboutView.vue') },
     { path: '/:pathMatch(.*)*', name: 'notFound', component: () => import('@/views/NotFoundView.vue') },
   ],
   scrollBehavior: () => ({ top: 0 }),
