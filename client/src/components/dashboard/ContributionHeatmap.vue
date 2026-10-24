@@ -25,13 +25,9 @@ const monthLabels = computed(() => {
     const first = week[0]
     if (!first) return
     const month = Number(first.date.slice(5, 7))
+    // 同一月份只在第一次出现的那一列标注
     if (month !== lastMonth) {
-      // 首列且与上一个月紧邻时不重复标注
-      if (index === 0 || lastMonth === -1 || index - (labels.at(-1)?.index ?? -99) > 1) {
-        labels.push({ index, text: `${month}月` })
-      } else {
-        labels.push({ index, text: `${month}月` })
-      }
+      labels.push({ index, text: `${month}月` })
       lastMonth = month
     }
   })
@@ -80,41 +76,52 @@ const weekdays = ['一', '二', '三', '四', '五', '六', '日']
     </div>
 
     <div v-else class="mt-4">
-      <div class="flex gap-2">
-        <!-- 星期标签：与 7 行格子一一对应，仅周一/三/五 有文字 -->
-        <div
-          class="flex shrink-0 flex-col gap-[3px] pt-[18px] text-[10px] leading-tight text-[var(--k-text-faint)]"
-        >
-          <span v-for="(label, i) in weekdayLabels" :key="i">{{ label }}</span>
+      <!--
+        用同一套 grid 轨道定义「标签列 + 网格」，两者行高必然一致。
+        之前把标签放在独立的 flex 容器里，行高由字体（10px×1.25=12.5px）决定，
+        而格子是 aspect-square（约 16px），每行差约 3.5px、七行累计差约 25px，
+        标签会逐行往下漂，看起来「浮」在格子缝里。
+        现在两边共用 grid-template-rows，由格子尺寸决定轨道高度，不会再错位。
+      -->
+      <div
+        class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2"
+        style="grid-template-rows: 1rem auto"
+      >
+        <!-- 月份标签行：左上角留空 -->
+        <div />
+        <div class="relative h-4">
+          <span
+            v-for="label in monthLabels"
+            :key="`${label.index}-${label.text}`"
+            class="absolute text-[10px] text-[var(--k-text-faint)]"
+            :style="{ left: (label.index / weeks.length) * 100 + '%' }"
+            >{{ label.text }}</span
+          >
         </div>
 
-        <div class="min-w-0 flex-1">
-          <!-- 月份标签：按月所在的周列位置百分比定位，与拉伸后的格子对齐 -->
-          <div class="relative mb-1 h-4">
-            <span
-              v-for="label in monthLabels"
-              :key="`${label.index}-${label.text}`"
-              class="absolute text-[10px] text-[var(--k-text-faint)]"
-              :style="{ left: (label.index / weeks.length) * 100 + '%' }"
-              >{{ label.text }}</span
-            >
-          </div>
+        <!-- 左侧星期标签：与右侧同高，靠 grid 行轨道对齐 -->
+        <div
+          class="grid grid-rows-7 gap-[3px] text-right text-[10px] leading-none text-[var(--k-text-faint)]"
+        >
+          <span v-for="(label, i) in weekdayLabels" :key="i" class="flex items-center justify-end">
+            {{ label }}
+          </span>
+        </div>
 
-          <!-- 周列 × 7 天。
-            格子用 flex-1 撑满容器宽度，而不是固定 14px：
-            固定尺寸时 320px 栏里只剩约 100px 宽、面板下方会空出一大块；
-            拉伸后网格自然占满整行，面板高度由内容决定，不留余白。
-            用 aspect-square 保持正方形。 -->
-          <div class="flex gap-[3px]">
-            <div v-for="(week, wi) in weeks" :key="wi" class="flex min-w-0 flex-1 flex-col gap-[3px]">
-              <div
-                v-for="(day, di) in week"
-                :key="day.date"
-                class="aspect-square w-full rounded-[3px] transition hover:ring-2 hover:ring-[var(--k-accent)]/40"
-                :class="levelClass(day.level)"
-                :title="`${tooltip(day)}（周${weekdays[di]}）`"
-              />
-            </div>
+        <!--
+          周列 × 7 天。
+          用 auto-fit + minmax(10px, 1fr)：13 列在 248px 里若纯 1fr 每格约 16px
+          偏大且松散；给 10px 下限、由 1fr 均分，观感接近 GitHub 热力图。
+        -->
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(10px,1fr))] gap-[3px]">
+          <div v-for="(week, wi) in weeks" :key="wi" class="grid min-w-0 grid-rows-7 gap-[3px]">
+            <div
+              v-for="(day, di) in week"
+              :key="day.date"
+              class="aspect-square w-full rounded-[3px] transition hover:ring-2 hover:ring-[var(--k-accent)]/40"
+              :class="levelClass(day.level)"
+              :title="`${tooltip(day)}（周${weekdays[di]}）`"
+            />
           </div>
         </div>
       </div>
