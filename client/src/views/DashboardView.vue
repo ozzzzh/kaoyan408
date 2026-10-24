@@ -1,12 +1,15 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { api } from '@/api/client'
 import type { MemorySummary, PracticeEntrances } from '@/api/types'
-import BackgroundFx from '@/components/layout/BackgroundFx.vue'
+// 注：鼠标跟随背景（BackgroundFx）已从工作台移除——信息密集页不适合透出动态背景。
+// 组件保留在 components/layout/BackgroundFx.vue，留给后续的落地页使用。
 import ContributionHeatmap from '@/components/dashboard/ContributionHeatmap.vue'
+import RecentActivityPanel from '@/components/dashboard/RecentActivityPanel.vue'
+import TodayPanel from '@/components/dashboard/TodayPanel.vue'
 import SubjectMasteryPanel from '@/components/dashboard/SubjectMasteryPanel.vue'
 import SearchBox from '@/components/dashboard/SearchBox.vue'
 
@@ -79,6 +82,17 @@ const entrances = ref<PracticeEntrances | null>(null)
 /** 背诵概览：只在登录后加载 */
 const memory = ref<MemorySummary | null>(null)
 
+/**
+ * 今日数据。recent 的最后一项就是今天（后端按当日返回），
+ * 找不到时回退为 0，避免首屏出现 undefined。
+ */
+const todayStat = computed(() => {
+  const list = dashboard.value?.recent ?? []
+  const today = new Date().toLocaleDateString('sv-SE') // sv-SE 输出 YYYY-MM-DD
+  const hit = list.find((d) => d.date === today) ?? list[list.length - 1]
+  return { questions: hit?.questions ?? 0, correct: hit?.correct ?? 0 }
+})
+
 onMounted(async () => {
   try {
     entrances.value = await api.practiceEntrances()
@@ -96,13 +110,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="relative space-y-5">
-    <!-- 鼠标跟随背景：只铺在工作台首屏区域，位于内容之下 -->
-    <div class="pointer-events-none absolute inset-x-0 -top-6 -bottom-24 overflow-hidden">
-      <BackgroundFx />
-    </div>
-
-    <div class="relative space-y-5">
+  <div class="space-y-5">
+    <div class="space-y-5">
       <!-- 欢迎 -->
       <header>
       <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)] md:text-[28px]">
@@ -216,14 +225,24 @@ onMounted(async () => {
       </RouterLink>
     </section>
 
-    <!-- 四科掌握进度 + 做题贡献并排 -->
-    <section v-if="dashboard" class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <!-- 四科掌握进度 + 右栏（热力图 / 近 14 天 / 今日） -->
+    <section v-if="dashboard" class="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
       <SubjectMasteryPanel :subjects="dashboard.subjects" :mastery-rate="dashboard.masteryRate" />
-      <ContributionHeatmap
-        :heatmap="dashboard.heatmap ?? null"
-        :active-days="dashboard.activeDays"
-        :streak-days="dashboard.streakDays"
-      />
+      <div class="space-y-3">
+        <ContributionHeatmap
+          :heatmap="dashboard.heatmap ?? null"
+          :active-days="dashboard.activeDays"
+          :streak-days="dashboard.streakDays"
+        />
+        <RecentActivityPanel :recent="dashboard.recent" />
+        <TodayPanel
+          :done-today="todayStat.questions"
+          :correct-today="todayStat.correct"
+          :memory-due="memory?.due ?? 0"
+          :wrong-pending="entrances?.wrongPending ?? 0"
+          :streak-days="dashboard.streakDays"
+        />
+      </div>
     </section>
 
     <!-- 快捷入口 -->
