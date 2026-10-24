@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 # 每次推送与 PR 都跑一遍，防止「改完忘了验证」。
 # 分层设计：build 不依赖外部服务，总能跑；verify 需要数据库，单独一个 job。
@@ -218,6 +218,14 @@ jobs:
         run: node scripts/verify-exams-view.mjs
 
       - name: 知识点关联一致性回归
+        env:
+          # 这一步需要连库比对「正文页 questionCount」与数据库去重真值，
+          # 必须传数据库配置。上面四个脚本只走 HTTP 接口，因此无需 DB。
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          DB_NAME: kaoyan_db
         run: node scripts/verify-point-links.mjs
 
       - name: 后端日志（仅在失败时输出，便于排查）
