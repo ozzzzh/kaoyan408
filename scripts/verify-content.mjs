@@ -1,13 +1,6 @@
-import { createConnection } from 'mysql2/promise'
+import { connect } from './_env.mjs'
 
-const connection = await createConnection({
-  host: '127.0.0.1',
-  port: 3306,
-  user: 'root',
-  password: '123456',
-  database: 'kaoyan_db',
-  charset: 'utf8mb4',
-})
+const connection = await connect()
 
 const [questions] = await connection.query(
   "SELECT LEFT(stem, 60) AS stem, answer, LEFT(explanation, 50) AS explanation FROM question WHERE exam_ref = 'exam-2026-1'",

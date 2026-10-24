@@ -1,27 +1,23 @@
-/**
+﻿/**
  * 全量核对：知识点的 questionCount 与刷题队列题数是否一致，
  * 并与数据库的「按 point_id 去重」真值比对。
  */
-const BASE = 'http://127.0.0.1:8080/api/v1'
+const BASE = process.env.API_BASE ?? 'http://127.0.0.1:8080/api/v1'
 
 const login = await fetch(`${BASE}/auth/login`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ username: 'tester01', password: 'test123456' }),
+  body: JSON.stringify({
+    username: process.env.TEST_USERNAME ?? 'tester01',
+    password: process.env.TEST_PASSWORD ?? 'test123456',
+  }),
 }).then((r) => r.json())
 const token = login.data.token
 const auth = { Authorization: `Bearer ${token}` }
 
 // 真值：按 point_id 关联去重
-const { createConnection } = await import('mysql2/promise')
-const connection = await createConnection({
-  host: '127.0.0.1',
-  port: 3306,
-  user: 'root',
-  password: '123456',
-  database: 'kaoyan_db',
-  charset: 'utf8mb4',
-})
+const { connect } = await import('./_env.mjs')
+const connection = await connect()
 const [truth] = await connection.query(`
   SELECT p.point_id, COUNT(DISTINCT qk.question_id) AS total
   FROM knowledge_point p

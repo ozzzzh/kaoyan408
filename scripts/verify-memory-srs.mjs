@@ -1,16 +1,19 @@
-/**
+﻿/**
  * 背诵卡片间隔重复回归：
  *   记住了 → 盒号递增、间隔拉长
  *   没记住 → 退回 0 盒、明天再复习
  *   连续记住 → 间隔按 0,1,2,4,7,15,30,60 天推进并封顶
  */
-const BASE = 'http://127.0.0.1:8080/api/v1'
+const BASE = process.env.API_BASE ?? 'http://127.0.0.1:8080/api/v1'
 
 const login = await (
   await fetch(`${BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'tester01', password: 'test123456' }),
+    body: JSON.stringify({
+      username: process.env.TEST_USERNAME ?? 'tester01',
+      password: process.env.TEST_PASSWORD ?? 'test123456',
+    }),
   })
 ).json()
 const auth = { Authorization: `Bearer ${login.data.token}`, 'Content-Type': 'application/json' }

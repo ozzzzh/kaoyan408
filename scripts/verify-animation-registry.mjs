@@ -4,21 +4,14 @@
  */
 import { writeFileSync, unlinkSync } from 'node:fs'
 import { build } from 'esbuild'
-import { createConnection } from 'mysql2/promise'
+import { connect } from './_env.mjs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 // 1) 从数据库取出实际用到的 animationId
-const connection = await createConnection({
-  host: '127.0.0.1',
-  port: 3306,
-  user: 'root',
-  password: '123456',
-  database: 'kaoyan_db',
-  charset: 'utf8mb4',
-})
+const connection = await connect()
 const [rows] = await connection.query(
   "SELECT block_id, content_json FROM knowledge_block WHERE type = 'animation'",
 )

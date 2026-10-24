@@ -1,0 +1,213 @@
+name: CI
+
+# 每次推送与 PR 都跑一遍，防止「改完忘了验证」。
+# 分层设计：build 不依赖外部服务，总能跑；verify 需要数据库，单独一个 job。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支连续推送时取消旧的运行，避免排队浪费额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------- 一、构建检查（无需外部依赖，最快失败） ----------
+  build:
+    name: 构建（前端 + 后端）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: 安装前端依赖
+        working-directory: client
+        run: npm ci
+
+      - name: 前端类型检查与构建
+        working-directory: client
+        run: npm run build
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: 后端编译
+        working-directory: server
+        run: mvn -B -q clean compile
+
+  # ---------- 二、数据与内容验证（起 MySQL，灌内容种子） ----------
+  verify:
+    name: 验证（数据库 + 回归脚本）
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_DATABASE: kaoyan_db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: 安装依赖
+        working-directory: client
+        run: npm ci
+
+      - name: 应用表结构迁移（V1 表结构 + 后续增量）
+        run: |
+          for f in $(ls server/src/main/resources/db/migration/V*.sql | sort -V); do
+            echo "→ 应用 $f"
+            mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-password kaoyan_db < "$f"
+          done
+
+      - name: 灌入内容种子（846 题 / 知识树 / 知识块）
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-password kaoyan_db \
+            < server/src/main/resources/seed/content.sql
+          mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-password kaoyan_db -e \
+            "SELECT CONCAT('试卷=', COUNT(*)) FROM exam_year;
+             SELECT CONCAT('题目=', COUNT(*)) FROM question;
+             SELECT CONCAT('知识点=', COUNT(*)) FROM knowledge_point;
+             SELECT CONCAT('知识块=', COUNT(*)) FROM knowledge_block;"
+
+      - name: 内容数据完整性（题库 / 知识树 / 分值 / 乱码）
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          DB_NAME: kaoyan_db
+        run: node scripts/verify-content.mjs
+
+      - name: 动画加载表覆盖（42 个动画块能否全部渲染）
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          DB_NAME: kaoyan_db
+        run: node scripts/verify-animation-registry.mjs
+
+  # ---------- 三、接口回归（起后端，跑需要 API 的脚本） ----------
+  api:
+    name: 验证（后端接口回归）
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_DATABASE: kaoyan_db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: 安装依赖
+        working-directory: client
+        run: npm ci
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: 应用迁移并灌种子
+        run: |
+          for f in $(ls server/src/main/resources/db/migration/V*.sql | sort -V); do
+            mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-password kaoyan_db < "$f"
+          done
+          mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-password kaoyan_db \
+            < server/src/main/resources/seed/content.sql
+
+      - name: 启动后端
+        working-directory: server
+        env:
+          DB_URL: 'jdbc:mysql://127.0.0.1:3306/kaoyan_db?characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          JWT_SECRET: ci-only-jwt-secret-at-least-32-bytes-long-xxxxx
+          KAOYAN_SEED_ENABLED: 'false'
+        run: |
+          mvn -B -q spring-boot:run > /tmp/api.log 2>&1 &
+          echo "等待后端就绪…"
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8080/api/v1/health > /dev/null; then
+              echo "后端已就绪（第 ${i} 次探测）"
+              curl -s http://127.0.0.1:8080/api/v1/health
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "后端启动超时，日志尾部："
+          tail -50 /tmp/api.log
+          exit 1
+
+      - name: 注册一个测试账号（接口回归需要登录态）
+        run: |
+          curl -sS -X POST http://127.0.0.1:8080/api/v1/auth/register \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"tester01","email":"t@example.com","password":"test123456"}'
+
+      - name: 搜索回归（中英文 / 题号 / 相关性 / 片段质量）
+        run: node scripts/verify-search.mjs
+
+      - name: 错题重做闭环回归
+        run: node scripts/verify-wrong-retry.mjs
+
+      - name: 背诵间隔重复回归
+        run: node scripts/verify-memory-srs.mjs
+
+      - name: 试卷结构回归（18 卷）
+        run: node scripts/verify-exams-view.mjs
+
+      - name: 知识点关联一致性回归
+        run: node scripts/verify-point-links.mjs
+
+      - name: 后端日志（仅在失败时输出，便于排查）
+        if: failure()
+        run: tail -100 /tmp/api.log

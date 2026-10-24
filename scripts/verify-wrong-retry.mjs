@@ -1,14 +1,17 @@
-/**
+﻿/**
  * 错题重做闭环回归：
  *   答错 → 进入待订正 → 重做答对 → 移入已订正 → 再答错 → 回到待订正
  */
-const BASE = 'http://127.0.0.1:8080/api/v1'
+const BASE = process.env.API_BASE ?? 'http://127.0.0.1:8080/api/v1'
 
 const login = await (
   await fetch(`${BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'tester01', password: 'test123456' }),
+    body: JSON.stringify({
+    username: process.env.TEST_USERNAME ?? 'tester01',
+    password: process.env.TEST_PASSWORD ?? 'test123456',
+  }),
   })
 ).json()
 const auth = { Authorization: `Bearer ${login.data.token}`, 'Content-Type': 'application/json' }

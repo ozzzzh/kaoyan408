@@ -1,7 +1,7 @@
-/**
+﻿/**
  * 原卷接口回归：18 卷逐卷校验题量、分值、配图与知识点关联。
  */
-const BASE = 'http://127.0.0.1:8080/api/v1'
+const BASE = process.env.API_BASE ?? 'http://127.0.0.1:8080/api/v1'
 
 const list = await (await fetch(`${BASE}/exams`)).json()
 console.log(`试卷总数: ${list.data.length}\n`)
