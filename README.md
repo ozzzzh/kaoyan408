@@ -2,10 +2,29 @@
 
 > 计算机统考 408 复习平台：把 **真题**、**知识体系** 与 **掌握度看板** 连成一条复习主线。
 
+[![CI](https://github.com/ozzzzh/kaoyan408/actions/workflows/ci.yml/badge.svg)](https://github.com/ozzzzh/kaoyan408/actions/workflows/ci.yml)
 [![真题](https://img.shields.io/badge/真题-2009–2026%20·%2018%20卷-2f6fe4)]()
 [![题量](https://img.shields.io/badge/题库-846%20题-2f6fe4)]()
 [![后端](https://img.shields.io/badge/后端-Spring%20Boot%203%20·%20Java%2017-green)]()
 [![前端](https://img.shields.io/badge/前端-Vue%203%20·%20Vite%20·%20Tailwind%204-42b883)]()
+
+## 持续集成
+
+每次推送与 PR 触发 `.github/workflows/ci.yml`，三个 job 并行：
+
+| job | 内容 | 依赖 |
+| --- | --- | --- |
+| 构建 | 前端 `vite build` + 后端 `mvn compile` | 无 |
+| 数据库验证 | 建库 → 应用迁移 → 灌内容种子 → 跑内容完整性与动画覆盖回归 | MySQL 8 |
+| 接口验证 | 启动后端（Flyway 自动迁移 + 自动灌种子）→ 跑搜索、错题、背诵、试卷、知识点关联回归 | MySQL 8 |
+
+本地可执行的回归脚本清单见 `scripts/verify-*.mjs`，均支持环境变量配置：
+
+```bash
+DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME   # 默认 127.0.0.1:3306 root/123456 kaoyan_db
+API_BASE                                             # 默认 http://127.0.0.1:8080/api/v1
+TEST_USERNAME / TEST_PASSWORD                        # 默认 tester01 / test123456
+```
 
 ---
 
