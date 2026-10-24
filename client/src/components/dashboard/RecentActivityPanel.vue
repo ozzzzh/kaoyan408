@@ -39,9 +39,15 @@ const dayLabel = (date: string) => date.slice(8)
       </span>
     </div>
 
-    <div v-if="totalQuestions === 0" class="py-6 text-center text-xs text-[var(--k-text-faint)]">
-      最近两周还没有做题记录
+    <div v-if="totalQuestions === 0" class="mt-3 flex items-center gap-2.5 text-xs text-[var(--k-text-faint)]">
+      <!-- 空态用一排虚线占位，示意这里将来会出现柱状图，而不是留一大块空白 -->
+      <span class="flex h-8 flex-1 items-end gap-1">
+        <i v-for="i in 14" :key="i" class="h-1.5 flex-1 rounded-full bg-[var(--k-chip)]" />
+      </span>
     </div>
+    <p v-if="totalQuestions === 0" class="mt-2 text-[11px] text-[var(--k-text-faint)]">
+      最近两周还没有做题记录
+    </p>
 
     <template v-else>
       <!-- 柱状图：每天一根，高度按最大题量归一 -->

@@ -82,29 +82,35 @@ const weekdays = ['一', '二', '三', '四', '五', '六', '日']
     <div v-else class="mt-4">
       <div class="flex gap-2">
         <!-- 星期标签：与 7 行格子一一对应，仅周一/三/五 有文字 -->
-        <div class="flex shrink-0 flex-col gap-[3px] pt-[18px] text-[10px] leading-[14px] text-[var(--k-text-faint)]">
+        <div
+          class="flex shrink-0 flex-col gap-[3px] pt-[18px] text-[10px] leading-tight text-[var(--k-text-faint)]"
+        >
           <span v-for="(label, i) in weekdayLabels" :key="i">{{ label }}</span>
         </div>
 
         <div class="min-w-0 flex-1">
-          <!-- 月份标签 -->
+          <!-- 月份标签：按月所在的周列位置百分比定位，与拉伸后的格子对齐 -->
           <div class="relative mb-1 h-4">
             <span
               v-for="label in monthLabels"
               :key="`${label.index}-${label.text}`"
               class="absolute text-[10px] text-[var(--k-text-faint)]"
-              :style="{ left: label.index * 17 + 'px' }"
+              :style="{ left: (label.index / weeks.length) * 100 + '%' }"
               >{{ label.text }}</span
             >
           </div>
 
-          <!-- 周列 × 7 天：格子 14px + 3px 间距，填满 320px 右栏 -->
+          <!-- 周列 × 7 天。
+            格子用 flex-1 撑满容器宽度，而不是固定 14px：
+            固定尺寸时 320px 栏里只剩约 100px 宽、面板下方会空出一大块；
+            拉伸后网格自然占满整行，面板高度由内容决定，不留余白。
+            用 aspect-square 保持正方形。 -->
           <div class="flex gap-[3px]">
-            <div v-for="(week, wi) in weeks" :key="wi" class="flex flex-col gap-[3px]">
+            <div v-for="(week, wi) in weeks" :key="wi" class="flex min-w-0 flex-1 flex-col gap-[3px]">
               <div
                 v-for="(day, di) in week"
                 :key="day.date"
-                class="h-3.5 w-3.5 rounded-[3px] transition hover:ring-2 hover:ring-[var(--k-accent)]/40"
+                class="aspect-square w-full rounded-[3px] transition hover:ring-2 hover:ring-[var(--k-accent)]/40"
                 :class="levelClass(day.level)"
                 :title="`${tooltip(day)}（周${weekdays[di]}）`"
               />

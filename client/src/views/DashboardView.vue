@@ -225,16 +225,17 @@ onMounted(async () => {
       </RouterLink>
     </section>
 
-    <!-- 四科掌握进度 + 右栏（热力图 / 近 14 天 / 今日） -->
+    <!--
+      掌握情况区：左 2/3 放「四科掌握进度」+「今日」，右 1/3 放热力图 + 近 14 天。
+      布局依据：四科面板约 384px，而热力图 + 近 14 天约 363px，两列高度基本齐平；
+      「今日」放在左下角补足左列（384+12+180 ≈ 576，右列 363），避免任何一列留空。
+    -->
     <section v-if="dashboard" class="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <SubjectMasteryPanel :subjects="dashboard.subjects" :mastery-rate="dashboard.masteryRate" />
       <div class="space-y-3">
-        <ContributionHeatmap
-          :heatmap="dashboard.heatmap ?? null"
-          :active-days="dashboard.activeDays"
-          :streak-days="dashboard.streakDays"
+        <SubjectMasteryPanel
+          :subjects="dashboard.subjects"
+          :mastery-rate="dashboard.masteryRate"
         />
-        <RecentActivityPanel :recent="dashboard.recent" />
         <TodayPanel
           :done-today="todayStat.questions"
           :correct-today="todayStat.correct"
@@ -242,6 +243,14 @@ onMounted(async () => {
           :wrong-pending="entrances?.wrongPending ?? 0"
           :streak-days="dashboard.streakDays"
         />
+      </div>
+      <div class="space-y-3">
+        <ContributionHeatmap
+          :heatmap="dashboard.heatmap ?? null"
+          :active-days="dashboard.activeDays"
+          :streak-days="dashboard.streakDays"
+        />
+        <RecentActivityPanel :recent="dashboard.recent" />
       </div>
     </section>
 
