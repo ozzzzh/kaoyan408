@@ -1,4 +1,4 @@
-408 考盐 (408 Kaoyan)
+考研 408 工作台 (Kaoyan 408 Workbench)
 
 本仓库中的知识正文、历年真题题面、选项、答案与解析等内容，
 来源于 simple408 项目（https://github.com/liangbohan/postgraduate-exam-website），
@@ -8,6 +8,9 @@
 
 本仓库对上述内容进行了结构化二次组织（拆分为题库、知识块并建立关联），
 用于计算机统考 408 的复习用途。
+
+说明：CC BY 4.0 要求在再分发时保留来源署名与许可声明（即本文件与 README 中的
+内容来源说明），这是原许可方的要求，非本项目的作者署名。
 
 CC BY 4.0 许可全文见：
 https://creativecommons.org/licenses/by/4.0/legalcode
