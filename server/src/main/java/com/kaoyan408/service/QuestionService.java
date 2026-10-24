@@ -4,11 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.entity.BlockProgress;
 import com.kaoyan408.entity.DailyStat;
+import com.kaoyan408.entity.KnowledgeBlock;
+import com.kaoyan408.entity.KnowledgePoint;
 import com.kaoyan408.entity.Question;
 import com.kaoyan408.entity.QuestionAttempt;
 import com.kaoyan408.entity.QuestionKnowledge;
 import com.kaoyan408.mapper.BlockProgressMapper;
 import com.kaoyan408.mapper.DailyStatMapper;
+import com.kaoyan408.mapper.KnowledgeBlockMapper;
+import com.kaoyan408.mapper.KnowledgePointMapper;
 import com.kaoyan408.mapper.QuestionAttemptMapper;
 import com.kaoyan408.mapper.QuestionKnowledgeMapper;
 import com.kaoyan408.mapper.QuestionMapper;
@@ -21,6 +25,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 做题主流程：判分 → 落作答记录 → 刷新知识块掌握度与当日统计。
@@ -34,16 +39,21 @@ public class QuestionService {
     private final BlockProgressMapper blockProgressMapper;
     private final DailyStatMapper dailyStatMapper;
     private final StatsService statsService;
+    private final KnowledgeBlockMapper blockMapper;
+    private final KnowledgePointMapper pointMapper;
 
     public QuestionService(QuestionMapper questionMapper, QuestionKnowledgeMapper questionKnowledgeMapper,
                            QuestionAttemptMapper attemptMapper, BlockProgressMapper blockProgressMapper,
-                           DailyStatMapper dailyStatMapper, StatsService statsService) {
+                           DailyStatMapper dailyStatMapper, StatsService statsService,
+                           KnowledgeBlockMapper blockMapper, KnowledgePointMapper pointMapper) {
         this.questionMapper = questionMapper;
         this.questionKnowledgeMapper = questionKnowledgeMapper;
         this.attemptMapper = attemptMapper;
         this.blockProgressMapper = blockProgressMapper;
         this.dailyStatMapper = dailyStatMapper;
         this.statsService = statsService;
+        this.blockMapper = blockMapper;
+        this.pointMapper = pointMapper;
     }
 
     public Question requireByRef(String examRef) {
@@ -68,6 +78,73 @@ public class QuestionService {
                         .eq("question_id", questionId)).stream()
                 .map(QuestionKnowledge::getBlockId)
                 .toList();
+    }
+
+    /**
+     * 题目的关联知识点，带可读名称。
+     *
+     * 对外只暴露 blockId（如 kb-ds-2-2-5）对用户没有意义，界面需要的是
+     * 「顺序表 · 顺序表的插入与删除」这类名称。这里在服务端一次查完，
+     * 避免前端为每个 blockId 各发一次请求（一道题最多挂十几个块）。
+     *
+     * 返回项：{ blockId, pointId, pointTitle, subpointTitle, label }
+     */
+    public List<Map<String, Object>> blocksOf(Long questionId) {
+        List<String> blockIds = blockIdsOf(questionId);
+        if (blockIds.isEmpty()) {
+            return List.of();
+        }
+        List<KnowledgeBlock> blocks = blockMapper.selectList(
+                new QueryWrapper<KnowledgeBlock>().in("block_id", blockIds));
+        // 保持与 blockIds 相同顺序，便于前端稳定展示
+        Map<String, KnowledgeBlock> byId = new LinkedHashMap<>();
+        for (KnowledgeBlock block : blocks) {
+            byId.put(block.getBlockId(), block);
+        }
+        // 知识点标题单独批量查，避免 N+1
+        List<String> pointIds = blocks.stream()
+                .map(KnowledgeBlock::getPointId).filter(Objects::nonNull).distinct().toList();
+        Map<String, String> pointTitles = new LinkedHashMap<>();
+        if (!pointIds.isEmpty()) {
+            for (KnowledgePoint point : pointMapper.selectList(
+                    new QueryWrapper<KnowledgePoint>().in("point_id", pointIds))) {
+                pointTitles.put(point.getPointId(), point.getTitle());
+            }
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String blockId : blockIds) {
+            KnowledgeBlock block = byId.get(blockId);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("blockId", blockId);
+            if (block == null) {
+                item.put("pointId", null);
+                item.put("pointTitle", null);
+                item.put("subpointTitle", null);
+                item.put("label", blockId);
+                result.add(item);
+                continue;
+            }
+            String pointTitle = pointTitles.get(block.getPointId());
+            String subTitle = block.getSubpointTitle();
+            item.put("pointId", block.getPointId());
+            item.put("pointTitle", pointTitle);
+            item.put("subpointTitle", subTitle);
+            // 展示用标签：优先「知识点 · 子知识点」，退化到子知识点或知识点
+            String label;
+            if (pointTitle != null && subTitle != null && !subTitle.equals(pointTitle)) {
+                label = pointTitle + " · " + subTitle;
+            } else if (pointTitle != null) {
+                label = pointTitle;
+            } else if (subTitle != null) {
+                label = subTitle;
+            } else {
+                label = blockId;
+            }
+            item.put("label", label);
+            result.add(item);
+        }
+        return result;
     }
 
     public List<Long> answeredQuestionIds(Long userId) {

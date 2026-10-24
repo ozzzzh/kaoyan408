@@ -103,6 +103,8 @@ public class QuestionController {
         view.put("tags", readJsonList(question.getTagsJson()));
         view.put("imagePaths", readJsonList(question.getImagePathsJson()));
         view.put("knowledgeBlockIds", questionService.blockIdsOf(question.getId()));
+        // 带可读名称的关联知识点，供界面直接展示与跳转
+        view.put("knowledgeBlocks", questionService.blocksOf(question.getId()));
         view.put("answered", answered);
         view.put("options", optionViews(question));
         view.put("subQuestions", subQuestionViews(question));

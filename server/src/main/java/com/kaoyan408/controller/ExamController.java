@@ -13,6 +13,7 @@ import com.kaoyan408.mapper.QuestionKnowledgeMapper;
 import com.kaoyan408.mapper.QuestionMapper;
 import com.kaoyan408.mapper.QuestionOptionMapper;
 import com.kaoyan408.entity.QuestionKnowledge;
+import com.kaoyan408.service.QuestionService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,13 +39,16 @@ public class ExamController {
     private final QuestionMapper questionMapper;
     private final QuestionOptionMapper optionMapper;
     private final QuestionKnowledgeMapper questionKnowledgeMapper;
+    private final QuestionService questionService;
 
     public ExamController(ExamYearMapper examYearMapper, QuestionMapper questionMapper,
-                          QuestionOptionMapper optionMapper, QuestionKnowledgeMapper questionKnowledgeMapper) {
+                          QuestionOptionMapper optionMapper, QuestionKnowledgeMapper questionKnowledgeMapper,
+                          QuestionService questionService) {
         this.examYearMapper = examYearMapper;
         this.questionMapper = questionMapper;
         this.optionMapper = optionMapper;
         this.questionKnowledgeMapper = questionKnowledgeMapper;
+        this.questionService = questionService;
     }
 
     /** 年份列表 + 每卷题量 + 每卷四科分布。 */
@@ -104,6 +108,7 @@ public class ExamController {
         view.put("tags", readJsonList(question.getTagsJson()));
         view.put("imagePaths", readJsonList(question.getImagePathsJson()));
         view.put("knowledgeBlockIds", knowledgeBlockIdsOf(question.getId()));
+        view.put("knowledgeBlocks", questionService.blocksOf(question.getId()));
         if ("choice".equals(question.getQuestionType())) {
             view.put("options", optionMapper.selectList(new QueryWrapper<QuestionOption>()
                             .eq("question_id", question.getId())

@@ -21,6 +21,14 @@ const loadingQueue = ref(true)
 const loadingQuestion = ref(false)
 const submitting = ref(false)
 const message = ref<string | null>(null)
+/** 游客尝试提交时为 true，用于在提示条里给出「去登录」按钮 */
+const needLogin = ref(false)
+/** 连续答对次数，答错清零；用于顶部正反馈 */
+const streak = ref(0)
+/** 导航里折叠起来的年份；默认全部展开由 loadQueue 决定 */
+const collapsedYears = ref<Set<number>>(new Set())
+/** 导航的跳转输入框 */
+const jumpInput = ref('')
 
 const current = computed(() => queue.value?.items[index.value] ?? null)
 const scope = computed(() => (typeof route.query.scope === 'string' ? route.query.scope : 'all'))
@@ -61,6 +69,118 @@ const progressText = computed(() =>
   queue.value ? `${index.value + 1} / ${queue.value.total}` : '—',
 )
 
+/** 顶部统计跟随当前范围，避免切到错题本仍显示「共 846 题」。 */
+const statsText = computed(() => {
+  if (!queue.value) return '正在加载…'
+  const { total, answered, correct } = queue.value
+  const accuracy = answered > 0 ? Math.round((correct / answered) * 100) : null
+  return (
+    `${scopeLabel.value} · 共 ${total} 题 · 已答 ${answered}` +
+    (accuracy === null ? '' : ` · 正确率 ${accuracy}%`)
+  )
+})
+
+/** 顶部进度条百分比（已答 / 总数）。 */
+const progressPercent = computed(() => {
+  if (!queue.value || queue.value.total === 0) return 0
+  return Math.round((queue.value.answered / queue.value.total) * 100)
+})
+
+/**
+ * 导航按年份分组。
+ *
+ * 原来把 846 个按钮平铺成一面墙：数字连续排列但实际跨越 18 份试卷，
+ * 卷与卷之间没有任何分隔，同一数字还会重复出现（每年都从 1 开始），
+ * 用户根本找不到自己在哪。这里改为按年份分组、可折叠。
+ */
+const navGroups = computed(() => {
+  const items = queue.value?.items ?? []
+  const groups: Array<{
+    year: number
+    items: Array<{ item: (typeof items)[number]; index: number }>
+    answered: number
+    correct: number
+  }> = []
+  const byYear = new Map<number, (typeof groups)[number]>()
+  items.forEach((item, i) => {
+    let group = byYear.get(item.year)
+    if (!group) {
+      group = { year: item.year, items: [], answered: 0, correct: 0 }
+      byYear.set(item.year, group)
+      groups.push(group)
+    }
+    group.items.push({ item, index: i })
+    if (item.answered) group.answered += 1
+    if (item.correct) group.correct += 1
+  })
+  return groups
+})
+
+/** 当前题所在的年份，用于自动展开。 */
+const currentYear = computed(() => current.value?.year ?? null)
+
+function toggleYear(year: number) {
+  const next = new Set(collapsedYears.value)
+  if (next.has(year)) next.delete(year)
+  else next.add(year)
+  collapsedYears.value = next
+}
+
+function isCollapsed(year: number) {
+  return collapsedYears.value.has(year)
+}
+
+/**
+ * 题干拆行。
+ *
+ * 组合选择题的题干形如：
+ *   「……下列哪些操作会必然导致产生移动次数（）。
+ *    I. 表头插入一个元素
+ *    II. 表头删除一个元素」
+ * 其中 I.~IV. 属于题干内容，但按整段正文渲染时行距过松、视觉上像四个独立段落。
+ * 这里按行切开，把罗马数字开头的行单独标记，由模板做紧凑排版。
+ */
+type StemLine = { kind: 'text' | 'option'; text: string; mark?: string }
+
+const ROMAN = /^\s*(I{1,3}|IV|V|VI{1,3}|IX|X)\s*[.、．]\s*(.*)$/
+
+const stemLines = computed<StemLine[]>(() => {
+  const stem = question.value?.stem
+  if (!stem) return []
+  return stem.split('\n').map((raw) => {
+    const matched = raw.match(ROMAN)
+    if (matched) {
+      return { kind: 'option' as const, mark: `${matched[1]}.`, text: matched[2] }
+    }
+    return { kind: 'text' as const, text: raw }
+  })
+})
+
+/** 跳转输入框：接受「2026 3」「2026年第3题」「47」等写法 */
+function jumpToInput() {
+  const raw = jumpInput.value.trim()
+  if (!raw) return
+  const items = queue.value?.items ?? []
+  // 形如 2026 3 / 2026年第3题 / 2026-3：按年份 + 卷内题号定位
+  const matched = raw.match(/^(\d{4})\D*(\d{1,2})$/)
+  if (matched) {
+    const year = Number(matched[1])
+    const number = Number(matched[2])
+    const at = items.findIndex((i) => i.year === year && i.number === number)
+    if (at >= 0) {
+      jumpTo(at)
+      jumpInput.value = ''
+      return
+    }
+  }
+  // 否则当作队列序号（第 N 题）
+  const ordinal = Number(raw)
+  if (Number.isFinite(ordinal) && ordinal >= 1 && ordinal <= items.length) {
+    jumpTo(ordinal - 1)
+    jumpInput.value = ''
+  }
+}
+
 function subjectName(code: string): string {
   return (
     { ds: '数据结构', os: '操作系统', co: '计算机组成原理', cn: '计算机网络' }[code] ?? code
@@ -71,6 +191,11 @@ function subjectName(code: string): string {
 async function loadQueue() {
   loadingQueue.value = true
   message.value = null
+  needLogin.value = false
+  // 换范围等于换了一套题，连续答对计数应重新开始
+  streak.value = 0
+  // 折叠状态也是按队列来的，重新载入时恢复全部展开
+  collapsedYears.value = new Set()
   try {
     if (examRefParam.value) {
       // 搜索直达单题：取所在年份的队列后定位到该题，
@@ -124,12 +249,20 @@ async function loadQuestion() {
 async function submit() {
   const item = current.value
   if (!item || submitting.value) return
+  // 未登录时后端会返回 401，直接抛给用户只会看到「认证失败，无法访问系统资源。」
+  // 这句对用户没有意义——他不知道要登录。在这里先拦下，给出可操作的提示。
+  if (!userStore.user) {
+    message.value = '游客模式不会保存答题记录，登录后即可提交并进入错题本。'
+    needLogin.value = true
+    return
+  }
   if (question.value?.options.length && !selected.value) {
     message.value = '请先选择一个选项。'
     return
   }
   submitting.value = true
   message.value = null
+  needLogin.value = false
   try {
     const answer = await api.submitAnswer(item.examRef, selected.value || '已完成')
     result.value = {
@@ -137,6 +270,8 @@ async function submit() {
       standardAnswer: answer.standardAnswer,
       explanation: answer.explanation,
     }
+    // 连续答对计数：答错即清零（用于顶部的正反馈）
+    streak.value = answer.correct ? streak.value + 1 : 0
     // 同步队列内的作答状态，让右侧导航与进度即时更新
     const target = queue.value?.items[index.value]
     if (queue.value && target) {
@@ -190,6 +325,13 @@ async function go(delta: number) {
 
 async function jumpTo(target: number) {
   index.value = target
+  // 跳到折叠年份里的题时自动展开，否则导航上看不到当前题
+  const year = queue.value?.items[target]?.year
+  if (year !== undefined && collapsedYears.value.has(year)) {
+    const next = new Set(collapsedYears.value)
+    next.delete(year)
+    collapsedYears.value = next
+  }
   await loadQuestion()
 }
 
@@ -212,26 +354,66 @@ watch(
 
 <template>
   <div class="space-y-5">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div class="space-y-1">
-        <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)]">刷题</h1>
-        <p class="text-sm text-[var(--k-text-muted)]">
-          {{ scopeLabel }}
-          <span v-if="queue" class="text-[var(--k-text-faint)]">
-            · 共 {{ queue.total }} 题 · 已答 {{ queue.answered }} · 正确 {{ queue.correct }}
+    <header class="space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="space-y-1">
+          <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)]">刷题</h1>
+          <p class="text-sm text-[var(--k-text-muted)]">{{ statsText }}</p>
+        </div>
+        <div class="flex items-center gap-3 text-sm">
+          <!-- 连续答对：给一点正反馈，答错即清零 -->
+          <span
+            v-if="streak >= 2"
+            class="inline-flex items-center gap-1 rounded-lg bg-[#0f7a4d]/12 px-2.5 py-1 text-xs font-semibold text-[#0f7a4d] dark:bg-[#4ade80]/12 dark:text-[#4ade80]"
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
+            </svg>
+            连对 {{ streak }}
           </span>
-        </p>
+          <span class="tabular-nums text-[var(--k-text-faint)]">{{ progressText }}</span>
+          <RouterLink
+            to="/dashboard"
+            class="rounded-lg border border-[var(--k-border)] px-3 py-1.5 text-xs text-[var(--k-text-muted)] no-underline transition hover:bg-[var(--k-surface-soft)]"
+          >
+            返回工作台
+          </RouterLink>
+        </div>
       </div>
-      <div class="flex items-center gap-3 text-sm">
-        <span class="tabular-nums text-[var(--k-text-faint)]">{{ progressText }}</span>
-        <RouterLink
-          to="/dashboard"
-          class="rounded-lg border border-[var(--k-border)] px-3 py-1.5 text-xs text-[var(--k-text-muted)] no-underline transition hover:bg-[var(--k-surface-soft)]"
-        >
-          返回工作台
-        </RouterLink>
+
+      <!-- 进度条：原来只有一个「1 / 846」的数字，看不出整体推进了多少 -->
+      <div v-if="queue" class="flex items-center gap-3">
+        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--k-track)]">
+          <div
+            class="h-full rounded-full bg-[var(--k-accent)] transition-[width] duration-300"
+            :style="{ width: progressPercent + '%' }"
+          />
+        </div>
+        <span class="shrink-0 text-[11px] tabular-nums text-[var(--k-text-faint)]">
+          已答 {{ progressPercent }}%
+        </span>
       </div>
     </header>
+
+    <!-- 提示条 -->
+    <div
+      v-if="message"
+      class="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm"
+      :class="
+        needLogin
+          ? 'border-[var(--k-accent)]/40 bg-[var(--k-accent-soft)] text-[var(--k-accent-text)]'
+          : 'border-[#8a6d1f]/40 bg-[var(--k-warn-soft)] text-[var(--k-warn)]'
+      "
+    >
+      <span>{{ message }}</span>
+      <RouterLink
+        v-if="needLogin"
+        to="/me"
+        class="shrink-0 rounded-lg bg-[var(--k-accent)] px-3 py-1 text-xs font-bold text-white no-underline"
+      >
+        去登录
+      </RouterLink>
+    </div>
 
     <!-- 错题本子视图切换 -->
     <div v-if="isWrongScope" class="flex flex-wrap items-center gap-2">
@@ -307,15 +489,9 @@ watch(
       </RouterLink>
     </div>
 
-    <div v-else class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
+    <!-- 版面：题目限制行宽（中文阅读舒适区约 30–40 字），导航栏加宽以容纳分组 -->
+    <div v-else class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
       <div class="min-w-0 space-y-4">
-        <p
-          v-if="message"
-          class="rounded-lg border border-[var(--k-warn-border)] bg-[var(--k-warn-soft)] px-4 py-3 text-sm text-[var(--k-warn)]"
-        >
-          {{ message }}
-        </p>
-
         <article
           v-if="question"
           class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-6 py-6"
@@ -351,10 +527,29 @@ watch(
             </span>
           </div>
 
-          <pre
-            class="whitespace-pre-wrap font-sans text-[15px] leading-[1.9] text-[var(--k-text)]"
-            >{{ question.stem }}</pre
-          >
+          <!--
+            题干。
+            组合选择题的选项（I. / II. / III. / IV.）是题干的一部分，原先按正文
+            1.9 倍行距渲染，四个短选项之间被拉开近 200px。这里把整体行距收到 1.75，
+            并把单独的 I.~IV. 行改成紧凑列表（见下方 stemLines 渲染）。
+          -->
+          <div class="max-w-[68ch] space-y-3">
+            <template v-for="(line, i) in stemLines" :key="i">
+              <!-- 罗马数字选项行：紧凑、左侧带缩进，与题干正文区分 -->
+              <p
+                v-if="line.kind === 'option'"
+                class="flex gap-2 text-[15px] leading-relaxed text-[var(--k-text)]"
+              >
+                <span class="shrink-0 font-semibold text-[var(--k-text-muted)]">{{ line.mark }}</span>
+                <span>{{ line.text }}</span>
+              </p>
+              <pre
+                v-else
+                class="whitespace-pre-wrap font-sans text-[15px] leading-[1.75] text-[var(--k-text)]"
+                >{{ line.text }}</pre
+              >
+            </template>
+          </div>
 
           <img
             v-for="path in question.imagePaths"
@@ -364,18 +559,22 @@ watch(
             class="mt-4 max-w-full rounded-lg border border-[var(--k-border)]"
           />
 
-          <div v-if="question.options.length" class="mt-5 space-y-2">
+          <!--
+            选项：整行可点（label 包裹 radio），加 hover 位移与更明显的选中态。
+            限制行宽与题干一致，避免长选项在一行里拉出很长的视线距离。
+          -->
+          <div v-if="question.options.length" class="mt-5 max-w-[68ch] space-y-2">
             <label
               v-for="option in question.options"
               :key="option.key"
-              class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-2.5 text-[15px] transition"
+              class="flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-[15px] transition"
               :class="
                 selected === option.key
                   ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)]'
-                  : 'border-[var(--k-border)] hover:border-[var(--k-accent)]'
+                  : 'border-[var(--k-border)] hover:border-[var(--k-accent)]/60 hover:bg-[var(--k-surface-soft)]'
               "
             >
-              <input v-model="selected" type="radio" :value="option.key" class="mt-1.5" />
+              <input v-model="selected" type="radio" :value="option.key" class="mt-1.5 shrink-0" />
               <span class="text-[var(--k-text)]">
                 <strong class="mr-1">{{ option.key }}.</strong>{{ option.text }}
               </span>
@@ -447,11 +646,34 @@ watch(
             >
           </div>
 
-          <div
-            v-if="question.knowledgeBlockIds.length"
-            class="mt-4 text-xs text-[var(--k-text-faint)]"
-          >
-            关联知识块：{{ question.knowledgeBlockIds.join('、') }}
+          <!-- 关联知识点：显示可读名称并可跳转，不再暴露 kb-xxx 这样的内部 ID -->
+          <div v-if="question.knowledgeBlocks?.length" class="mt-4 border-t border-[var(--k-border)] pt-3">
+            <p class="mb-2 text-[11px] font-semibold text-[var(--k-text-faint)]">相关知识点</p>
+            <div class="flex flex-wrap gap-2">
+              <RouterLink
+                v-for="block in question.knowledgeBlocks"
+                :key="block.blockId"
+                :to="{
+                  path: '/learn',
+                  query: block.pointId ? { subject: question.subject } : undefined,
+                  hash: block.pointId ? `#/learn/${block.pointId}` : undefined,
+                }"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--k-border)] px-2.5 py-1 text-xs text-[var(--k-text-muted)] no-underline transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)]"
+              >
+                <svg
+                  class="h-3 w-3 shrink-0"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M4 19.5V5a2 2 0 0 1 2-2h11l3 3v13.5" />
+                  <path d="M8 7h6M8 11h6" />
+                </svg>
+                {{ block.label }}
+              </RouterLink>
+            </div>
           </div>
         </article>
 
@@ -461,36 +683,98 @@ watch(
       </div>
 
       <aside class="space-y-3">
-        <div class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
-          <p class="mb-2 text-[11px] font-semibold text-[var(--k-text-faint)]">题目导航</p>
-          <div class="grid grid-cols-6 gap-1.5 lg:grid-cols-5">
-            <button
-              v-for="(item, i) in queue.items"
-              :key="item.examRef"
-              class="grid h-8 place-items-center rounded text-[11px] font-semibold tabular-nums transition"
-              :class="[
-                i === index
-                  ? 'ring-2 ring-[var(--k-accent)] ring-offset-1 ring-offset-[var(--k-surface)]'
-                  : '',
-                item.mastered
-                  ? 'bg-[#0f7a4d]/15 text-[#0f7a4d]'
-                  : item.correct
-                    ? 'bg-[#0f7a4d]/15 text-[#0f7a4d]'
-                    : item.answered
-                      ? 'bg-[#b23c3c]/15 text-[#b23c3c]'
-                      : 'bg-[var(--k-chip)] text-[var(--k-text-faint)]',
-              ]"
-              :title="
-                `第 ${item.number} 题` +
-                (item.wrongCount > 0 ? ` · 错过 ${item.wrongCount} 次` : '') +
-                (item.mastered ? ' · 已订正' : '')
-              "
-              @click="jumpTo(i)"
-            >
-              {{ item.number }}
-            </button>
+        <div
+          class="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] lg:sticky lg:top-4"
+        >
+          <div class="shrink-0 border-b border-[var(--k-border)] p-3 pb-2.5">
+            <div class="flex items-baseline justify-between gap-2">
+              <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">题目导航</p>
+              <span v-if="currentYear" class="text-[10px] tabular-nums text-[var(--k-text-faint)]">
+                {{ currentYear }} 年
+              </span>
+            </div>
+
+            <!-- 跳转：846 道题里靠点找太慢，允许直接输入题号 -->
+            <div class="mt-2 flex items-center gap-1.5">
+              <input
+                v-model="jumpInput"
+                class="w-full min-w-0 rounded-lg bg-[var(--k-surface-soft)] px-2.5 py-1.5 text-[11px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)]"
+                placeholder="跳转：2026 3 或 47"
+                @keyup.enter="jumpToInput"
+              />
+              <button
+                class="shrink-0 rounded-lg border border-[var(--k-border)] px-2 py-1.5 text-[11px] text-[var(--k-text-muted)] transition hover:border-[var(--k-accent)]"
+                @click="jumpToInput"
+              >
+                跳
+              </button>
+            </div>
           </div>
-          <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[var(--k-text-faint)]">
+
+          <!--
+            按年份分组，可折叠。
+            原先把全部题目平铺成按钮墙：数字连续排列却跨越 18 份试卷，
+            卷与卷之间没有分隔、同一数字还会重复出现，用户无法定位。
+          -->
+          <div class="min-h-0 flex-1 overflow-y-auto p-2">
+            <div v-for="group in navGroups" :key="group.year" class="mb-1.5">
+              <button
+                class="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-[var(--k-surface-soft)]"
+                :class="group.year === currentYear ? 'text-[var(--k-accent-text)]' : 'text-[var(--k-text-muted)]'"
+                @click="toggleYear(group.year)"
+              >
+                <svg
+                  class="h-3 w-3 shrink-0 transition-transform"
+                  :class="isCollapsed(group.year) ? '-rotate-90' : ''"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+                <span class="text-[11px] font-bold tabular-nums">{{ group.year }}</span>
+                <span class="text-[10px] text-[var(--k-text-faint)]">{{ group.items.length }} 题</span>
+                <span class="ml-auto text-[10px] tabular-nums text-[var(--k-text-faint)]">
+                  {{ group.answered }}/{{ group.items.length }}
+                </span>
+              </button>
+
+              <div
+                v-if="!isCollapsed(group.year)"
+                class="mt-1 grid grid-cols-8 gap-1 pl-1 lg:grid-cols-7"
+              >
+                <button
+                  v-for="cell in group.items"
+                  :key="cell.item.examRef"
+                  class="grid h-6 place-items-center rounded text-[10px] font-semibold tabular-nums transition"
+                  :class="[
+                    cell.index === index
+                      ? 'ring-2 ring-[var(--k-accent)] ring-offset-1 ring-offset-[var(--k-surface)]'
+                      : '',
+                    cell.item.correct
+                      ? 'bg-[#0f7a4d]/15 text-[#0f7a4d]'
+                      : cell.item.answered
+                        ? 'bg-[#b23c3c]/15 text-[#b23c3c]'
+                        : 'bg-[var(--k-chip)] text-[var(--k-text-faint)] hover:bg-[var(--k-accent-soft)]',
+                  ]"
+                  :title="
+                    `${cell.item.year} 年第 ${cell.item.number} 题` +
+                    (cell.item.wrongCount > 0 ? ` · 错过 ${cell.item.wrongCount} 次` : '') +
+                    (cell.item.mastered ? ' · 已订正' : '')
+                  "
+                  @click="jumpTo(cell.index)"
+                >
+                  {{ cell.item.number }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-t border-[var(--k-border)] p-3 pt-2.5 text-[10px] text-[var(--k-text-faint)]"
+          >
             <span class="inline-flex items-center gap-1">
               <i class="h-2.5 w-2.5 rounded-sm bg-[#0f7a4d]/30" />已答对
             </span>
@@ -503,16 +787,33 @@ watch(
           </div>
         </div>
 
-        <div
-          class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-3 text-[11px] text-[var(--k-text-faint)]"
-        >
-          <p class="mb-1.5 font-semibold">当前范围</p>
-          <p class="leading-relaxed">
-            {{ scopeLabel }}
-            <template v-if="blockIdParam || pointIdParam">
-              <br />{{ blockIdParam || pointIdParam }}
-            </template>
-          </p>
+        <!--
+          原先这里是「当前范围」卡片，内容与顶部标题行重复，
+          且把 kb-xxx / pointId 这类内部 ID 直接显示给用户。
+          改为快捷操作，才是侧栏真正该放的东西。
+        -->
+        <div class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-3">
+          <p class="mb-2 text-[11px] font-semibold text-[var(--k-text-faint)]">快捷操作</p>
+          <div class="space-y-1.5">
+            <button
+              class="w-full rounded-lg border border-[var(--k-border)] px-2.5 py-1.5 text-left text-[11px] text-[var(--k-text-muted)] transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)]"
+              @click="jumpTo(0)"
+            >
+              回到本范围第 1 题
+            </button>
+            <RouterLink
+              :to="{ path: '/practice', query: { scope: 'wrong-pending' } }"
+              class="block rounded-lg border border-[var(--k-border)] px-2.5 py-1.5 text-[11px] text-[var(--k-text-muted)] no-underline transition hover:border-[#b23c3c] hover:text-[#b23c3c]"
+            >
+              去做错题
+            </RouterLink>
+            <RouterLink
+              :to="{ path: '/practice', query: { scope: 'untouched' } }"
+              class="block rounded-lg border border-[var(--k-border)] px-2.5 py-1.5 text-[11px] text-[var(--k-text-muted)] no-underline transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)]"
+            >
+              去做没做过的题
+            </RouterLink>
+          </div>
         </div>
       </aside>
     </div>

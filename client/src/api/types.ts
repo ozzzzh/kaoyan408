@@ -80,11 +80,22 @@ export interface QuestionView {
   tags: string[]
   imagePaths: string[]
   knowledgeBlockIds: string[]
+  /** 关联知识点（带可读名称）。服务端一次查完，界面直接展示，无需逐个请求。 */
+  knowledgeBlocks?: KnowledgeBlockRef[]
   answered: boolean
   options: QuestionOption[]
   subQuestions: SubQuestion[]
   answer?: string | null
   explanation?: string | null
+}
+
+/** 题目关联的一个知识块，label 为展示用名称（如「顺序表 · 顺序表的插入与删除」）。 */
+export interface KnowledgeBlockRef {
+  blockId: string
+  pointId: string | null
+  pointTitle: string | null
+  subpointTitle: string | null
+  label: string
 }
 
 export interface ExamSummary {
