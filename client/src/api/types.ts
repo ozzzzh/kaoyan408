@@ -257,6 +257,10 @@ export interface MemoryCardItem {
   box: number
   reviewCount: number
   correctCount: number
+  /** 该知识点在真题中出现的题数 */
+  questionCount?: number
+  /** 该知识点下最新的一道真题，用于卡片底部建立「背诵 ↔ 考试」的联系 */
+  sampleQuestion?: { examRef: string; year: number; number: number } | null
 }
 
 export interface MemoryDue {

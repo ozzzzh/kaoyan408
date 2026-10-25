@@ -47,6 +47,14 @@ public class MemoryCardService {
     public Map<String, Object> due(Long userId, String subject) {
         List<Map<String, Object>> cards = dueCards(userId, subject, DUE_LIMIT);
 
+        // 一次取出这些知识点各自的题目数与代表真题，避免逐张卡片查询（N+1）。
+        List<String> pointIds = cards.stream()
+                .map(r -> String.valueOf(r.get("pointId")))
+                .filter(id -> id != null && !id.isBlank() && !"null".equals(id))
+                .distinct()
+                .toList();
+        Map<String, Map<String, Object>> contextByPoint = contextOf(pointIds);
+
         List<Map<String, Object>> items = new ArrayList<>();
         for (Map<String, Object> row : cards) {
             Map<String, Object> item = new LinkedHashMap<>();
@@ -61,6 +69,10 @@ public class MemoryCardService {
             item.put("box", toLong(row.get("box")));
             item.put("reviewCount", toLong(row.get("reviewCount")));
             item.put("correctCount", toLong(row.get("correctCount")));
+            // 上下文：所属知识点的题目数与该知识点下最近的一道真题，供卡片底部展示
+            Map<String, Object> context = contextByPoint.get(String.valueOf(row.get("pointId")));
+            item.put("questionCount", context == null ? 0L : context.get("questionCount"));
+            item.put("sampleQuestion", context == null ? null : context.get("sampleQuestion"));
             items.add(item);
         }
 
@@ -68,6 +80,41 @@ public class MemoryCardService {
         payload.put("total", items.size());
         payload.put("items", items);
         return payload;
+    }
+
+    /**
+     * 批量为知识点取上下文：题目数 + 一道代表真题。
+     *
+     * 卡片底部要展示「这个知识点在真题里出现过几次、最近一次是哪道」，
+     * 让背诵与考试建立联系；这里按知识点批量查，避免逐卡查询。
+     */
+    private Map<String, Map<String, Object>> contextOf(List<String> pointIds) {
+        Map<String, Map<String, Object>> result = new LinkedHashMap<>();
+        if (pointIds.isEmpty()) {
+            return result;
+        }
+        for (Map<String, Object> row : cardMapper.pointQuestionContext(pointIds)) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("questionCount", toLong(row.get("questionCount")));
+            // latest 形如 "2024|exam-2024-1|1"，由 SQL 聚合成一道最新的真题
+            String latest = row.get("latest") == null ? null : String.valueOf(row.get("latest"));
+            if (latest != null && latest.contains("|")) {
+                String[] parts = latest.split("\\|", -1);
+                if (parts.length == 3) {
+                    Map<String, Object> sample = new LinkedHashMap<>();
+                    sample.put("year", toLong(parts[0]));
+                    sample.put("examRef", parts[1]);
+                    sample.put("number", toLong(parts[2]));
+                    item.put("sampleQuestion", sample);
+                } else {
+                    item.put("sampleQuestion", null);
+                }
+            } else {
+                item.put("sampleQuestion", null);
+            }
+            result.put(String.valueOf(row.get("pointId")), item);
+        }
+        return result;
     }
 
     /** 到期卡片（内部复用，按科目可过滤）。 */

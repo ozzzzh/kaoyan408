@@ -74,6 +74,35 @@ public interface MemoryCardMapper extends BaseMapper<MemoryCard> {
     List<Map<String, Object>> cardBoxDistribution(@Param("userId") Long userId);
 
     /**
+     * 批量为知识点取「题目数 + 一道代表真题」。
+     *
+     * 卡片底部用来展示「该知识点在真题里出现过几次、最近一次是哪道」，
+     * 让背诵与考试建立联系。按知识点批量查，避免逐卡请求。
+     * 年份在 exam_year 表，经 question.exam_id 关联；代表真题取年份最新的一道。
+     */
+    @Select("""
+            <script>
+            SELECT kb.point_id AS pointId,
+                   COUNT(DISTINCT qk.question_id) AS questionCount,
+                   SUBSTRING_INDEX(
+                     GROUP_CONCAT(
+                       CONCAT(ey.year, '|', q.exam_ref, '|', q.exam_number)
+                       ORDER BY ey.year DESC, q.exam_number DESC SEPARATOR ';'
+                     ),
+                     ';', 1
+                   ) AS latest
+            FROM knowledge_block kb
+            JOIN question_knowledge qk ON qk.block_id = kb.block_id
+            JOIN question q ON q.id = qk.question_id
+            JOIN exam_year ey ON ey.id = q.exam_id
+            WHERE kb.point_id IN
+              <foreach collection="pointIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+            GROUP BY kb.point_id
+            </script>
+            """)
+    List<Map<String, Object>> pointQuestionContext(@Param("pointIds") List<String> pointIds);
+
+    /**
      * 尚未加入背诵、但适合做成卡片的块（callout / formula）。
      * 用于「一键添加」时按知识点批量加入。
      */

@@ -445,15 +445,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           </div>
 
           <!--
-            卡片改为「翻卡片」的观感：
-            - 阴影 + 较明显的边框，让卡片从背景里浮起来
-            - 顶部一条进度线，融入卡片上沿（不额外占高度）
-            - 高度不再写死：有 min-h 兜底（防抖动），内容多时自然撑高；
-              正文区若超出则内部滚动，不会把页面拉得很长。
-            - 翻面用轻微过渡，不是硬切。
+            卡片高度：撑满视口剩余空间，但设 720px 上限。
+            原因：页面内容原本只用到约 720px，而视口通常有 1000–1300px，
+            下方近一半是空白。这里让卡片吃掉剩余高度，超大屏则停在 720px
+            以免变成细长条。
+            calc 里减去的 300px ≈ 顶部标题区 + 卡片上方信息行 + 底部留白。
           -->
           <article
-            class="relative flex min-h-[340px] flex-col overflow-hidden rounded-2xl border border-[var(--k-border-strong)] bg-[var(--k-surface)] shadow-[0_8px_28px_rgba(20,32,60,0.10)] transition-shadow duration-200 dark:shadow-[0_8px_28px_rgba(0,0,0,0.35)]"
+            class="relative flex min-h-[340px] max-h-[720px] flex-col overflow-hidden rounded-2xl border border-[var(--k-border-strong)] bg-[var(--k-surface)] shadow-[0_8px_28px_rgba(20,32,60,0.10)] transition-shadow duration-200 lg:min-h-[calc(100vh-300px)] dark:shadow-[0_8px_28px_rgba(0,0,0,0.35)]"
           >
             <!-- 顶部进度线：贴在卡片上沿 -->
             <div class="h-1 w-full shrink-0 bg-[var(--k-track)]">
@@ -539,6 +538,53 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 <kbd class="ml-1.5 rounded border border-current/30 px-1 text-[10px] opacity-60">2</kbd>
               </button>
             </div>
+            </div>
+
+            <!--
+              知识点上下文：这张卡从哪来、在真题里考过几次、去哪看原文。
+              既填充了卡片底部空间，也让背诵与考试建立联系——
+              否则背卡片容易变成脱离考纲的孤立记忆。
+            -->
+            <div
+              class="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-[var(--k-border)] px-7 py-4 text-[11px] text-[var(--k-text-faint)] md:px-10"
+            >
+              <span class="inline-flex items-center gap-1.5">
+                <svg
+                  class="h-3.5 w-3.5 shrink-0"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M4 19.5V5a2 2 0 0 1 2-2h11l3 3v13.5" />
+                  <path d="M8 7h6M8 11h6" />
+                </svg>
+                {{ current.subpointTitle ?? current.pointTitle }}
+              </span>
+
+              <template v-if="(current.questionCount ?? 0) > 0">
+                <span>
+                  真题出现
+                  <strong class="text-[var(--k-text-muted)]">{{ current.questionCount }}</strong> 次
+                </span>
+                <RouterLink
+                  v-if="current.sampleQuestion"
+                  :to="{ path: '/practice', query: { examRef: current.sampleQuestion.examRef } }"
+                  class="inline-flex items-center gap-1 no-underline transition hover:text-[var(--k-accent-text)]"
+                >
+                  最近：{{ current.sampleQuestion.year }} 年第
+                  {{ current.sampleQuestion.number }} 题 →
+                </RouterLink>
+              </template>
+              <span v-else>该知识点暂无关联真题</span>
+
+              <RouterLink
+                :to="`/learn/${current.pointId}`"
+                class="ml-auto inline-flex items-center gap-1 no-underline transition hover:text-[var(--k-accent-text)]"
+              >
+                看原文 →
+              </RouterLink>
             </div>
           </article>
 
