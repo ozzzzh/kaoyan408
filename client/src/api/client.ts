@@ -190,4 +190,24 @@ export const api = {
     request<PointMastery>(
       `/api/v1/stats/points${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`,
     ),
+
+  /* ---------- 个人数据管理 ---------- */
+
+  /** 各类个人数据的条数，用于显示「将删除 N 条」。 */
+  userDataCounts: () =>
+    request<{
+      attempts: number
+      blockProgress: number
+      dailyStats: number
+      memoryCards: number
+    }>('/api/v1/user/data/counts'),
+
+  /** 导出全部个人数据。 */
+  userDataExport: () => request<Record<string, unknown>>('/api/v1/user/data/export'),
+
+  /** 清空个人数据。scope：attempts（作答 + 掌握度 + 每日统计）/ memory / all */
+  userDataClear: (scope: 'attempts' | 'memory' | 'all') =>
+    request<Record<string, number>>(`/api/v1/user/data/clear?scope=${scope}`, {
+      method: 'DELETE',
+    }),
 }
