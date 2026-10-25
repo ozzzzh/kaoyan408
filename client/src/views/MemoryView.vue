@@ -378,12 +378,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
       <!--
         复习区：三栏布局。
-        原来卡片只有 max-w-2xl 居中、两侧各空约 250px，整页显得空。
-        改为 左栏(本轮进度) + 卡片 + 右栏(记忆分布)，卡片加宽到 720px。
+        左右栏由 200px 收到 170px，把省下的宽度给卡片（720 → 840px）：
+        背卡片是「扫一眼」的场景，卡片与字号都大一点更舒服。
       -->
       <div
         v-else-if="current"
-        class="grid items-start gap-5 xl:grid-cols-[200px_minmax(0,1fr)_200px]"
+        class="grid items-start gap-5 xl:grid-cols-[170px_minmax(0,1fr)_170px]"
       >
         <!-- 左栏：本轮进度（窄屏隐藏，避免挤压卡片） -->
         <aside class="hidden space-y-3 xl:block">
@@ -432,7 +432,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </aside>
 
         <!-- 中间：卡片 -->
-        <div class="mx-auto w-full max-w-[720px] space-y-4">
+        <div class="mx-auto w-full max-w-[840px] space-y-4">
           <div class="flex items-center justify-between text-xs text-[var(--k-text-faint)]">
             <span class="tabular-nums xl:hidden">{{ progress }}</span>
             <span class="hidden xl:inline">{{ current.pointTitle }}</span>
@@ -445,74 +445,102 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           </div>
 
           <!--
-            固定最小高度：翻面前后卡片等高，避免答案出现时页面跳动。
-            原先用 mt-8 撑开，翻面后内容变高，整块会向下抖一下。
+            卡片改为「翻卡片」的观感：
+            - 阴影 + 较明显的边框，让卡片从背景里浮起来
+            - 顶部一条进度线，融入卡片上沿（不额外占高度）
+            - 高度不再写死：有 min-h 兜底（防抖动），内容多时自然撑高；
+              正文区若超出则内部滚动，不会把页面拉得很长。
+            - 翻面用轻微过渡，不是硬切。
           -->
           <article
-            class="flex min-h-[380px] flex-col rounded-2xl border border-[var(--k-border)] bg-[var(--k-surface)] px-6 py-8 md:px-8 md:py-10"
+            class="relative flex min-h-[340px] flex-col overflow-hidden rounded-2xl border border-[var(--k-border-strong)] bg-[var(--k-surface)] shadow-[0_8px_28px_rgba(20,32,60,0.10)] transition-shadow duration-200 dark:shadow-[0_8px_28px_rgba(0,0,0,0.35)]"
           >
-            <p class="mb-3 flex flex-wrap items-center gap-2 text-xs">
-              <span
-                class="rounded bg-[var(--k-chip)] px-2 py-0.5 font-medium text-[var(--k-text-muted)]"
-              >
-                {{ parseCard(current).hint }}
-              </span>
-              <span class="text-[var(--k-text-faint)]">
-                {{ SUBJECT_SHORT[current.subject] ?? current.subject }}
-              </span>
-              <RouterLink
-                :to="`/learn/${current.pointId}`"
-                class="text-[var(--k-accent-text)] no-underline hover:underline"
-              >
-                {{ current.pointTitle }} →
-              </RouterLink>
-            </p>
+            <!-- 顶部进度线：贴在卡片上沿 -->
+            <div class="h-1 w-full shrink-0 bg-[var(--k-track)]">
+              <div
+                class="h-full bg-[var(--k-accent)] transition-[width] duration-300"
+                :style="{ width: progressPercent + '%' }"
+              />
+            </div>
 
-            <h2 class="text-lg font-bold leading-snug text-[var(--k-text)]">
-              {{ parseCard(current).title }}
-            </h2>
+            <div class="flex flex-1 flex-col px-7 py-7 md:px-10 md:py-8">
+              <p class="mb-4 flex flex-wrap items-center gap-2 text-xs">
+                <span
+                  class="rounded bg-[var(--k-chip)] px-2 py-0.5 font-medium text-[var(--k-text-muted)]"
+                >
+                  {{ parseCard(current).hint }}
+                </span>
+                <span class="text-[var(--k-text-faint)]">
+                  {{ SUBJECT_SHORT[current.subject] ?? current.subject }}
+                </span>
+                <RouterLink
+                  :to="`/learn/${current.pointId}`"
+                  class="text-[var(--k-accent-text)] no-underline hover:underline"
+                >
+                  {{ current.pointTitle }} →
+                </RouterLink>
+              </p>
+
+              <!-- 标题加大到 22px：扫一眼就能抓住要点 -->
+              <h2 class="text-[22px] font-bold leading-snug text-[var(--k-text)]">
+                {{ parseCard(current).title }}
+              </h2>
 
             <!-- 先回忆，再翻面 -->
-            <div v-if="!revealed" class="flex flex-1 flex-col items-center justify-center text-center">
-              <p class="text-sm text-[var(--k-text-faint)]">先在心里回想一遍，再翻面核对</p>
+            <!-- 未翻面：提示与按钮整体垂直居中，短卡片不会显得上重下空 -->
+            <div v-if="!revealed" class="flex flex-1 flex-col items-center justify-center py-6 text-center">
+              <p class="text-[15px] text-[var(--k-text-faint)]">先在心里回想一遍，再翻面核对</p>
               <button
-                class="mt-4 rounded-xl bg-[var(--k-accent)] px-7 py-3 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)]"
+                class="mt-5 rounded-xl bg-[var(--k-accent)] px-8 py-3.5 text-[15px] font-semibold text-white transition hover:bg-[var(--k-accent-hover)]"
                 @click="revealed = true"
               >
                 显示答案
               </button>
-              <p class="mt-3 text-[11px] text-[var(--k-text-faint)]">
+              <p class="mt-4 text-[11px] text-[var(--k-text-faint)]">
                 或按 <kbd class="rounded border border-[var(--k-border)] px-1.5 py-0.5">空格</kbd> 翻面
               </p>
             </div>
 
-            <div v-else class="mt-5 flex-1">
-              <p
-                class="text-[16px] leading-[1.9] text-[var(--k-text)] [&_code]:rounded [&_code]:bg-[var(--k-chip)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[.9em]"
-                v-html="renderBody(parseCard(current).body)"
-              ></p>
+            <!--
+              已翻面：正文垂直居中（短内容不贴上、长内容内部滚动）。
+              字号 16 → 18px，行距 1.9：背卡片是扫读场景，字大一点更省力。
+            -->
+            <div v-else class="flex flex-1 flex-col justify-center py-2">
+              <div class="max-h-[46vh] overflow-y-auto pr-1">
+                <p
+                  class="text-[18px] leading-[1.85] text-[var(--k-text)] [&_code]:rounded [&_code]:bg-[var(--k-chip)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[.9em]"
+                  v-html="renderBody(parseCard(current).body)"
+                ></p>
+              </div>
+            </div>
+
+            <!--
+              标记按钮移进卡片底部：卡片成为完整闭环，视线不必在卡片与下方按钮间来回。
+              与正文之间加一条分隔线，明确区分「读」与「评」。
+            -->
+            <div
+              v-if="revealed"
+              class="mt-6 flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-[var(--k-border)] pt-5"
+            >
+              <button
+                class="flex-1 rounded-xl border border-[#b23c3c]/40 bg-[#b23c3c]/8 px-6 py-3 text-[15px] font-semibold text-[#b23c3c] transition hover:bg-[#b23c3c]/14 disabled:opacity-50 sm:flex-none dark:text-[#f87171]"
+                :disabled="busy"
+                @click="review(false)"
+              >
+                没记住 · 明天再来
+                <kbd class="ml-1.5 rounded border border-current/30 px-1 text-[10px] opacity-60">1</kbd>
+              </button>
+              <button
+                class="flex-1 rounded-xl border border-[#0f7a4d]/40 bg-[#0f7a4d]/8 px-6 py-3 text-[15px] font-semibold text-[#0f7a4d] transition hover:bg-[#0f7a4d]/14 disabled:opacity-50 sm:flex-none dark:text-[#4ade80]"
+                :disabled="busy"
+                @click="review(true)"
+              >
+                记住了 · 拉长间隔
+                <kbd class="ml-1.5 rounded border border-current/30 px-1 text-[10px] opacity-60">2</kbd>
+              </button>
+            </div>
             </div>
           </article>
-
-          <!-- 标记：键盘快捷键与按钮并存 -->
-          <div v-if="revealed" class="flex flex-wrap items-center justify-center gap-3">
-            <button
-              class="flex-1 rounded-xl border border-[#b23c3c]/40 bg-[#b23c3c]/8 px-6 py-3 text-sm font-semibold text-[#b23c3c] transition hover:bg-[#b23c3c]/14 disabled:opacity-50 sm:flex-none dark:text-[#f87171]"
-              :disabled="busy"
-              @click="review(false)"
-            >
-              没记住 · 明天再来
-              <kbd class="ml-1.5 rounded border border-current/30 px-1 text-[10px] opacity-60">1</kbd>
-            </button>
-            <button
-              class="flex-1 rounded-xl border border-[#0f7a4d]/40 bg-[#0f7a4d]/8 px-6 py-3 text-sm font-semibold text-[#0f7a4d] transition hover:bg-[#0f7a4d]/14 disabled:opacity-50 sm:flex-none dark:text-[#4ade80]"
-              :disabled="busy"
-              @click="review(true)"
-            >
-              记住了 · 拉长间隔
-              <kbd class="ml-1.5 rounded border border-current/30 px-1 text-[10px] opacity-60">2</kbd>
-            </button>
-          </div>
 
           <!-- 上次操作结果 + 撤回 -->
           <div
