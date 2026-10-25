@@ -42,32 +42,62 @@ function highlight(text: string | null | undefined): string {
   return escaped.replace(pattern, '<mark class="k-hit">$1</mark>')
 }
 
+/**
+ * 已经执行过搜索的关键词。
+ *
+ * 不能用 `q !== keyword.value` 做去重判断：输入框是 v-model 双向绑定，
+ * 用户点「搜索」时 keyword 已经等于要搜的词，那个判断恒为 false，
+ * 于是 runSearch 根本不会被调用——URL 变了、结果却没出来，只能刷新页面
+ * （刷新走 onMounted 那条路径）才看到结果。这里单独记录「上次实际搜过什么」。
+ */
+const lastQuery = ref('')
+
 async function runSearch(q: string) {
   const trimmed = q.trim()
   if (!trimmed) {
     result.value = null
     searched.value = false
+    lastQuery.value = ''
+    return
+  }
+  // 同一个词已经搜过就不重复请求（例如输入框失焦、路由回退等触发的重复调用）
+  if (trimmed === lastQuery.value && result.value) {
     return
   }
   loading.value = true
   searched.value = true
   try {
     result.value = await api.search(trimmed)
+    lastQuery.value = trimmed
   } catch {
     result.value = null
+    lastQuery.value = ''
   } finally {
     loading.value = false
   }
 }
 
+/** 提交：立刻发起搜索，不等 watch 回调（避免依赖路由变化的时序）。 */
 function submit() {
   const q = keyword.value.trim()
   if (!q) return
+  // 关键词没变时也要重新搜——用户可能就是想「再搜一次」
+  if (q === lastQuery.value) {
+    void runSearch(q)
+    return
+  }
   router.replace({ path: '/search', query: { q } })
+  void runSearch(q)
 }
 
 /** 示例词，空状态时给用户一个起点。 */
 const examples = ['KMP', '银行家算法', 'CRC', '子网掩码', '2026 3', '死锁']
+
+/** 点示例词：填入并直接搜索，不经过路由（少一次时序依赖）。 */
+function pickExample(word: string) {
+  keyword.value = word
+  submit()
+}
 
 onMounted(() => runSearch(keyword.value))
 
@@ -75,8 +105,10 @@ watch(
   () => route.query.q,
   (next) => {
     const q = typeof next === 'string' ? next : ''
-    if (q !== keyword.value) {
-      keyword.value = q
+    // 只同步输入框；搜索由 submit() 或 onMounted 负责。
+    // 这里再调一次 runSearch 会在「点搜索」时产生重复请求。
+    keyword.value = q
+    if (q && q !== lastQuery.value) {
       void runSearch(q)
     }
   },
@@ -123,7 +155,7 @@ watch(
           v-for="word in examples"
           :key="word"
           class="rounded-full border border-[var(--k-border)] px-3 py-1 text-[var(--k-text-muted)] transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)]"
-          @click="((keyword = word), submit())"
+          @click="pickExample(word)"
         >
           {{ word }}
         </button>
