@@ -31,6 +31,10 @@ services:
       DB_PASSWORD: "${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}"
       JWT_SECRET: "${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}"
       JWT_EXPIRE_SECONDS: "604800"
+      # 部署地址必须显式加入 CORS 白名单，否则浏览器发起的 POST 会被判为跨域并返回 403。
+      # 本地 localhost / 127.0.0.1 已在代码里默认放行；这里填实际访问地址，
+      # 多个用逗号分隔，例如：http://10.0.219.241:17073,https://your.domain
+      KAOYAN_CORS_ORIGINS: "${CORS_ORIGINS:-}"
     depends_on:
       db:
         condition: service_healthy
