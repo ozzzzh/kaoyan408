@@ -65,6 +65,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/user/**").authenticated()
                         // 背诵卡片是用户私有数据，全部需要登录
                         .requestMatchers("/api/v1/memory/**").authenticated()
+                        // 模拟考试记录挂在账号下，全部需要登录
+                        .requestMatchers("/api/v1/mock/**").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/v1/questions/*/answer").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

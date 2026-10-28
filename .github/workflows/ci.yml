@@ -217,6 +217,29 @@ jobs:
       - name: 试卷结构回归（18 卷）
         run: node scripts/verify-exams-view.mjs
 
+      - name: 模拟考试回归（开考/答题/交卷/自评/历史/越权）
+        run: node scripts/verify-mock-exam.mjs
+
+      - name: 模拟考试健壮性（刷新恢复/超时/不限时）
+        env:
+          # 需要连库制造「超时」场景并校验唯一约束
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          DB_NAME: kaoyan_db
+        run: node scripts/verify-mock-robust.mjs
+
+      - name: 模拟考试判分准确性
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          DB_NAME: kaoyan_db
+        run: node scripts/verify-mock-scoring.mjs
+
+
       - name: 知识点关联一致性回归
         env:
           # 这一步需要连库比对「正文页 questionCount」与数据库去重真值，

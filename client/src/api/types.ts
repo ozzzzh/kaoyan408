@@ -347,3 +347,58 @@ export interface LoginResult {
   expiresIn: number
   user: AuthUser
 }
+/* ---------- 模拟考试 ---------- */
+
+/** 考试中的一道题。标准答案与解析只在交卷后才由服务端下发。 */
+export interface MockQuestion {
+  id: string
+  number: number
+  subject: string
+  chapterName: string | null
+  questionType: 'choice' | 'comprehensive' | string
+  score: number
+  stem: string
+  imagePaths: string[]
+  options: QuestionOption[]
+  subQuestions: SubQuestion[]
+  /** 我填的答案；未作答为 null */
+  myAnswer: string | null
+  /** 交卷后才有：选择题 1/0，综合题为 null */
+  correct: number | null
+  /** 综合题自评分 */
+  selfScore: number | null
+  /** 交卷后才有 */
+  standardAnswer?: string | null
+  explanation?: string | null
+}
+
+export interface MockState {
+  sessionId: number
+  examYear: number
+  status: 'ongoing' | 'submitted' | string
+  startedAt: string
+  durationMinutes: number
+  /** 剩余秒数；不限时为 -1，已交卷为 0 */
+  remainingSeconds: number
+  submittedAt: string | null
+  timedOut: boolean
+  /** 选择题自动得分（满分 80） */
+  autoScore: number
+  /** 综合题自评得分（满分 70） */
+  selfScore: number
+  choiceFullScore: number
+  items: MockQuestion[]
+}
+
+export interface MockHistoryItem {
+  sessionId: number
+  examYear: number
+  startedAt: string
+  submittedAt: string
+  durationMinutes: number
+  autoScore: number
+  selfScore: number
+  timedOut: number
+  correctCount: number
+  answeredChoice: number
+}

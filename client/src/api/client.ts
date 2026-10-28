@@ -10,6 +10,8 @@ import type {
   LoginResult,
   MemoryDue,
   MemorySummary,
+  MockHistoryItem,
+  MockState,
   PointMastery,
   PracticeEntrances,
   PracticeQueue,
@@ -210,4 +212,35 @@ export const api = {
     request<Record<string, number>>(`/api/v1/user/data/clear?scope=${scope}`, {
       method: 'DELETE',
     }),
+
+  /* ---------- 模拟考试 ---------- */
+
+  /** 开始考试；该年份已有进行中的场次会直接返回它。minutes=0 表示不限时。 */
+  mockStart: (year: number, minutes = 180) =>
+    post<MockState>(`/api/v1/mock/start?year=${year}&minutes=${minutes}`, {}),
+
+  /** 恢复考试现场。 */
+  mockState: (sessionId: number) => request<MockState>(`/api/v1/mock/${sessionId}`),
+
+  /** 保存单题答案。 */
+  mockAnswer: (sessionId: number, examRef: string, answer: string) =>
+    post<{ saved: boolean; remainingSeconds: number }>(
+      `/api/v1/mock/${sessionId}/answer?examRef=${encodeURIComponent(examRef)}&answer=${encodeURIComponent(answer)}`,
+      {},
+    ),
+
+  /** 交卷。 */
+  mockSubmit: (sessionId: number, timedOut = false) =>
+    post<MockState>(`/api/v1/mock/${sessionId}/submit?timedOut=${timedOut}`, {}),
+
+  /** 综合题自评。 */
+  mockGrade: (sessionId: number, examRef: string, score: number) =>
+    post<{ selfScore: number; sessionSelfScore: number }>(
+      `/api/v1/mock/${sessionId}/grade?examRef=${encodeURIComponent(examRef)}&score=${score}`,
+      {},
+    ),
+
+  /** 历史成绩。 */
+  mockHistory: (limit = 20) =>
+    request<{ total: number; items: MockHistoryItem[] }>(`/api/v1/mock/history?limit=${limit}`),
 }
