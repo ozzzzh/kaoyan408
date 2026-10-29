@@ -16,11 +16,21 @@ const post = async (p, h, b) => {
 }
 
 const stamp = Date.now()
-const EMAIL = `verify${stamp}@example.com`
+/**
+ * 测试用邮箱。
+ *
+ * 默认用 example.com 这个保留域名：smtp 模式下 QQ 邮箱会退回发信，
+ * 不会打扰真实收件箱；mock 模式下无所谓。
+ * 想验证真实投递时传 VERIFY_EMAIL=你的邮箱，把收到的验证码用 VERIFY_CODE 传进来，
+ * 脚本会跳过读库、直接用你给的那个码（因为真发信的码只有收件人看得到）。
+ */
+const EMAIL = process.env.VERIFY_EMAIL || `verify${stamp}@example.com`
 const USER = `vuser${stamp % 100000}`
+const PRESET_CODE = process.env.VERIFY_CODE || null
 
-/** 从数据库读验证码（mock 模式等价于读服务端日志） */
+/** 从数据库读验证码（与服务端存的同一份，mock 与 smtp 都适用） */
 async function getCode(db, email) {
+  if (PRESET_CODE) return PRESET_CODE
   const [rows] = await db.query(
     'SELECT code FROM verify_code WHERE target = ? AND channel = ?', [email.toLowerCase(), 'email'])
   return rows.length ? rows[0].code : null
@@ -32,7 +42,10 @@ const main = async () => {
   console.log('\n=== 1. 发送验证码 ===')
   const send = await post('/auth/send-mail-code', {}, { email: EMAIL })
   ok(send.code === 0, '发码成功', send.data?.message)
-  ok(send.data.mock === true, '处于 mock 模式（不真发信）')
+  // 不限定 mock/smtp：两种模式都应能完成注册流程。
+  // 早先这里断言 mock === true，配置真实 SMTP 后必然失败——
+  // 那是把「本地调试的临时状态」写成了产品约束。
+  ok(typeof send.data.mock === 'boolean', '如实告知投递模式', send.data.mock ? 'mock' : 'smtp')
   ok(send.data.cooldownSeconds === 60, '返回 60 秒冷却', String(send.data.cooldownSeconds))
 
   const code = await getCode(db, EMAIL)

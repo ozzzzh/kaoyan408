@@ -74,6 +74,10 @@ kaoyan:
     hourly-limit-per-ip: ${MAIL_HOURLY_LIMIT_PER_IP:10}
     # 发件人；留空则自动用 spring.mail.username
     from: ${MAIL_FROM:}
+    # 收件人看到的发件人名称。只给裸地址时，邮箱客户端会显示
+    # 「你给这个地址起的备注」（QQ 里就显示成备注名），看起来像陌生人来信。
+    sender-name: ${MAIL_SENDER_NAME:题知链平台}
+    subject: ${MAIL_SUBJECT:题知链平台 · 注册验证码}
 
 logging:
   level:

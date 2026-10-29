@@ -93,8 +93,15 @@ export const api = {
   login: (username: string, password: string) =>
     post<LoginResult>('/api/v1/auth/login', { username, password }),
 
-  register: (username: string, email: string, password: string) =>
-    post<LoginResult>('/api/v1/auth/register', { username, email, password }),
+  register: (username: string, email: string, password: string, code: string) =>
+    post<LoginResult>('/api/v1/auth/register', { username, email, password, code }),
+
+  /** 发送邮箱注册验证码。mock 模式下不真发信，验证码在服务端日志里。 */
+  sendMailCode: (email: string) =>
+    post<{ cooldownSeconds: number; mock: boolean; message: string }>(
+      '/api/v1/auth/send-mail-code',
+      { email },
+    ),
 
   currentUser: () => request<AuthUser>('/api/v1/user/current'),
 
@@ -104,8 +111,14 @@ export const api = {
 
   exam: (year: number) => request<ExamDetail>(`/api/v1/exams/${year}`),
 
-  question: (examRef: string, reveal = 0) =>
-    request<QuestionView>(`/api/v1/questions/${encodeURIComponent(examRef)}?reveal=${reveal}`),
+  /**
+   * 单题详情。
+   * memorize=true 时后端直接返回答案与解析（背题模式用），否则只有作答后才返回。
+   */
+  question: (examRef: string, reveal = 0, memorize = false) =>
+    request<QuestionView>(
+      `/api/v1/questions/${encodeURIComponent(examRef)}?reveal=${reveal}&memorize=${memorize}`,
+    ),
 
   submitAnswer: (examRef: string, answer: string, durationMs?: number) =>
     post<AnswerResult>(`/api/v1/questions/${encodeURIComponent(examRef)}/answer`, {
@@ -243,4 +256,17 @@ export const api = {
   /** 历史成绩。 */
   mockHistory: (limit = 20) =>
     request<{ total: number; items: MockHistoryItem[] }>(`/api/v1/mock/history?limit=${limit}`),
+
+  /**
+   * 视频指引：按题目关联的知识点生成 B 站搜索入口。
+   * 返回的是搜索链接，不是课程播放地址——本站不托管第三方课程内容。
+   */
+  videoGuide: (examRef: string) =>
+    request<{
+      examRef: string
+      subjectName: string
+      chapterName: string | null
+      points: { title: string; subpointTitle: string | null }[]
+      sources: { teacher: string; keyword: string; url: string }[]
+    }>(`/api/v1/questions/${encodeURIComponent(examRef)}/video-guide`),
 }

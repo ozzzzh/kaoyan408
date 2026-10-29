@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 背诵卡片间隔重复回归：
  *   记住了 → 盒号递增、间隔拉长
  *   没记住 → 退回 0 盒、明天再复习
@@ -53,6 +53,24 @@ if (!queue.total) {
 }
 const cards = (await due()).items
 const card = cards[0]
+
+/**
+ * 把测试卡片的盒号重置为 0。
+ *
+ * 这个用例断言的是「从 0 盒开始连续记住，间隔按 0,1,2,4,7,15,30,60 推进」。
+ * 但库里的卡片可能已经被其它操作推到 1 盒以上——不重置的话，
+ * 断言会从 box=2 开始比对，报一堆看似功能坏了的失败，实际上是测试前置没做干净。
+ * 直接改库而不是靠接口：没有「把卡片打回 0 盒」的公开接口，也不该为测试加一个。
+ */
+{
+  const { connect } = await import('./_env.mjs')
+  const db = await connect()
+  await db.query('UPDATE memory_card SET box = 0, next_review_date = CURDATE() WHERE id = ?', [card.cardId])
+  await db.end()
+  const refreshed = (await due()).items.find((c) => c.cardId === card.cardId)
+  if (refreshed) card.box = refreshed.box
+}
+
 console.log(`测试卡片 cardId=${card.cardId} 起始 box=${card.box}\n`)
 
 // --- 连续答对：间隔应按盒号推进 ---

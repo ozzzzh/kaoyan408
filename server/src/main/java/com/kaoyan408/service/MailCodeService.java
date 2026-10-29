@@ -8,10 +8,13 @@ import com.kaoyan408.mapper.VerifyCodeMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -70,6 +73,14 @@ public class MailCodeService {
     /** 发件人地址；留空时回落到 spring.mail.username。 */
     @Value("${kaoyan.mail.from:}")
     private String mailFrom;
+
+    /** 发件人显示名。收件人看到的「谁发的」就是这里，配置项见 application.yml。 */
+    @Value("${kaoyan.mail.sender-name:题知链平台}")
+    private String senderName;
+
+    /** 邮件主题。 */
+    @Value("${kaoyan.mail.subject:题知链平台 · 注册验证码}")
+    private String subject;
 
     @Value("${spring.mail.username:}")
     private String mailUsername;
@@ -184,20 +195,31 @@ public class MailCodeService {
             return;
         }
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            String from = mailFrom != null && !mailFrom.isBlank() ? mailFrom : mailUsername;
-            if (from != null && !from.isBlank()) {
-                message.setFrom(from);
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+
+            // 发件人必须带显示名：只给裸地址时，各大邮箱会显示「收件人自己给这个地址起的备注」
+            // （QQ 邮箱里就显示成备注「华」），看起来像陌生人发来的钓鱼邮件。
+            // 用 InternetAddress 构造，显示名走 UTF-8 编码，中文才不会乱码。
+            String fromAddr = mailFrom != null && !mailFrom.isBlank() ? mailFrom : mailUsername;
+            if (fromAddr != null && !fromAddr.isBlank()) {
+                helper.setFrom(new InternetAddress(fromAddr, senderName, "UTF-8"));
             }
-            message.setTo(email);
-            message.setSubject("考研 408 工作台 · 注册验证码");
-            message.setText("你的验证码是：" + code + "\n\n有效期 " + (codeExpireSeconds / 60)
-                    + " 分钟。若非本人操作请忽略本邮件。");
+            helper.setTo(email);
+            helper.setSubject(subject);
+            helper.setText(buildMailBody(code), false);
             mailSender.send(message);
             log.info("验证码已发送 email={} time={}", email, LocalDateTime.now().format(LOG_FMT));
         } catch (Exception e) {
             log.error("验证码发送失败 email={} error={}", email, e.getMessage());
             throw new BusinessException(500, "验证码发送失败，请稍后重试。");
         }
+    }
+
+    /** 邮件正文。纯文本，避免各家邮箱对 HTML 的渲染差异。 */
+    private String buildMailBody(String code) {
+        return "你的验证码是：" + code + "\n\n"
+                + "有效期 " + (codeExpireSeconds / 60) + " 分钟。\n"
+                + "若非本人操作请忽略本邮件。";
     }
 }
