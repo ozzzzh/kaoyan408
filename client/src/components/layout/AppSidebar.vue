@@ -205,6 +205,18 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
           登录
         </RouterLink>
       </div>
+
+      <!-- 落地页入口：工作台固定在 /，落地页在 /welcome，这里给个明确去处 -->
+      <RouterLink
+        to="/welcome"
+        class="mt-1.5 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[11px] text-[var(--k-text-faint)] no-underline transition-colors hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-accent)]"
+      >
+        <svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="1.9">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 7.6v.4" stroke-linecap="round" />
+        </svg>
+        了解题知链
+      </RouterLink>
     </div>
   </aside>
 </template>

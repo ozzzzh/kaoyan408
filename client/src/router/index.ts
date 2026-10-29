@@ -1,5 +1,4 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { getToken } from '@/api/client'
 
 /**
  * 用 hash 路由：部署到任意静态目录都能直接打开（无 nginx rewrite 依赖）。
@@ -12,10 +11,15 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
+      // 工作台固定占用根路径。
+      //
+      // 之前试过「未登录时 / 分流到落地页」，结果是游客点侧边栏的「工作台」
+      // 会被守卫拦回落地页，等于把工作台弄没了。工作台是主入口，
+      // 不该因为登录状态而消失，所以 / 永远是工作台。
+      // 落地页放在 /welcome，从首页 Logo 或直接输入地址进入。
       path: '/',
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
-      // 未登录时改由落地页承接，见下方 beforeEach
     },
     // 独立路由：落地页不套工作台侧边栏外壳
     {
@@ -50,24 +54,6 @@ const router = createRouter({
     if (to.name === from.name && to.path === from.path) return false
     return { top: 0 }
   },
-})
-
-/**
- * 未登录访问根路径时改看落地页。
- *
- * 只拦 `/` 这一条：其它页面（刷题、真题、知识点）游客本来就能用，
- * 不该因为没登录被推走。已登录用户访问 /welcome 则直接送回工作台，
- * 避免登录后还停留在营销页。
- */
-router.beforeEach((to) => {
-  const hasToken = Boolean(getToken())
-  if (to.name === 'dashboard' && !hasToken) {
-    return { name: 'landing', replace: true }
-  }
-  if (to.name === 'landing' && hasToken) {
-    return { name: 'dashboard', replace: true }
-  }
-  return true
 })
 
 export default router

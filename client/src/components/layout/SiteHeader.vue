@@ -103,7 +103,7 @@ const navItems = [
         </button>
 
         <RouterLink
-          to="/practice"
+          to="/"
           class="hidden items-center gap-1.5 rounded-[11px] bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-[var(--k-on-accent)] no-underline transition-colors hover:bg-[var(--k-accent-hover)] sm:inline-flex"
         >
           进入工作台
@@ -138,7 +138,7 @@ const navItems = [
         {{ item.label }}
       </button>
       <RouterLink
-        to="/practice"
+        to="/"
         class="mt-2 block rounded-[11px] bg-[var(--k-accent)] px-4 py-2.5 text-center text-sm font-semibold text-[var(--k-on-accent)] no-underline"
       >
         进入工作台 →
