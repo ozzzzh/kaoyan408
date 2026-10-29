@@ -200,10 +200,31 @@ jobs:
              SELECT CONCAT('已应用迁移=', COUNT(*)) FROM flyway_schema_history WHERE success = 1;"
 
       - name: 注册一个测试账号（接口回归需要登录态）
+        env:
+          # 注册现在需要邮箱验证码。CI 里用 mock 模式（默认 MAIL_MODE=mock），
+          # 验证码不投递、只落在 verify_code 表，这里发码后再查库取出并完成注册。
+          MYSQL_PWD: ci-root-password
         run: |
+          set -euo pipefail
+          EMAIL="t@example.com"
+
+          curl -sS -X POST http://127.0.0.1:8080/api/v1/auth/send-mail-code \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"${EMAIL}\"}"
+          echo
+
+          CODE=$(mysql -h 127.0.0.1 -P 3306 -uroot -N -B kaoyan_db \
+            -e "SELECT code FROM verify_code WHERE target='${EMAIL}' AND channel='email' LIMIT 1")
+          if [ -z "$CODE" ]; then
+            echo "未能从 verify_code 取到验证码，注册无法继续"
+            exit 1
+          fi
+          echo "取到验证码: ${CODE}"
+
           curl -sS -X POST http://127.0.0.1:8080/api/v1/auth/register \
             -H 'Content-Type: application/json' \
-            -d '{"username":"tester01","email":"t@example.com","password":"test123456"}'
+            -d "{\"username\":\"tester01\",\"email\":\"${EMAIL}\",\"password\":\"test123456\",\"code\":\"${CODE}\"}"
+          echo
 
       - name: 搜索回归（中英文 / 题号 / 相关性 / 片段质量）
         run: node scripts/verify-search.mjs
