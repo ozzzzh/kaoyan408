@@ -32,7 +32,7 @@ const main = async () => {
   ok(Array.isArray(ans.data.blocks) && ans.data.blocks.length === 0, '不返回知识点掌握（游客无记录）')
 
   console.log('\n=== 2. 游客答题不写入数据库 ===')
-  const { connect } = await import('file:///D:/agentwork/项目2/408kaoyan/scripts/_env.mjs')
+  const { connect } = await import('./_env.mjs')
   const db = await connect()
   const [before] = await db.query('SELECT COUNT(*) AS n FROM question_attempt')
   await post(`/questions/${firstChoice.id}/answer`, { answer: 'B' })
