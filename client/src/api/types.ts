@@ -331,7 +331,12 @@ export interface AnswerResult {
   explanation: string | null
   firstAttempt: boolean
   blocks: Array<{ blockId: string; total: number; done: number; correct: number }>
-  stats: Dashboard
+  /** 游客作答时不返回（未登录没有可统计的数据） */
+  stats?: Dashboard
+  /** 游客结果标记：判分照常，但不写任何记录 */
+  guest?: boolean
+  /** 结果是否已保存到账号；游客为 false */
+  saved?: boolean
 }
 
 export interface AuthUser {

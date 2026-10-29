@@ -161,13 +161,17 @@ public class QuestionService {
      */
     @Transactional
     public Map<String, Object> submit(Long userId, Question question, String answer, Integer durationMs) {
-        if (userId == null) {
-            throw new BusinessException(401, "请先登录后再作答。");
-        }
         boolean isChoice = "choice".equals(question.getQuestionType());
         String standard = question.getAnswer() == null ? null : question.getAnswer().trim();
         boolean correct = !isChoice || (answer != null && standard != null
                 && standard.equalsIgnoreCase(answer.trim()));
+
+        // 游客：只判分并返回解析，不写任何记录。
+        // 之前这里直接抛 401，导致游客能打开刷题页却答不出结果，体验是断的。
+        // 判分逻辑与登录用户完全一致，差别只在于「不落库」。
+        if (userId == null) {
+            return guestResult(question, answer, correct, standard);
+        }
 
         QuestionAttempt attempt = attemptOf(userId, question.getId());
         boolean firstAttempt = attempt == null;
@@ -238,6 +242,28 @@ public class QuestionService {
         payload.put("firstAttempt", firstAttempt);
         payload.put("blocks", blocks);
         payload.put("stats", statsService.dashboard(userId));
+        return payload;
+    }
+
+    /**
+     * 游客作答的结果：字段与登录用户保持一致，便于前端复用同一套渲染逻辑。
+     *
+     * <p>不提供的字段：blocks（知识点掌握）、stats（未登录时的统计恒为 0，给了反而误导）。
+     * 前端据此可以判断「这是游客，不显示保存相关提示」。
+     */
+    private Map<String, Object> guestResult(Question question, String answer,
+                                            boolean correct, String standard) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("questionId", question.getExamRef());
+        payload.put("correct", correct);
+        payload.put("standardAnswer", standard);
+        payload.put("explanation", question.getExplanation());
+        // 游客没有历史记录，每次都是「首次」
+        payload.put("firstAttempt", true);
+        payload.put("blocks", List.of());
+        // 明确告知前端：本次结果不会被保存
+        payload.put("guest", true);
+        payload.put("saved", false);
         return payload;
     }
 

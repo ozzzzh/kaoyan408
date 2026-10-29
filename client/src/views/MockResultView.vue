@@ -21,6 +21,8 @@ const subjectName = (code: string) =>
   ({ ds: '数据结构', os: '操作系统', co: '计算机组成原理', cn: '计算机网络' })[code] ?? code
 
 const items = computed(() => state.value?.items ?? [])
+/** 游客场次：会话 id 为负（服务端用负数区分内存态） */
+const isGuest = computed(() => sessionId < 0)
 const choiceItems = computed(() => items.value.filter((i) => i.questionType === 'choice'))
 const comprehensiveItems = computed(() =>
   items.value.filter((i) => i.questionType === 'comprehensive'),
@@ -116,6 +118,7 @@ onMounted(load)
         <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">
           {{ state.examYear }} 年 408 模拟考试
           <span v-if="state.timedOut" class="ml-1 text-[var(--k-danger)]">（超时自动交卷）</span>
+          <span v-if="isGuest" class="ml-1 text-[var(--k-warn)]">（游客场次 · 成绩未保存）</span>
         </p>
 
         <div class="mt-3 flex items-end justify-center gap-1">
@@ -335,7 +338,7 @@ onMounted(load)
         </RouterLink>
         <RouterLink
           :to="`/mock/start?year=${state.examYear}`"
-          class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-white no-underline transition hover:bg-[var(--k-accent-hover)]"
+          class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--k-on-accent)] no-underline transition hover:bg-[var(--k-accent-hover)]"
         >
           再考一次
         </RouterLink>

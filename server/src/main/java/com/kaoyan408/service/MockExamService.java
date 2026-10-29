@@ -52,19 +52,23 @@ public class MockExamService {
     private final QuestionMapper questionMapper;
     private final QuestionOptionMapper optionMapper;
     private final QuestionSubQuestionMapper subquestionMapper;
+    /** 游客会话（内存态）。登录用户的会话仍走 sessionMapper。 */
+    private final GuestMockStore guestStore;
 
     public MockExamService(MockSessionMapper sessionMapper,
                            MockAnswerMapper answerMapper,
                            ExamYearMapper examYearMapper,
                            QuestionMapper questionMapper,
                            QuestionOptionMapper optionMapper,
-                           QuestionSubQuestionMapper subquestionMapper) {
+                           QuestionSubQuestionMapper subquestionMapper,
+                           GuestMockStore guestStore) {
         this.sessionMapper = sessionMapper;
         this.answerMapper = answerMapper;
         this.examYearMapper = examYearMapper;
         this.questionMapper = questionMapper;
         this.optionMapper = optionMapper;
         this.subquestionMapper = subquestionMapper;
+        this.guestStore = guestStore;
     }
 
     /** 开始一场考试。若该用户在此年份已有进行中的场次，直接返回那一场，避免重复开考。 */
@@ -74,6 +78,15 @@ public class MockExamService {
                 new QueryWrapper<ExamYear>().eq("year", year).last("LIMIT 1"));
         if (examYear == null) {
             throw new BusinessException(404, "未找到 " + year + " 年的试卷。");
+        }
+
+        // 游客：不开数据库记录，直接在内存里建一场。每次都是新的一场
+        //（游客没有身份，无法可靠识别「同一个人进行中的场次」）。
+        if (userId == null) {
+            int minutes = durationMinutes == null ? 180 : durationMinutes;
+            MockSession guest = guestStore.create(year,
+                    minutes == 0 ? 0 : Math.max(30, Math.min(300, minutes)));
+            return state(null, guest.getId());
         }
 
         MockSession existing = sessionMapper.selectOne(new QueryWrapper<MockSession>()
@@ -108,11 +121,19 @@ public class MockExamService {
     public Map<String, Object> state(Long userId, Long sessionId) {
         MockSession session = requireSession(userId, sessionId);
         boolean submitted = "submitted".equals(session.getStatus());
+        boolean guest = userId == null;
 
         Map<Long, MockAnswer> saved = new LinkedHashMap<>();
-        for (MockAnswer answer : answerMapper.selectList(
-                new QueryWrapper<MockAnswer>().eq("session_id", sessionId))) {
-            saved.put(answer.getQuestionId(), answer);
+        // 游客的作答不落库，答案随会话对象一并带在内存里
+        if (guest) {
+            for (MockAnswer answer : guestStore.answersOf(session.getId())) {
+                saved.put(answer.getQuestionId(), answer);
+            }
+        } else {
+            for (MockAnswer answer : answerMapper.selectList(
+                    new QueryWrapper<MockAnswer>().eq("session_id", sessionId))) {
+                saved.put(answer.getQuestionId(), answer);
+            }
         }
 
         List<Question> questions = questionsOf(session.getExamYear());
@@ -156,8 +177,11 @@ public class MockExamService {
         }
 
         Question question = requireQuestion(examRef);
-        MockAnswer existing = answerMapper.selectOne(new QueryWrapper<MockAnswer>()
-                .eq("session_id", sessionId).eq("question_id", question.getId()).last("LIMIT 1"));
+        boolean guest = userId == null;
+        MockAnswer existing = guest
+                ? guestStore.answerOf(sessionId, question.getId())
+                : answerMapper.selectOne(new QueryWrapper<MockAnswer>()
+                        .eq("session_id", sessionId).eq("question_id", question.getId()).last("LIMIT 1"));
         MockAnswer row = existing == null ? new MockAnswer() : existing;
         row.setSessionId(sessionId);
         row.setQuestionId(question.getId());
@@ -165,7 +189,10 @@ public class MockExamService {
             row.setAnswer(answer);
         }
         row.setUpdatedAt(LocalDateTime.now());
-        if (existing == null) {
+        if (guest) {
+            // 游客的作答只留在内存里，随会话一起被回收
+            guestStore.saveAnswer(sessionId, row);
+        } else if (existing == null) {
             answerMapper.insert(row);
         } else {
             answerMapper.updateById(row);
@@ -187,13 +214,16 @@ public class MockExamService {
 
         List<Question> questions = questionsOf(session.getExamYear());
         int autoScore = 0;
+        boolean guest = userId == null;
 
         for (Question question : questions) {
             if (!"choice".equals(question.getQuestionType())) {
                 continue;
             }
-            MockAnswer row = answerMapper.selectOne(new QueryWrapper<MockAnswer>()
-                    .eq("session_id", sessionId).eq("question_id", question.getId()).last("LIMIT 1"));
+            MockAnswer row = guest
+                    ? guestStore.answerOf(sessionId, question.getId())
+                    : answerMapper.selectOne(new QueryWrapper<MockAnswer>()
+                            .eq("session_id", sessionId).eq("question_id", question.getId()).last("LIMIT 1"));
             if (row == null || row.getAnswer() == null || row.getAnswer().isBlank()) {
                 continue;
             }
@@ -201,7 +231,11 @@ public class MockExamService {
                     && question.getAnswer().trim().equalsIgnoreCase(row.getAnswer().trim());
             row.setCorrect(correct ? 1 : 0);
             row.setUpdatedAt(LocalDateTime.now());
-            answerMapper.updateById(row);
+            if (guest) {
+                guestStore.saveAnswer(sessionId, row);
+            } else {
+                answerMapper.updateById(row);
+            }
             if (correct) {
                 autoScore += question.getScore() == null ? 0 : question.getScore();
             }
@@ -213,7 +247,10 @@ public class MockExamService {
         session.setSubmittedAt(LocalDateTime.now());
         session.setAutoScore(autoScore);
         session.setTimedOut(actualTimeout ? 1 : 0);
-        sessionMapper.updateById(session);
+        // 游客会话是内存对象，改完即生效，不需要（也不能）写库
+        if (!guest) {
+            sessionMapper.updateById(session);
+        }
 
         return state(userId, sessionId);
     }
@@ -246,33 +283,43 @@ public class MockExamService {
         }
         int full = question.getScore() == null ? 0 : question.getScore();
         int score = selfScore == null ? 0 : Math.max(0, Math.min(full, selfScore));
+        boolean guest = session.getId() != null && session.getId() < 0;
 
-        MockAnswer row = answerMapper.selectOne(new QueryWrapper<MockAnswer>()
-                .eq("session_id", session.getId()).eq("question_id", question.getId()).last("LIMIT 1"));
-        if (row == null) {
+        MockAnswer row = guest
+                ? guestStore.answerOf(session.getId(), question.getId())
+                : answerMapper.selectOne(new QueryWrapper<MockAnswer>()
+                        .eq("session_id", session.getId()).eq("question_id", question.getId()).last("LIMIT 1"));
+        boolean isNew = row == null;
+        if (isNew) {
             row = new MockAnswer();
             row.setSessionId(session.getId());
             row.setQuestionId(question.getId());
-            row.setSelfScore(score);
-            row.setUpdatedAt(LocalDateTime.now());
+        }
+        row.setSelfScore(score);
+        row.setUpdatedAt(LocalDateTime.now());
+        if (guest) {
+            guestStore.saveAnswer(session.getId(), row);
+        } else if (isNew) {
             answerMapper.insert(row);
         } else {
-            row.setSelfScore(score);
-            row.setUpdatedAt(LocalDateTime.now());
             answerMapper.updateById(row);
         }
 
         // 重算整场自评总分（避免累加漂移）
+        List<MockAnswer> all = guest
+                ? guestStore.answersOf(session.getId())
+                : answerMapper.selectList(
+                        new QueryWrapper<MockAnswer>().eq("session_id", session.getId()));
         int total = 0;
-        List<MockAnswer> all = answerMapper.selectList(
-                new QueryWrapper<MockAnswer>().eq("session_id", session.getId()));
         for (MockAnswer item : all) {
             if (item.getSelfScore() != null) {
                 total += item.getSelfScore();
             }
         }
         session.setSelfScore(total);
-        sessionMapper.updateById(session);
+        if (!guest) {
+            sessionMapper.updateById(session);
+        }
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("selfScore", score);
@@ -281,7 +328,18 @@ public class MockExamService {
     }
 
     private MockSession requireSession(Long userId, Long sessionId) {
-        MockSession session = sessionMapper.selectById(sessionId);
+        // 游客会话 id 为负、只在内存；登录用户会话 id 为正、走数据库。
+        // 两条路径都要校验归属，否则拿到别人的 id 就能看别人的卷。
+        if (userId == null) {
+            MockSession guest = guestStore.get(sessionId);
+            if (guest == null) {
+                throw new BusinessException(404, "未找到该场考试（游客场次不保留，请重新开始）。");
+            }
+            return guest;
+        }
+        MockSession session = sessionId == null || sessionId < 0
+                ? null
+                : sessionMapper.selectById(sessionId);
         if (session == null || !session.getUserId().equals(userId)) {
             throw new BusinessException(404, "未找到该场考试。");
         }

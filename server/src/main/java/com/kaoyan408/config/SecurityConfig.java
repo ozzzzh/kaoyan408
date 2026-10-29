@@ -65,9 +65,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/user/**").authenticated()
                         // 背诵卡片是用户私有数据，全部需要登录
                         .requestMatchers("/api/v1/memory/**").authenticated()
-                        // 模拟考试记录挂在账号下，全部需要登录
-                        .requestMatchers("/api/v1/mock/**").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/questions/*/answer").authenticated()
+                        // 模拟考试：只有「历史成绩」需要登录。开考/答题/交卷允许游客，
+                        // 由 MockExamService 走内存态，交卷只返回成绩不落库。
+                        .requestMatchers(HttpMethod.GET, "/api/v1/mock/history").authenticated()
+                        // 答题接口对游客开放：服务端仍会判分并返回解析，只是不写任何记录。
+                        // 之前要求登录，导致游客能打开刷题页却答不出结果。
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

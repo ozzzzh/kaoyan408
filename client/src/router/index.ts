@@ -18,9 +18,10 @@ const router = createRouter({
     { path: '/exams/:year', name: 'exam-detail', component: () => import('@/views/ExamDetailView.vue') },
     // 模拟考试：start 是选择页，:sessionId 是考试中，result 是成绩单。
     // 注意 /mock/start 必须在 /mock/:sessionId 之前，否则 "start" 会被当成 sessionId。
+    // sessionId 允许负号：游客场次走服务端内存，用负数 id 与数据库自增 id 区分。
     { path: '/mock/start', name: 'mock-start', component: () => import('@/views/MockStartView.vue') },
-    { path: '/mock/:sessionId(\\d+)/result', name: 'mock-result', component: () => import('@/views/MockResultView.vue') },
-    { path: '/mock/:sessionId(\\d+)', name: 'mock-exam', component: () => import('@/views/MockExamView.vue') },
+    { path: '/mock/:sessionId(-?\\d+)/result', name: 'mock-result', component: () => import('@/views/MockResultView.vue') },
+    { path: '/mock/:sessionId(-?\\d+)', name: 'mock-exam', component: () => import('@/views/MockExamView.vue') },
     { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
     { path: '/me', name: 'me', component: () => import('@/views/MeView.vue') },
     { path: '/about', name: 'about', component: () => import('@/views/AboutView.vue') },

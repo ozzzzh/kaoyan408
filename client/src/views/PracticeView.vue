@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/api/client'
+import StemMarkdown from '@/components/mock/StemMarkdown.vue'
 import type { PracticeQueue, QuestionView } from '@/api/types'
 import { useUserStore } from '@/store/user'
 
@@ -23,6 +24,39 @@ const submitting = ref(false)
 const message = ref<string | null>(null)
 /** 游客尝试提交时为 true，用于在提示条里给出「去登录」按钮 */
 const needLogin = ref(false)
+
+/* ---------- 视频指引 ---------- */
+const videoOpen = ref(false)
+const videoLoading = ref(false)
+const videoGuide = ref<{
+  examRef: string
+  subjectName: string
+  chapterName: string | null
+  points: { title: string; subpointTitle: string | null }[]
+  sources: { teacher: string; keyword: string; url: string }[]
+} | null>(null)
+
+/**
+ * 打开视频弹窗。
+ * 用当前题的 examRef 请求「该看哪节课」，服务端按知识点生成 B 站搜索词。
+ * 每次打开都重新请求而不是缓存：换题后知识点不同，缓存容易张冠李戴。
+ */
+async function openVideo() {
+  const q = current.value
+  if (!q) return
+  videoOpen.value = true
+  videoGuide.value = null
+  videoLoading.value = true
+  try {
+    // 队列项里题目标识是 examRef（如 exam-2026-1），不是 id
+    videoGuide.value = await api.videoGuide(q.examRef)
+  } catch (e) {
+    message.value = e instanceof Error ? e.message : '视频指引加载失败'
+    videoOpen.value = false
+  } finally {
+    videoLoading.value = false
+  }
+}
 /** 连续答对次数，答错清零；用于顶部正反馈 */
 const streak = ref(0)
 /** 导航里折叠起来的年份；默认全部展开由 loadQueue 决定 */
@@ -237,7 +271,8 @@ async function loadQuestion() {
   selected.value = ''
   result.value = null
   try {
-    question.value = await api.question(item.examRef)
+    // 背题模式要直接看答案；做题模式保持「作答后才给答案」
+    question.value = await api.question(item.examRef, 0, mode.value === 'memorize')
   } catch (e) {
     question.value = null
     message.value = e instanceof Error ? e.message : '加载题目失败'
@@ -249,13 +284,6 @@ async function loadQuestion() {
 async function submit() {
   const item = current.value
   if (!item || submitting.value) return
-  // 未登录时后端会返回 401，直接抛给用户只会看到「认证失败，无法访问系统资源。」
-  // 这句对用户没有意义——他不知道要登录。在这里先拦下，给出可操作的提示。
-  if (!userStore.user) {
-    message.value = '游客模式不会保存答题记录，登录后即可提交并进入错题本。'
-    needLogin.value = true
-    return
-  }
   if (question.value?.options.length && !selected.value) {
     message.value = '请先选择一个选项。'
     return
@@ -265,6 +293,10 @@ async function submit() {
   needLogin.value = false
   try {
     const answer = await api.submitAnswer(item.examRef, selected.value || '已完成')
+    // 游客也能判分与看解析，只是结果不落库。这里如实告知，避免用户以为记录被保存了。
+    if (answer.guest) {
+      message.value = '游客模式：本题已判分，但答题记录不会保存。登录后可累积错题本与掌握度。'
+    }
     result.value = {
       correct: answer.correct,
       standardAnswer: answer.standardAnswer,
@@ -337,6 +369,45 @@ async function jumpTo(target: number) {
 
 onMounted(loadQueue)
 
+/* ---------- 背题模式 ---------- */
+
+/** practice：要提交判分；memorize：直接展开答案，逐题过卷 */
+const mode = ref<'practice' | 'memorize'>('practice')
+
+/**
+ * 背题模式下用空格/方向键翻页。
+ *
+ * 只在背题模式监听：做题模式下空格用来选中选项更自然，
+ * 这里抢占会让两套交互打架。
+ */
+function onKeydown(e: KeyboardEvent) {
+  if (mode.value !== 'memorize') return
+  const target = e.target as HTMLElement | null
+  // 输入框里不拦截，避免影响跳题等输入
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+
+  if (e.key === ' ' || e.key === 'ArrowRight' || e.key === 'PageDown') {
+    e.preventDefault()
+    if (queue.value && index.value < queue.value.items.length - 1) void go(1)
+  } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+    e.preventDefault()
+    if (index.value > 0) void go(-1)
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+
+/**
+ * 切换模式要重新拉一次题目。
+ *
+ * 背题模式带 memorize 才有答案，做题模式故意不带；不重拉的话
+ * 切到背题会看到「本题未提供答案」，切回做题又会残留答案。
+ */
+watch(mode, () => {
+  void loadQuestion()
+})
+
 watch(
   () => [
     route.query.scope,
@@ -361,9 +432,35 @@ watch(
           <p class="text-sm text-[var(--k-text-muted)]">{{ statsText }}</p>
         </div>
         <div class="flex items-center gap-3 text-sm">
+          <!-- 模式切换：做题要提交判分，背题直接看答案过卷 -->
+          <div class="flex rounded-lg bg-[var(--k-chip)] p-0.5 text-xs">
+            <button
+              class="rounded-md px-3 py-1.5 transition"
+              :class="
+                mode === 'practice'
+                  ? 'bg-[var(--k-surface)] font-semibold text-[var(--k-accent-text)] shadow-sm'
+                  : 'text-[var(--k-text-muted)]'
+              "
+              @click="mode = 'practice'"
+            >
+              做题
+            </button>
+            <button
+              class="rounded-md px-3 py-1.5 transition"
+              :class="
+                mode === 'memorize'
+                  ? 'bg-[var(--k-surface)] font-semibold text-[var(--k-accent-text)] shadow-sm'
+                  : 'text-[var(--k-text-muted)]'
+              "
+              @click="mode = 'memorize'"
+            >
+              背题
+            </button>
+          </div>
+
           <!-- 连续答对：给一点正反馈，答错即清零 -->
           <span
-            v-if="streak >= 2"
+            v-if="streak >= 2 && mode === 'practice'"
             class="inline-flex items-center gap-1 rounded-lg bg-[#0f7a4d]/12 px-2.5 py-1 text-xs font-semibold text-[#0f7a4d] dark:bg-[#4ade80]/12 dark:text-[#4ade80]"
           >
             <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
@@ -409,7 +506,7 @@ watch(
       <RouterLink
         v-if="needLogin"
         to="/me"
-        class="shrink-0 rounded-lg bg-[var(--k-accent)] px-3 py-1 text-xs font-bold text-white no-underline"
+        class="shrink-0 rounded-lg bg-[var(--k-accent)] px-3 py-1 text-xs font-bold text-[var(--k-on-accent)] no-underline"
       >
         去登录
       </RouterLink>
@@ -483,7 +580,7 @@ watch(
       </RouterLink>
       <RouterLink
         to="/dashboard"
-        class="mt-4 inline-block rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-white no-underline hover:bg-[var(--k-accent-hover)]"
+        class="mt-4 inline-block rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-[var(--k-on-accent)] no-underline hover:bg-[var(--k-accent-hover)]"
       >
         回到工作台
       </RouterLink>
@@ -493,7 +590,7 @@ watch(
     <div v-else class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
       <div class="min-w-0 space-y-4">
         <article
-          v-if="question"
+          v-if="question && mode === 'practice'"
           class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-6 py-6"
         >
           <div class="mb-4 flex flex-wrap items-center gap-2 text-xs text-[var(--k-text-faint)]">
@@ -599,11 +696,24 @@ watch(
 
           <div class="mt-6 flex flex-wrap items-center gap-3">
             <button
-              class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
+              class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
               :disabled="submitting"
               @click="submit"
             >
               {{ submitting ? '提交中…' : result ? '再次提交' : '提交答案' }}
+            </button>
+
+            <!-- 按本题关联的知识点跳 B 站搜索。不托管课程内容，只做「该看哪一节」的指引。 -->
+            <button
+              class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--k-border)] px-4 py-2.5 text-sm text-[var(--k-text-muted)] transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)] disabled:opacity-50"
+              :disabled="videoLoading"
+              @click="openVideo"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                <rect x="2" y="6" width="20" height="13" rx="3" />
+                <path d="m10 10.5 4 2.5-4 2.5z" fill="currentColor" stroke="none" />
+              </svg>
+              {{ videoLoading ? '查找中…' : '看视频讲解' }}
             </button>
 
             <span
@@ -680,6 +790,112 @@ watch(
         <p v-else-if="loadingQuestion" class="py-10 text-center text-sm text-[var(--k-text-faint)]">
           加载题目…
         </p>
+
+        <!--
+          背题视图：与做题视图共用同一份题目数据与翻页状态，只是把
+          「提交后才能看答案」换成「直接展示答案与解析」。
+          不另建页面，是因为背题与做题在「翻到哪一题」上应当保持联动。
+        -->
+        <article
+          v-if="question && mode === 'memorize'"
+          class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-6 py-6"
+        >
+          <div class="mb-4 flex flex-wrap items-center gap-2 text-xs text-[var(--k-text-faint)]">
+            <span class="rounded bg-[var(--k-chip)] px-2 py-0.5 font-medium text-[var(--k-text-muted)]">
+              {{ question.id }}
+            </span>
+            <span>{{ question.number }}</span>
+            <span>{{ subjectName(question.subject) }}</span>
+            <span v-if="question.chapterName">· {{ question.chapterName }}</span>
+            <span class="ml-auto rounded bg-[var(--k-accent-soft)] px-2 py-0.5 font-semibold text-[var(--k-accent-text)]">
+              {{ question.score }} 分
+            </span>
+          </div>
+
+          <StemMarkdown :source="question.stem" />
+
+          <!-- 选择题：把选项也展示出来，并标出正确答案 -->
+          <div v-if="question.options.length" class="mt-4 space-y-1.5">
+            <div
+              v-for="opt in question.options"
+              :key="opt.key"
+              class="flex items-start gap-2.5 rounded-lg border px-3 py-2 text-sm"
+              :class="
+                opt.key === question.answer
+                  ? 'border-[#0f7a4d]/40 bg-[#0f7a4d]/8'
+                  : 'border-[var(--k-border)] text-[var(--k-text-muted)]'
+              "
+            >
+              <span
+                class="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded text-[11px] font-semibold"
+                :class="
+                  opt.key === question.answer
+                    ? 'bg-[#0f7a4d] text-white'
+                    : 'bg-[var(--k-chip)] text-[var(--k-text-muted)]'
+                "
+              >
+                {{ opt.key }}
+              </span>
+              <StemMarkdown class="min-w-0 flex-1" :source="opt.text" />
+            </div>
+          </div>
+
+          <!-- 综合题的子问 -->
+          <div v-if="question.subQuestions.length" class="mt-3 space-y-1.5">
+            <p
+              v-for="sub in question.subQuestions"
+              :key="sub.subNumber"
+              class="rounded-lg bg-[var(--k-surface-soft)] px-3 py-1.5 text-sm text-[var(--k-text-muted)]"
+            >
+              <span class="font-semibold text-[var(--k-text)]">({{ sub.subNumber }})</span>
+              <span class="ml-1.5">{{ sub.description }}</span>
+              <span v-if="sub.score != null" class="ml-2 text-[11px] text-[var(--k-text-faint)]">
+                {{ sub.score }} 分
+              </span>
+            </p>
+          </div>
+
+          <!-- 答案与解析：背题模式直接展开 -->
+          <div class="mt-4 space-y-3 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-soft)] p-4">
+            <div>
+              <p class="text-[11px] font-semibold text-[#0f7a4d] dark:text-[#4ade80]">正确答案</p>
+              <p class="mt-1 text-sm font-semibold text-[var(--k-text)]">
+                {{ question.answer || '（本题未提供答案）' }}
+              </p>
+            </div>
+            <div v-if="question.explanation">
+              <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">解析</p>
+              <StemMarkdown class="mt-1" :source="question.explanation" />
+            </div>
+            <div v-else>
+              <p class="text-[11px] text-[var(--k-text-faint)]">本题暂无解析</p>
+            </div>
+          </div>
+
+          <!-- 翻页 -->
+          <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <button
+              class="rounded-lg border border-[var(--k-border)] px-4 py-2 text-sm text-[var(--k-text-muted)] transition hover:bg-[var(--k-surface-soft)] disabled:opacity-40"
+              :disabled="index === 0"
+              @click="go(-1)"
+            >
+              ← 上一题
+            </button>
+
+            <div class="flex items-center gap-2 text-xs text-[var(--k-text-faint)]">
+              <span class="tabular-nums">{{ index + 1 }} / {{ queue?.items.length ?? 0 }}</span>
+              <span class="hidden sm:inline">· 空格翻页</span>
+            </div>
+
+            <button
+              class="rounded-lg bg-[var(--k-accent)] px-5 py-2 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-40"
+              :disabled="!queue || index >= queue.items.length - 1"
+              @click="go(1)"
+            >
+              下一题 →
+            </button>
+          </div>
+        </article>
       </div>
 
       <aside class="space-y-3">
@@ -816,6 +1032,79 @@ watch(
           </div>
         </div>
       </aside>
+    </div>
+
+    <!-- 视频指引弹窗：按知识点跳 B 站搜索，不托管课程内容 -->
+    <div
+      v-if="videoOpen"
+      class="fixed inset-0 z-40 grid place-items-center bg-black/50 p-4"
+      @click.self="videoOpen = false"
+    >
+      <div class="w-full max-w-lg space-y-4 rounded-2xl bg-[var(--k-surface)] p-6 shadow-xl">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-base font-bold text-[var(--k-text)]">视频讲解</h3>
+            <p class="mt-0.5 text-[11px] text-[var(--k-text-faint)]">
+              按本题知识点到 B 站搜索，点击后在新标签页打开
+            </p>
+          </div>
+          <button
+            class="shrink-0 rounded-lg px-2 py-1 text-[var(--k-text-faint)] transition hover:bg-[var(--k-surface-soft)]"
+            @click="videoOpen = false"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div v-if="videoGuide">
+          <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">本题知识点</p>
+          <div class="mt-1.5 flex flex-wrap gap-1.5">
+            <span
+              v-for="p in videoGuide.points"
+              :key="p.title"
+              class="rounded-md bg-[var(--k-accent-soft)] px-2 py-1 text-[11px] text-[var(--k-accent-text)]"
+            >
+              {{ p.title }}
+            </span>
+            <span v-if="!videoGuide.points.length" class="text-[11px] text-[var(--k-text-faint)]">
+              {{ videoGuide.subjectName }} · {{ videoGuide.chapterName ?? '暂无' }}
+            </span>
+          </div>
+
+          <p class="mt-4 text-[11px] font-semibold text-[var(--k-text-faint)]">选择课程</p>
+          <div class="mt-1.5 space-y-1.5">
+            <a
+              v-for="s in videoGuide.sources"
+              :key="s.teacher"
+              :href="s.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center gap-3 rounded-lg border border-[var(--k-border)] px-3 py-2.5 no-underline transition hover:border-[var(--k-accent)] hover:bg-[var(--k-accent-soft)]"
+            >
+              <span
+                class="shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold"
+                :class="
+                  s.teacher === '综合'
+                    ? 'bg-[var(--k-chip)] text-[var(--k-text-muted)]'
+                    : 'bg-[var(--k-accent)] text-[var(--k-on-accent)]'
+                "
+              >
+                {{ s.teacher }}
+              </span>
+              <span class="min-w-0 flex-1 truncate text-xs text-[var(--k-text-muted)]">
+                {{ s.keyword }}
+              </span>
+              <span class="shrink-0 text-[11px] text-[var(--k-accent-text)]">去 B 站 →</span>
+            </a>
+          </div>
+
+          <p class="mt-3 text-[11px] leading-relaxed text-[var(--k-text-faint)]">
+            课程内容与版权归各出处所有，本站只提供搜索指引，不托管视频。
+          </p>
+        </div>
+
+        <p v-else class="text-sm text-[var(--k-text-muted)]">正在查找相关课程…</p>
+      </div>
     </div>
   </div>
 </template>

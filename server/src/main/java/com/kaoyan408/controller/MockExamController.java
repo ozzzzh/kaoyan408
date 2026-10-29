@@ -80,17 +80,29 @@ public class MockExamController {
     public Result<Map<String, Object>> history(@RequestParam(required = false, defaultValue = "20")
                                                int limit,
                                                Authentication authentication) {
-        return Result.ok(mockExamService.history(requireUserId(authentication), limit));
+        return Result.ok(mockExamService.history(requireLogin(authentication), limit));
     }
 
+    /**
+     * 取当前用户 id；未登录返回 null，表示游客。
+     *
+     * <p>开考/答题/交卷对游客开放（走内存态，不落库）；只有历史成绩需要登录。
+     * 因此这里不再抛 401，交由 SecurityConfig 与业务层分别把关。
+     */
     private Long requireUserId(Authentication authentication) {
         if (authentication == null) {
-            throw new BusinessException(401, "请先登录。");
+            return null;
         }
         User user = authService.findByUsername(authentication.getName());
-        if (user == null) {
+        return user == null ? null : user.getId();
+    }
+
+    /** 需要登录的接口（如历史成绩）用这个，游客直接拒绝。 */
+    private Long requireLogin(Authentication authentication) {
+        Long userId = requireUserId(authentication);
+        if (userId == null) {
             throw new BusinessException(401, "请先登录。");
         }
-        return user.getId();
+        return userId;
     }
 }

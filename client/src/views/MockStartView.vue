@@ -61,10 +61,8 @@ async function load() {
 }
 
 async function start() {
-  if (needLogin.value) {
-    await router.push('/me')
-    return
-  }
+  // 游客也能开考：会话走服务端内存，交卷后返回成绩但不落库。
+  // 不再强制跳登录，否则游客点进来什么也做不了。
   if (!year.value) return
   starting.value = true
   error.value = null
@@ -110,7 +108,7 @@ onMounted(async () => {
         v-if="needLogin"
         class="rounded-lg border border-[var(--k-warn-border)] bg-[var(--k-warn-soft)] px-4 py-3 text-xs text-[var(--k-text-muted)]"
       >
-        模拟考试需要登录才能保存成绩。
+        游客也可直接开考，交卷后照常判分与查看解析；成绩不会保存，登录后才会记录历史。
         <RouterLink to="/me" class="text-[var(--k-accent-text)] hover:underline">去登录 →</RouterLink>
       </p>
 
@@ -176,7 +174,7 @@ onMounted(async () => {
       </section>
 
       <button
-        class="w-full rounded-xl bg-[var(--k-accent)] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
+        class="w-full rounded-xl bg-[var(--k-accent)] px-6 py-3 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
         :disabled="starting || !year"
         @click="start"
       >

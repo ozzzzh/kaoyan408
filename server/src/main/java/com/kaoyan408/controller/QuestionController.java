@@ -12,6 +12,7 @@ import com.kaoyan408.mapper.QuestionSubQuestionMapper;
 import com.kaoyan408.service.AuthService;
 import com.kaoyan408.service.QuestionService;
 import com.kaoyan408.service.StatsService;
+import com.kaoyan408.service.VideoGuideService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,28 +42,41 @@ public class QuestionController {
     private final QuestionSubQuestionMapper subQuestionMapper;
     private final AuthService authService;
     private final StatsService statsService;
+    private final VideoGuideService videoGuideService;
 
     public QuestionController(QuestionService questionService, QuestionOptionMapper optionMapper,
                               QuestionSubQuestionMapper subQuestionMapper, AuthService authService,
-                              StatsService statsService) {
+                              StatsService statsService, VideoGuideService videoGuideService) {
         this.questionService = questionService;
         this.optionMapper = optionMapper;
         this.subQuestionMapper = subQuestionMapper;
         this.authService = authService;
         this.statsService = statsService;
+        this.videoGuideService = videoGuideService;
     }
 
     public record AnswerRequest(String answer, Integer durationMs) {
     }
 
+    /**
+     * 单题详情。
+     *
+     * <p>默认只在「已作答」时返回答案与解析——这是做题模式的核心约束：
+     * 把答案藏在响应里，用浏览器网络面板一眼就能看到，练习就没意义了。
+     *
+     * <p>背题模式（{@code memorize=true}）直接返回答案：该模式的目的就是
+     * 先看答案建立印象，遮住答案反而没法用。只有「整卷背题」这类显式入口
+     * 才会传这个参数，不影响普通做题。
+     */
     @GetMapping("/{examRef}")
     public Result<Map<String, Object>> detail(@PathVariable String examRef,
                                               @RequestParam(defaultValue = "0") int reveal,
+                                              @RequestParam(defaultValue = "false") boolean memorize,
                                               Authentication authentication) {
         Question question = questionService.requireByRef(examRef);
         Long userId = userIdOf(authentication);
         boolean answered = userId != null && questionService.attemptOf(userId, question.getId()) != null;
-        boolean withExplanation = answered && (reveal == 0 || reveal == 1);
+        boolean withExplanation = memorize || (answered && (reveal == 0 || reveal == 1));
         return Result.ok(view(question, withExplanation, answered));
     }
 
@@ -75,6 +89,17 @@ public class QuestionController {
         String submitted = request == null ? null : request.answer();
         Integer duration = request == null ? null : request.durationMs();
         return Result.ok(questionService.submit(userId, question, submitted, duration));
+    }
+
+    /**
+     * 视频指引：按该题关联的知识点，生成到 B 站的搜索入口。
+     *
+     * <p>不返回任何第三方课程的播放地址：本项目不托管、也不转存课程内容，
+     * 只依据自有数据告诉用户「该去搜什么」。
+     */
+    @GetMapping("/{examRef}/video-guide")
+    public Result<Map<String, Object>> videoGuide(@PathVariable String examRef) {
+        return Result.ok(videoGuideService.guideOf(examRef));
     }
 
     /** 单题当前用户状态（是否已作答），供练习页快速判断。 */

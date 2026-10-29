@@ -279,10 +279,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       v-if="!userStore.user"
       class="rounded-xl border border-dashed border-[var(--k-border-strong)] bg-[var(--k-surface)] px-6 py-12 text-center"
     >
-      <p class="text-sm text-[var(--k-text-muted)]">背诵记录需要保存到账号，请先登录。</p>
+      <p class="text-sm text-[var(--k-text-muted)]">
+        背诵依赖间隔重复算法记录每张卡的复习时间，必须绑定账号才能使用。
+      </p>
+      <p class="mt-1.5 text-xs text-[var(--k-text-faint)]">
+        刷题与模拟考试无需登录即可作答，只是不会保存记录。
+      </p>
       <RouterLink
         to="/me"
-        class="mt-4 inline-block rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-white no-underline hover:bg-[var(--k-accent-hover)]"
+        class="mt-4 inline-block rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-[var(--k-on-accent)] no-underline hover:bg-[var(--k-accent-hover)]"
       >
         去登录
       </RouterLink>
@@ -368,7 +373,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
         <div class="mt-6 text-center">
           <button
-            class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)]"
+            class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)]"
             @click="load"
           >
             再检查一次
@@ -490,7 +495,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div v-if="!revealed" class="flex flex-1 flex-col items-center justify-center py-6 text-center">
               <p class="text-[15px] text-[var(--k-text-faint)]">先在心里回想一遍，再翻面核对</p>
               <button
-                class="mt-5 rounded-xl bg-[var(--k-accent)] px-8 py-3.5 text-[15px] font-semibold text-white transition hover:bg-[var(--k-accent-hover)]"
+                class="mt-5 rounded-xl bg-[var(--k-accent)] px-8 py-3.5 text-[15px] font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)]"
                 @click="revealed = true"
               >
                 显示答案
