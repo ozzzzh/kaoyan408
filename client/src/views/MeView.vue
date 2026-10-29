@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/user'
 import { api } from '@/api/client'
@@ -13,6 +13,17 @@ const username = ref('')
 const email = ref('')
 const password = ref('')
 const error = ref<string | null>(null)
+
+/** 注册用的邮箱验证码 */
+const code = ref('')
+const sendingCode = ref(false)
+const countdown = ref(0)
+const codeNotice = ref<string | null>(null)
+let codeTimer: number | null = null
+
+onBeforeUnmount(() => {
+  if (codeTimer != null) window.clearInterval(codeTimer)
+})
 
 /* ---------- 个人数据 ---------- */
 const dashboard = ref<Dashboard | null>(null)
@@ -173,15 +184,55 @@ async function submit() {
     error.value = '请填写用户名与密码。'
     return
   }
+  if (mode.value === 'register') {
+    if (!email.value.trim()) {
+      error.value = '注册需要填写邮箱。'
+      return
+    }
+    if (!code.value.trim()) {
+      error.value = '请填写邮箱验证码。'
+      return
+    }
+  }
   try {
     if (mode.value === 'login') {
       await userStore.login(username.value, password.value)
     } else {
-      await userStore.register(username.value, email.value, password.value)
+      await userStore.register(username.value, email.value, password.value, code.value)
     }
     password.value = ''
+    code.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : '操作失败'
+  }
+}
+
+/** 发送验证码并开始倒计时 */
+async function sendCode() {
+  error.value = null
+  codeNotice.value = null
+  const mail = email.value.trim()
+  if (!mail) {
+    error.value = '请先填写邮箱。'
+    return
+  }
+  sendingCode.value = true
+  try {
+    const res = await api.sendMailCode(mail)
+    codeNotice.value = res.message
+    countdown.value = res.cooldownSeconds
+    if (codeTimer != null) window.clearInterval(codeTimer)
+    codeTimer = window.setInterval(() => {
+      countdown.value -= 1
+      if (countdown.value <= 0 && codeTimer != null) {
+        window.clearInterval(codeTimer)
+        codeTimer = null
+      }
+    }, 1000)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '发送失败'
+  } finally {
+    sendingCode.value = false
   }
 }
 
@@ -520,14 +571,15 @@ watch(user, (next) => {
         <input
           v-model="username"
           class="mt-1 w-full rounded-lg border border-[var(--k-border)] px-3 py-2 outline-none focus:border-[var(--k-accent)]"
-          placeholder="3-32 位"
+          placeholder="2-50 位，可用中文"
         />
       </label>
 
       <label v-if="mode === 'register'" class="block text-sm">
-        <span class="text-[var(--k-text-muted)]">邮箱（可选）</span>
+        <span class="text-[var(--k-text-muted)]">邮箱</span>
         <input
           v-model="email"
+          type="email"
           class="mt-1 w-full rounded-lg border border-[var(--k-border)] px-3 py-2 outline-none focus:border-[var(--k-accent)]"
           placeholder="you@example.com"
         />
@@ -539,10 +591,36 @@ watch(user, (next) => {
           v-model="password"
           type="password"
           class="mt-1 w-full rounded-lg border border-[var(--k-border)] px-3 py-2 outline-none focus:border-[var(--k-accent)]"
-          placeholder="至少 6 位"
+          :placeholder="mode === 'register' ? '至少 8 位' : '请输入密码'"
           @keyup.enter="submit"
         />
       </label>
+
+      <!-- 注册需要邮箱验证码：与 ipeagent 一致的流程 -->
+      <div v-if="mode === 'register'" class="block text-sm">
+        <span class="text-[var(--k-text-muted)]">邮箱验证码</span>
+        <div class="mt-1 flex gap-2">
+          <input
+            v-model="code"
+            inputmode="numeric"
+            maxlength="6"
+            class="min-w-0 flex-1 rounded-lg border border-[var(--k-border)] px-3 py-2 tracking-[0.3em] outline-none focus:border-[var(--k-accent)]"
+            placeholder="6 位数字"
+            @keyup.enter="submit"
+          />
+          <button
+            type="button"
+            class="shrink-0 rounded-lg border border-[var(--k-border)] px-3 py-2 text-xs text-[var(--k-text-muted)] transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)] disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="sendingCode || countdown > 0"
+            @click="sendCode"
+          >
+            {{ countdown > 0 ? `${countdown}s 后重发` : sendingCode ? '发送中…' : '获取验证码' }}
+          </button>
+        </div>
+        <p v-if="codeNotice" class="mt-1.5 text-[11px] leading-relaxed text-[var(--k-text-faint)]">
+          {{ codeNotice }}
+        </p>
+      </div>
 
       <p v-if="error" class="rounded-lg border border-[var(--k-danger)]/30 bg-[var(--k-warn-soft)] px-3 py-2 text-sm text-[var(--k-danger)]">
         {{ error }}
@@ -556,7 +634,9 @@ watch(user, (next) => {
         {{ loading ? '处理中…' : mode === 'login' ? '登录' : '注册并登录' }}
       </button>
 
-      <p class="text-center text-xs text-[var(--k-text-faint)]">本地开发默认账号库为空，先注册一个即可。</p>
+      <p class="text-center text-xs leading-relaxed text-[var(--k-text-faint)]">
+        注册需邮箱验证。当前为演示模式时，验证码打印在服务端日志。
+      </p>
     </section>
   </div>
 </template>

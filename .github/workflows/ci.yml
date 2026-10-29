@@ -239,6 +239,15 @@ jobs:
           DB_NAME: kaoyan_db
         run: node scripts/verify-mock-scoring.mjs
 
+      - name: 账号体系回归（验证码注册/限流/登录锁定/禁用）
+        env:
+          # 需要连库读验证码（mock 模式下等价于读服务端日志）并清理测试账号
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          DB_NAME: kaoyan_db
+        run: node scripts/verify-account.mjs
 
       - name: 知识点关联一致性回归
         env:

@@ -44,10 +44,15 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function register(username: string, email: string, password: string): Promise<void> {
+  async function register(
+    username: string,
+    email: string,
+    password: string,
+    code: string,
+  ): Promise<void> {
     loading.value = true
     try {
-      const result = await api.register(username, email, password)
+      const result = await api.register(username, email, password, code)
       setToken(result.token)
       token.value = result.token
       user.value = result.user

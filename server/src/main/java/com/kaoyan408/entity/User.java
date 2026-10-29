@@ -20,5 +20,13 @@ public class User {
 
     private String passwordHash;
 
+    /** 1 启用 / 0 禁用。禁用后无法登录，已有 token 也会失效。 */
+    private Integer isActive;
+
+    /** 1 管理员。当前仅作标记，权限控制留待需要时启用。 */
+    private Integer isAdmin;
+
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
 }
