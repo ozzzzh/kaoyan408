@@ -7,11 +7,13 @@
  * 塞进同一个文件里互相迁就。
  */
 import { computed, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useThemeStore } from '@/store/theme'
 import BrandLogo from '@/components/brand/BrandLogo.vue'
 
 const themeStore = useThemeStore()
+const route = useRoute()
+const router = useRouter()
 const mobileOpen = ref(false)
 
 const themeLabel = computed(() => {
@@ -24,13 +26,20 @@ function cycleTheme() {
   themeStore.cycle()
 }
 
-/** 落地页内部锚点：只滚动不跳路由，避免打断单页阅读 */
+/**
+ * 页内跳转。
+ *
+ * 不能用 href="#loop"：本项目是 hash 路由，# 之后的内容会被当成路由路径，
+ * 于是跳到 /loop 并 404。改为写 query（#/welcome?section=loop）再滚动，
+ * 地址栏能反映当前段落，链接也能直接分享。
+ *
+ * 顺序上必须先滚动再 replace：replace 会触发全局 scrollBehavior
+ * （返回 { top: 0 }），后滚动会被拉回页首，表现为「点了没反应」。
+ */
 function scrollTo(id: string) {
   mobileOpen.value = false
-  const el = document.getElementById(id)
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  router.replace({ name: 'landing', query: { ...route.query, section: id } }).catch(() => {})
 }
 
 const navItems = [

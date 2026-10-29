@@ -11,8 +11,8 @@
  * - Hero 右侧的掌握度是「学完一轮后的样子」，属于示意值，
  *   因为未登录用户还没有任何作答记录。标题与角标都标明了它是示意。
  */
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, nextTick, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import SiteHeader from '@/components/layout/SiteHeader.vue'
 import { useThemeStore } from '@/store/theme'
 import { api } from '@/api/client'
@@ -20,6 +20,32 @@ import type { Dashboard, ExamSummary } from '@/api/types'
 import { SUBJECT_META, subjectMeta } from '@/constants/subjects'
 
 const themeStore = useThemeStore()
+const route = useRoute()
+const router = useRouter()
+
+/**
+ * 页内跳转。
+ *
+ * 本项目用 hash 路由，`#` 之后是路由路径，所以不能写 href="#loop"——
+ * 那会被当成 /loop 去匹配路由并 404。这里改为主动滚动，
+ * 不碰地址栏，用户仍是停在落地页。
+ */
+function scrollToSection(id: string) {
+  // 先滚动，再更新 query。
+  // 顺序不能反：router.replace 会触发全局 scrollBehavior（返回 { top: 0 }），
+  // 把刚滚到的位置又拉回页首，实测表现为「点了没反应」。
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  router.replace({ name: 'landing', query: { ...route.query, section: id } }).catch(() => {})
+}
+
+/** 支持 /welcome?section=loop 这类可直接分享到某一段的链接 */
+async function scrollToRequestedSection() {
+  const section = route.query.section
+  if (typeof section !== 'string' || !section) return
+  await nextTick()
+  // 等一帧，避免懒加载的区块还没渲染就滚动
+  requestAnimationFrame(() => scrollToSection(section))
+}
 
 const dashboard = ref<Dashboard | null>(null)
 const exams = ref<ExamSummary[]>([])
@@ -34,6 +60,7 @@ onMounted(async () => {
   api.knowledgePoints()
     .then((list) => { knowledgeCount.value = list.length })
     .catch(() => {})
+  await scrollToRequestedSection()
 })
 
 /** Hero 掌握度：示意值（未登录没有真实作答），标注「示意」 */
@@ -198,12 +225,18 @@ const abilities = [
               开始刷题
               <span aria-hidden="true">→</span>
             </RouterLink>
-            <a
-              href="#loop"
-              class="inline-flex items-center rounded-[11px] border border-[var(--k-border-strong)] px-6 py-3 text-[15px] font-semibold text-[var(--k-text)] no-underline transition-colors hover:bg-[var(--k-surface-soft)]"
+            <!--
+              不能用 href="#loop"：本项目是 hash 路由，地址栏里 # 后面的内容
+              会被当成路由路径，于是跳到 /loop 并显示 404。
+              改为用 query 指定段落，点击后只滚动、不切路由。
+            -->
+            <button
+              type="button"
+              class="inline-flex items-center rounded-[11px] border border-[var(--k-border-strong)] px-6 py-3 text-[15px] font-semibold text-[var(--k-text)] transition-colors hover:bg-[var(--k-surface-soft)]"
+              @click="scrollToSection('loop')"
             >
               先看核心闭环
-            </a>
+            </button>
           </div>
 
           <p class="mt-6 text-xs text-[var(--k-text-faint)]">

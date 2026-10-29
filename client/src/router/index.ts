@@ -43,7 +43,13 @@ const router = createRouter({
     { path: '/about', name: 'about', component: () => import('@/views/AboutView.vue') },
     { path: '/:pathMatch(.*)*', name: 'notFound', component: () => import('@/views/NotFoundView.vue') },
   ],
-  scrollBehavior: () => ({ top: 0 }),
+  // 只在路径变化时回到顶部。
+  // 落地页的「核心闭环 / 四大能力」是页内跳转，靠改 query 记录当前段落；
+  // 若无条件回到顶部，点导航会先滚过去又被拉回页首，看起来像没反应。
+  scrollBehavior: (to, from) => {
+    if (to.name === from.name && to.path === from.path) return false
+    return { top: 0 }
+  },
 })
 
 /**
