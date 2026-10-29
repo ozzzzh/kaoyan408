@@ -68,6 +68,9 @@ public class SecurityConfig {
                         // 模拟考试：只有「历史成绩」需要登录。开考/答题/交卷允许游客，
                         // 由 MockExamService 走内存态，交卷只返回成绩不落库。
                         .requestMatchers(HttpMethod.GET, "/api/v1/mock/history").authenticated()
+                        // AI：对话与状态对游客开放（游客限 3 次，计数在服务端按 IP 做），
+                        // 只有会话列表/详情/删除需要登录——那是账号数据，游客本来也没有。
+                        .requestMatchers("/api/v1/ai/conversations/**").authenticated()
                         // 答题接口对游客开放：服务端仍会判分并返回解析，只是不写任何记录。
                         // 之前要求登录，导致游客能打开刷题页却答不出结果。
                         .anyRequest().permitAll())

@@ -269,6 +269,15 @@ watch(
               本节关联 {{ questionCount }} 道真题
               <span class="transition-transform group-hover:translate-x-0.5">→</span>
             </RouterLink>
+
+            <!-- 带着当前知识点进入 AI，让助手直接围绕它答疑 -->
+            <RouterLink
+              :to="{ path: '/ai', query: { context: `kp:${currentPointId}` } }"
+              class="group inline-flex items-center gap-1 rounded-full border border-[var(--k-border)] px-3 py-1 text-[11px] font-semibold text-[var(--k-accent-text)] no-underline transition hover:border-[var(--k-accent)] hover:bg-[var(--k-accent-soft)]"
+            >
+              问问 AI
+              <span class="transition-transform group-hover:translate-x-0.5">→</span>
+            </RouterLink>
           </div>
 
           <KnowledgeBlocks :article="article" />

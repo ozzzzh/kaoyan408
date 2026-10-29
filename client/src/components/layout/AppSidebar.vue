@@ -37,6 +37,12 @@ const primaryNav: NavItem[] = [
     desc: '逐题作答与解析',
     icon: 'M4 5h16v3H4V5Zm0 6h16v3H4v-3Zm0 6h10v3H4v-3Z',
   },
+    {
+      to: '/ai',
+      label: 'AI 助手',
+      desc: '答疑与复习规划',
+      icon: 'M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4L12 3Z',
+    },
   {
     to: '/memory',
     label: '背诵',

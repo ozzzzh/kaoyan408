@@ -407,3 +407,50 @@ export interface MockHistoryItem {
   correctCount: number
   answeredChoice: number
 }
+
+/* ---------- AI 学习助手 ---------- */
+
+export interface AiStatus {
+  configured: boolean
+  model: string
+  guest: boolean
+  /** 仅游客：已用次数 */
+  guestUsed?: number
+  /** 仅游客：剩余次数 */
+  guestRemaining?: number
+}
+
+export interface AiConversationSummary {
+  id: number
+  title: string
+  updatedAt: string
+}
+
+export interface AiStoredMessage {
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: string
+}
+
+export interface AiConversationDetail {
+  id: number
+  title: string
+  messages: AiStoredMessage[]
+}
+
+/** 页面上的一条消息：比库里的多一个「正在输出」状态 */
+export interface AiChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  /** 正在流式输出中 */
+  streaming?: boolean
+  /** 模型开始推理但正文还没到 */
+  thinking?: boolean
+  /** 出错时的提示 */
+  error?: string
+}
+
+export interface AiUsage {
+  promptTokens?: number
+  completionTokens?: number
+}

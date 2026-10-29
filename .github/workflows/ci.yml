@@ -265,6 +265,18 @@ jobs:
           DB_NAME: kaoyan_db
         run: node scripts/verify-guest.mjs
 
+      - name: AI 助手回归（状态 / 流式 / 知识点标记 / 游客限额）
+        env:
+          # CI 不配置 KAOYAN_AI_API_KEY：真实 Key 不应进仓库。
+          # 未配置时脚本只验证接口降级正常，并明确报告「对话用例已跳过」，
+          # 不会把它算成通过。
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          DB_NAME: kaoyan_db
+        run: node scripts/verify-ai.mjs
+
       - name: 模拟考试健壮性（刷新恢复/超时/不限时）
         env:
           # 需要连库制造「超时」场景并校验唯一约束

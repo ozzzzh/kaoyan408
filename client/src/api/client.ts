@@ -1,4 +1,7 @@
 import type {
+  AiConversationDetail,
+  AiConversationSummary,
+  AiStatus,
   AnswerResult,
   ApiEnvelope,
   Dashboard,
@@ -87,7 +90,104 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
 
+/**
+ * AI 对话（SSE 流式）。
+ *
+ * 不能复用 request()：那里按 JSON 解析响应，而这里要边收边显示。
+ * 事件约定见后端 AiController：thinking / delta / done / error。
+ *
+ * 返回一个取消函数，页面卸载时调用可主动断开，避免后端空跑。
+ */
+export function streamAiChat(
+  question: string,
+  conversationId: number | null,
+  handlers: {
+    onThinking?: () => void
+    onDelta?: (text: string) => void
+    onDone?: (evt: { conversationId: number | null; promptTokens?: number; completionTokens?: number; guest?: boolean }) => void
+    onError?: (message: string) => void
+  },
+): () => void {
+  const controller = new AbortController()
+  const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' })
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  ;(async () => {
+    try {
+      const res = await fetch('/api/v1/ai/chat', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ question, conversationId }),
+        signal: controller.signal,
+      })
+
+      // 业务错误（如游客次数用完）走统一 envelope，不是 SSE
+      const ct = res.headers.get('Content-Type') ?? ''
+      if (!ct.includes('text/event-stream')) {
+        const body = (await res.json()) as ApiEnvelope<unknown>
+        handlers.onError?.(body?.msg ?? `请求失败（HTTP ${res.status}）`)
+        return
+      }
+
+      const reader = res.body?.getReader()
+      if (!reader) {
+        handlers.onError?.('浏览器不支持流式读取')
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // 事件之间以空行分隔，一个事件可能跨多个 chunk
+      const consume = (block: string) => {
+        let event = ''
+        const dataLines: string[] = []
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+        }
+        if (!event || dataLines.length === 0) return
+        let payload: any
+        try {
+          payload = JSON.parse(dataLines.join(''))
+        } catch {
+          return
+        }
+        if (event === 'thinking') handlers.onThinking?.()
+        else if (event === 'delta') handlers.onDelta?.(payload.text ?? '')
+        else if (event === 'done') handlers.onDone?.(payload)
+        else if (event === 'error') handlers.onError?.(payload.message ?? 'AI 服务异常')
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let idx: number
+        while ((idx = buffer.indexOf('\n\n')) >= 0) {
+          consume(buffer.slice(0, idx))
+          buffer = buffer.slice(idx + 2)
+        }
+      }
+      if (buffer.trim()) consume(buffer)
+    } catch (e) {
+      // 主动取消不当作错误
+      if ((e as Error).name !== 'AbortError') {
+        handlers.onError?.((e as Error).message || '网络异常')
+      }
+    }
+  })()
+
+  return () => controller.abort()
+}
 export const api = {
+    /* ---- AI 学习助手 ---- */
+    aiStatus: () => request<AiStatus>('/api/v1/ai/status'),
+    aiConversations: () => request<AiConversationSummary[]>('/api/v1/ai/conversations'),
+    aiConversation: (id: number) => request<AiConversationDetail>(`/api/v1/ai/conversations/${id}`),
+    aiDeleteConversation: (id: number) =>
+      request<{ deleted: boolean }>(`/api/v1/ai/conversations/${id}`, { method: 'DELETE' }),
   health: () => request<{ name: string; version: string; status: string }>('/api/v1/health'),
 
   login: (username: string, password: string) =>

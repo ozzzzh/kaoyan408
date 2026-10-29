@@ -42,6 +42,7 @@ const router = createRouter({
     { path: '/mock/start', name: 'mock-start', component: () => import('@/views/MockStartView.vue') },
     { path: '/mock/:sessionId(-?\\d+)/result', name: 'mock-result', component: () => import('@/views/MockResultView.vue') },
     { path: '/mock/:sessionId(-?\\d+)', name: 'mock-exam', component: () => import('@/views/MockExamView.vue') },
+    { path: '/ai', name: 'ai', component: () => import('@/views/AiView.vue') },
     { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
     { path: '/me', name: 'me', component: () => import('@/views/MeView.vue') },
     { path: '/about', name: 'about', component: () => import('@/views/AboutView.vue') },

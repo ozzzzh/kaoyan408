@@ -44,6 +44,11 @@ services:
       SPRING_MAIL_USERNAME: "${SPRING_MAIL_USERNAME:-}"
       SPRING_MAIL_PASSWORD: "${SPRING_MAIL_PASSWORD:-}"
       MAIL_FROM: "${MAIL_FROM:-}"
+      # AI 学习助手。同样必须在这里显式声明，否则容器里读不到。
+      # 不填 api-key 时页面仍可打开，只是对话会提示未配置。
+      KAOYAN_AI_API_KEY: "${KAOYAN_AI_API_KEY:-}"
+      KAOYAN_AI_MODEL: "${KAOYAN_AI_MODEL:-deepseek/deepseek-v4.1-flash}"
+      KAOYAN_AI_MAX_TOKENS: "${KAOYAN_AI_MAX_TOKENS:-2000}"
     depends_on:
       db:
         condition: service_healthy
