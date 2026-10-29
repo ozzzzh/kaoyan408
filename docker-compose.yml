@@ -35,6 +35,15 @@ services:
       # 本地 localhost / 127.0.0.1 已在代码里默认放行；这里填实际访问地址，
       # 多个用逗号分隔，例如：http://10.0.219.241:17073,https://your.domain
       KAOYAN_CORS_ORIGINS: "${CORS_ORIGINS:-}"
+      # 邮件（注册验证码）。必须在这里显式声明：容器只认 environment 里列出的变量，
+      # .env 中的值不会自动注入。默认 mock 模式（验证码打印到日志），
+      # 配置了 SPRING_MAIL_HOST 等四项后即为真实投递。
+      MAIL_MODE: "${MAIL_MODE:-mock}"
+      SPRING_MAIL_HOST: "${SPRING_MAIL_HOST:-}"
+      SPRING_MAIL_PORT: "${SPRING_MAIL_PORT:-465}"
+      SPRING_MAIL_USERNAME: "${SPRING_MAIL_USERNAME:-}"
+      SPRING_MAIL_PASSWORD: "${SPRING_MAIL_PASSWORD:-}"
+      MAIL_FROM: "${MAIL_FROM:-}"
     depends_on:
       db:
         condition: service_healthy
