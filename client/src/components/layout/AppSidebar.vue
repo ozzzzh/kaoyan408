@@ -1,8 +1,9 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import BrandLogo from '@/components/brand/BrandLogo.vue'
 import ThemeToggle from './ThemeToggle.vue'
 
 const route = useRoute()
@@ -82,22 +83,15 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
     class="hidden md:flex w-[248px] shrink-0 flex-col border-r border-[var(--k-border)] bg-[var(--k-surface)]"
   >
     <!-- 品牌 -->
-    <RouterLink to="/" class="flex items-center gap-3 px-5 py-5 no-underline">
-      <span
-        class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--k-accent)] text-[13px] font-bold tracking-tight text-white"
-        >408</span
-      >
-      <span class="min-w-0">
-        <span class="block text-[15px] font-bold leading-tight text-[var(--k-text)]">考研 408 工作台</span>
-        <span class="block truncate text-[11px] text-[var(--k-text-faint)]">计算机统考备考平台</span>
-      </span>
+    <RouterLink to="/" class="flex items-center px-5 py-5 no-underline">
+      <BrandLogo :height="34" />
     </RouterLink>
 
     <!-- 主操作 -->
     <div class="px-4 pb-4">
       <RouterLink
         to="/practice"
-        class="flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--k-accent)] text-sm font-bold text-white no-underline transition hover:bg-[var(--k-accent-hover)]"
+        class="flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--k-accent)] text-sm font-bold text-[var(--k-on-accent)] no-underline transition hover:bg-[var(--k-accent-hover)]"
       >
         <span class="text-base leading-none">＋</span>
         <span>开始刷题</span>
@@ -189,7 +183,7 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
 
       <div class="mt-2 flex items-center gap-2.5 rounded-xl bg-[var(--k-surface-soft)] px-3 py-2.5">
         <span
-          class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--k-accent)] text-xs font-bold text-white"
+          class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--k-accent)] text-xs font-bold text-[var(--k-on-accent)]"
           >{{ user ? user.username.slice(0, 1).toUpperCase() : '游' }}</span
         >
         <span class="min-w-0 flex-1">

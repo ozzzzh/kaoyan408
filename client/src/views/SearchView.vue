@@ -141,7 +141,7 @@ watch(
           @keydown.enter="submit"
         />
         <button
-          class="shrink-0 rounded-lg bg-[var(--k-accent)] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)]"
+          class="shrink-0 rounded-lg bg-[var(--k-accent)] px-4 py-1.5 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)]"
           @click="submit"
         >
           搜索

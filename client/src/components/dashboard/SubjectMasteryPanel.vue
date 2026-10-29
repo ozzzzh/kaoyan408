@@ -1,23 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SubjectStat } from '@/api/types'
+import { subjectMeta } from '@/constants/subjects'
 
 const props = defineProps<{
   subjects: SubjectStat[]
   masteryRate?: number
 }>()
 
-const meta: Record<string, { name: string; bar: string }> = {
-  ds: { name: '数据结构', bar: 'bg-[#2d68ef]' },
-  os: { name: '操作系统', bar: 'bg-[#7c5cf0]' },
-  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]' },
-  cn: { name: '计算机网络', bar: 'bg-[#12a594]' },
-}
-
 const items = computed(() =>
   props.subjects.map((item) => ({
     ...item,
-    meta: meta[item.subject] ?? { name: item.subject, bar: 'bg-[#2d68ef]' },
+    meta: subjectMeta(item.subject),
   })),
 )
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="题知链 三节相扣">
+  <!-- 三节相扣：环径 1D，环宽 0.245D，环心距 0.646D，45° 斜向；中环青绿压住两端深藏青环 -->
+  <defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+      <rect width="24" height="24" fill="#fff"/>
+      <circle cx="12" cy="12" r="5.9" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="none" stroke="#1F2440" stroke-width="2.887" mask="url(#cut)">
+    <circle cx="17.39" cy="6.61" r="4.457"/>
+    <circle cx="6.61" cy="17.39" r="4.457"/>
+  </g>
+  <circle cx="12" cy="12" r="4.457" fill="none" stroke="#00B5A8" stroke-width="2.887"/>
+</svg>

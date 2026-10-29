@@ -228,7 +228,7 @@ onBeforeUnmount(stopTicker)
 
         <button
           v-if="!isSubmitted"
-          class="rounded-lg bg-[var(--k-accent)] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
+          class="rounded-lg bg-[var(--k-accent)] px-4 py-1.5 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
           :disabled="submitting"
           @click="confirmSubmit = true"
         >
@@ -253,7 +253,7 @@ onBeforeUnmount(stopTicker)
             class="grid h-7 w-7 place-items-center rounded-md text-[11px] font-medium transition"
             :class="
               answers[q.id]
-                ? 'bg-[var(--k-accent)] text-white'
+                ? 'bg-[var(--k-accent)] text-[var(--k-on-accent)]'
                 : 'border border-[var(--k-border)] text-[var(--k-text-muted)] hover:border-[var(--k-accent)]'
             "
             :title="`第 ${q.number} 题${answers[q.id] ? '：' + answers[q.id] : '：未作答'}`"
@@ -301,7 +301,7 @@ onBeforeUnmount(stopTicker)
                 class="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded text-[11px] font-semibold"
                 :class="
                   answers[q.id] === opt.key
-                    ? 'bg-[var(--k-accent)] text-white'
+                    ? 'bg-[var(--k-accent)] text-[var(--k-on-accent)]'
                     : 'bg-[var(--k-chip)] text-[var(--k-text-muted)]'
                 "
               >
@@ -354,7 +354,7 @@ onBeforeUnmount(stopTicker)
       <!-- 底部交卷 -->
       <div v-if="!isSubmitted" class="flex justify-center pb-8">
         <button
-          class="rounded-xl bg-[var(--k-accent)] px-8 py-3 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
+          class="rounded-xl bg-[var(--k-accent)] px-8 py-3 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
           :disabled="submitting"
           @click="confirmSubmit = true"
         >
@@ -389,7 +389,7 @@ onBeforeUnmount(stopTicker)
               继续答题
             </button>
             <button
-              class="flex-1 rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
+              class="flex-1 rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
               :disabled="submitting"
               @click="doSubmit(false)"
             >

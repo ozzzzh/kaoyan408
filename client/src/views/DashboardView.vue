@@ -12,6 +12,7 @@ import RecentActivityPanel from '@/components/dashboard/RecentActivityPanel.vue'
 import TodayPanel from '@/components/dashboard/TodayPanel.vue'
 import SubjectMasteryPanel from '@/components/dashboard/SubjectMasteryPanel.vue'
 import SearchBox from '@/components/dashboard/SearchBox.vue'
+import { subjectMeta } from '@/constants/subjects'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -21,13 +22,6 @@ const { user, dashboard } = storeToRefs(userStore)
  * 四科配色。soft 用「主色 + 透明度」而非固定浅色，
  * 这样在夜间模式下也会自动变成合适的深色底，不必维护两套色值。
  */
-const subjectMeta: Record<string, { name: string; bar: string; soft: string; text: string }> = {
-  ds: { name: '数据结构', bar: 'bg-[#2d68ef]', soft: 'bg-[#2d68ef]/12', text: 'text-[var(--k-accent-text)]' },
-  os: { name: '操作系统', bar: 'bg-[#7c5cf0]', soft: 'bg-[#7c5cf0]/12', text: 'text-[#7c5cf0]' },
-  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]', soft: 'bg-[#f0a020]/12', text: 'text-[var(--k-warn)]' },
-  cn: { name: '计算机网络', bar: 'bg-[#12a594]', soft: 'bg-[#12a594]/12', text: 'text-[#12a594]' },
-}
-
 const subjects = computed(() => dashboard.value?.subjects ?? [])
 const greeting = computed(() => {
   const hour = new Date().getHours()
@@ -73,7 +67,7 @@ function go(shortcut: (typeof shortcuts)[number]) {
 const quickSubjects = computed(() =>
   subjects.value.map((item) => ({
     ...item,
-    meta: subjectMeta[item.subject] ?? { name: item.subject, bar: 'bg-[#2d68ef]', soft: 'bg-[#2d68ef]/12', text: 'text-[var(--k-accent-text)]' },
+    meta: subjectMeta(item.subject),
   })),
 )
 
@@ -134,7 +128,7 @@ onMounted(async () => {
         <SearchBox />
         <RouterLink
           to="/practice"
-          class="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--k-accent)] px-7 text-sm font-bold text-white no-underline transition hover:bg-[var(--k-accent-hover)]"
+          class="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--k-accent)] px-7 text-sm font-bold text-[var(--k-on-accent)] no-underline transition hover:bg-[var(--k-accent-hover)]"
         >
           <span class="text-base leading-none">＋</span>
           <span>开始刷题</span>
@@ -216,7 +210,7 @@ onMounted(async () => {
         <span class="flex shrink-0 items-center gap-2">
           <span
             v-if="memory.due > 0"
-            class="rounded-full bg-[var(--k-accent)] px-2.5 py-0.5 text-xs font-bold text-white"
+            class="rounded-full bg-[var(--k-accent)] px-2.5 py-0.5 text-xs font-bold text-[var(--k-on-accent)]"
           >
             {{ memory.due }} 张到期
           </span>

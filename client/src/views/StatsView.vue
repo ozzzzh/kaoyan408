@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/user'
 import { api } from '@/api/client'
 import type { PointMastery, PointMasteryItem } from '@/api/types'
+import { subjectMeta } from '@/constants/subjects'
 
 const userStore = useUserStore()
 const { dashboard } = storeToRefs(userStore)
@@ -20,13 +21,6 @@ const subjects = [
   { code: 'co', label: '组成原理' },
   { code: 'cn', label: '计算机网络' },
 ]
-
-const subjectMeta: Record<string, { name: string; bar: string }> = {
-  ds: { name: '数据结构', bar: 'bg-[#2d68ef]' },
-  os: { name: '操作系统', bar: 'bg-[#7c5cf0]' },
-  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]' },
-  cn: { name: '计算机网络', bar: 'bg-[#12a594]' },
-}
 
 /** 正确率对应的颜色：<50% 红、<75% 黄、其余绿 */
 function accuracyClass(accuracy: number | null): string {
@@ -166,7 +160,7 @@ watch(subjectFilter, loadPoints)
               <div class="flex min-w-0 items-center gap-2">
                 <span
                   class="h-2 w-2 shrink-0 rounded-full"
-                  :class="subjectMeta[point.subject]?.bar ?? 'bg-[var(--k-text-faint)]'"
+                  :class="subjectMeta(point.subject).bar ?? 'bg-[var(--k-text-faint)]'"
                 />
                 <RouterLink
                   :to="`/learn/${point.pointId}`"
@@ -175,7 +169,7 @@ watch(subjectFilter, loadPoints)
                   {{ point.title }}
                 </RouterLink>
                 <span class="shrink-0 text-[11px] text-[var(--k-text-faint)]">
-                  {{ subjectMeta[point.subject]?.name ?? point.subject }}
+                  {{ subjectMeta(point.subject).name ?? point.subject }}
                 </span>
               </div>
               <div class="flex shrink-0 items-center gap-4 text-xs tabular-nums">
@@ -248,10 +242,10 @@ watch(subjectFilter, loadPoints)
                   <span class="inline-flex items-center gap-2">
                     <span
                       class="h-2 w-2 rounded-full"
-                      :class="subjectMeta[item.subject]?.bar ?? 'bg-[var(--k-text-faint)]'"
+                      :class="subjectMeta(item.subject).bar ?? 'bg-[var(--k-text-faint)]'"
                     />
                     <span class="font-medium text-[var(--k-text)]">
-                      {{ subjectMeta[item.subject]?.name ?? item.subject }}
+                      {{ subjectMeta(item.subject).name ?? item.subject }}
                     </span>
                   </span>
                 </td>
@@ -320,7 +314,7 @@ watch(subjectFilter, loadPoints)
               <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--k-track)]">
                 <div
                   class="h-full rounded-full"
-                  :class="subjectMeta[point.subject]?.bar ?? 'bg-[var(--k-accent)]'"
+                  :class="subjectMeta(point.subject).bar ?? 'bg-[var(--k-accent)]'"
                   :style="{ width: Math.max(point.progress, 2) + '%' }"
                 />
               </div>

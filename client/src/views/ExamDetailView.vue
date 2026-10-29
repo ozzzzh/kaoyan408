@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import type { ExamDetail, QuestionView } from '@/api/types'
 import { useUserStore } from '@/store/user'
+import { subjectMeta } from '@/constants/subjects'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,13 +19,6 @@ const revealed = ref<Set<number>>(new Set())
 const activeNumber = ref(1)
 
 const year = computed(() => Number(route.params.year))
-
-const subjectMeta: Record<string, { name: string; bar: string; soft: string }> = {
-  ds: { name: '数据结构', bar: 'bg-[#2d68ef]', soft: 'bg-[#2d68ef]/12' },
-  os: { name: '操作系统', bar: 'bg-[#7c5cf0]', soft: 'bg-[#7c5cf0]/12' },
-  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]', soft: 'bg-[#f0a020]/12' },
-  cn: { name: '计算机网络', bar: 'bg-[#12a594]', soft: 'bg-[#12a594]/12' },
-}
 
 const choiceQuestions = computed(
   () => exam.value?.questions.filter((q) => q.questionType === 'choice') ?? [],
@@ -275,7 +269,7 @@ watch(
                 </p>
                 <RouterLink
                   :to="{ path: '/practice', query: { examRef: question.id } }"
-                  class="mt-2 inline-block rounded-lg bg-[var(--k-accent)] px-3 py-1.5 text-xs font-semibold text-white no-underline hover:bg-[var(--k-accent-hover)]"
+                  class="mt-2 inline-block rounded-lg bg-[var(--k-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--k-on-accent)] no-underline hover:bg-[var(--k-accent-hover)]"
                 >
                   现在去作答
                 </RouterLink>

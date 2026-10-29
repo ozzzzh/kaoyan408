@@ -4,6 +4,8 @@ import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/user'
 import { api } from '@/api/client'
 import type { Dashboard, MemorySummary, WrongBook } from '@/api/types'
+import { subjectMeta } from '@/constants/subjects'
+import BrandLogo from '@/components/brand/BrandLogo.vue'
 
 const userStore = useUserStore()
 const { user, loading } = storeToRefs(userStore)
@@ -42,13 +44,6 @@ const notice = ref<string | null>(null)
 const confirming = ref<'attempts' | 'memory' | 'all' | null>(null)
 /** 二次确认输入的用户名 */
 const confirmText = ref('')
-
-const subjectMeta: Record<string, { name: string; bar: string }> = {
-  ds: { name: '数据结构', bar: 'bg-[#2d68ef]' },
-  os: { name: '操作系统', bar: 'bg-[#7c5cf0]' },
-  co: { name: '计算机组成原理', bar: 'bg-[#f0a020]' },
-  cn: { name: '计算机网络', bar: 'bg-[#12a594]' },
-}
 
 const subjects = computed(() => dashboard.value?.subjects ?? [])
 
@@ -257,8 +252,10 @@ watch(user, (next) => {
 
 <template>
   <div class="mx-auto max-w-2xl space-y-5">
-    <header class="space-y-1 text-center">
-      <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)]">我的</h1>
+    <header class="space-y-2 text-center">
+      <!-- 未登录时展示品牌与标语：这是用户第一次认真看这个平台，值得交代清楚它是谁 -->
+      <BrandLogo v-if="!user" :height="52" tagline class="mx-auto" />
+      <h1 v-else class="text-2xl font-bold tracking-tight text-[var(--k-text)]">我的</h1>
       <p class="text-sm text-[var(--k-text-muted)]">
         {{ user ? '学习记录、掌握度与打卡都保存在这个账号下。' : '登录后做题记录、掌握度与打卡才会保存。' }}
       </p>
@@ -271,7 +268,7 @@ watch(user, (next) => {
         class="flex items-center gap-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
       >
         <span
-          class="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[var(--k-accent)] text-lg font-bold text-white"
+          class="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[var(--k-accent)] text-lg font-bold text-[var(--k-on-accent)]"
           >{{ user.username.slice(0, 1).toUpperCase() }}</span
         >
         <div class="min-w-0 flex-1">
@@ -324,15 +321,15 @@ watch(user, (next) => {
           <div v-for="item in subjects" :key="item.subject" class="flex items-center gap-3">
             <span
               class="h-2 w-2 shrink-0 rounded-full"
-              :class="subjectMeta[item.subject]?.bar ?? 'bg-[var(--k-accent)]'"
+              :class="subjectMeta(item.subject).bar ?? 'bg-[var(--k-accent)]'"
             />
             <span class="w-28 shrink-0 text-xs text-[var(--k-text-muted)]">
-              {{ subjectMeta[item.subject]?.name ?? item.subject }}
+              {{ subjectMeta(item.subject).name ?? item.subject }}
             </span>
             <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--k-track)]">
               <div
                 class="h-full rounded-full transition-[width] duration-300"
-                :class="subjectMeta[item.subject]?.bar ?? 'bg-[var(--k-accent)]'"
+                :class="subjectMeta(item.subject).bar ?? 'bg-[var(--k-accent)]'"
                 :style="{ width: `${item.total === 0 ? 0 : (item.done / item.total) * 100}%` }"
               />
             </div>
@@ -596,7 +593,7 @@ watch(user, (next) => {
         />
       </label>
 
-      <!-- 注册需要邮箱验证码：与 ipeagent 一致的流程 -->
+      <!-- 注册需要邮箱验证码：6 位数字，5 分钟内有效，一次性使用 -->
       <div v-if="mode === 'register'" class="block text-sm">
         <span class="text-[var(--k-text-muted)]">邮箱验证码</span>
         <div class="mt-1 flex gap-2">
@@ -627,7 +624,7 @@ watch(user, (next) => {
       </p>
 
       <button
-        class="w-full rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
+        class="w-full rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
         :disabled="loading"
         @click="submit"
       >

@@ -21,26 +21,40 @@
  * 组件统一用这些变量而非硬编码色值，切换主题时整体变色。
  */
 :root {
-  --k-bg: #f7faff;
+  /* 底色带一丝青，与品牌青绿呼应，而不是中性灰 */
+  --k-bg: #f6f9fa;
   --k-surface: #ffffff;
-  --k-surface-soft: #f8fbff;
-  --k-border: #e2e9f5;
-  --k-border-strong: #dbe4ef;
-  --k-text: #0b1f45;
-  --k-text-muted: #5c6f94;
-  --k-text-faint: #9aa9c3;
-  --k-heading: #3d4d6b;
-  --k-accent: #1f49ba;
-  --k-accent-hover: #1a3fa0;
-  --k-accent-soft: #e8efff;
-  --k-accent-text: #1845ad;
-  --k-chip: #eef2fa;
-  --k-track: #eef2fa;
+  --k-surface-soft: #f4f8f8;
+  --k-border: #e0e8ea;
+  --k-border-strong: #d5e0e2;
+
+  /* 正文用比品牌深藏青更深的墨色，保证长文阅读对比度 */
+  --k-text: #16202e;
+  --k-text-muted: #5a6b74;
+  --k-text-faint: #94a3aa;
+  --k-heading: #2c3a44;
+
+  /* ---- 品牌主色：青绿 ----
+     品牌青绿 #00B5A8 直接铺按钮时，白字对比度只有 2.3:1，不达 WCAG AA。
+     因此交互色压暗到 #0B7C73（白字对比度约 4.9:1），
+     图形与装饰仍用 #00B5A8，两者同色系，观感一致。 */
+  --k-accent: #0b7c73;
+  --k-accent-hover: #096b63;
+  --k-accent-soft: #e4f5f3;
+  --k-accent-text: #0b7c73;
+  /* 品牌原色，用于不需要白字的强调块 */
+  --k-brand: #00b5a8;
+  /* 压在 --k-accent 上的文字色。亮色主题按钮底色已压暗，白字达标；
+     暗色主题按钮底色是亮青绿，必须配深字（见 .dark 里重新定义）。 */
+  --k-on-accent: #ffffff;
+
+  --k-chip: #eef3f4;
+  --k-track: #eef3f4;
   --k-warn: #b8730a;
   --k-warn-soft: #fff9ef;
   --k-warn-border: #ffd9a0;
   --k-danger: #c0392b;
-  --k-shadow: 52 87 150;
+  --k-shadow: 30 74 78;
 }
 
 .dark {
@@ -53,10 +67,15 @@
   --k-text-muted: #9aa7b8;
   --k-text-faint: #6e7a8a;
   --k-heading: #c3ccd8;
-  --k-accent: #3b74e8;
-  --k-accent-hover: #4d84f0;
-  --k-accent-soft: #1b2740;
-  --k-accent-text: #7aa6f5;
+  /* 深色底上青绿要提亮，否则压在深背景里发闷 */
+  --k-accent: #17b3a6;
+  --k-accent-hover: #22c4b6;
+  --k-accent-soft: #10322f;
+  --k-accent-text: #4dd6c8;
+  --k-brand: #00b5a8;
+  /* 暗色下按钮文字改用深色：亮青绿配白字只有 2.6:1，
+     换成深墨色后约 6.8:1，按钮上的字才真的看得清。 */
+  --k-on-accent: #08211f;
   --k-chip: #222a33;
   --k-track: #262d36;
   --k-warn: #e0a458;

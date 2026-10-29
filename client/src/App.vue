@@ -31,7 +31,7 @@ onMounted(async () => {
           <div
             class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--k-border)] pt-5 text-xs leading-relaxed text-[var(--k-text-faint)]"
           >
-            <p>考研 408 工作台 · 真题 2009–2026 共 18 卷。</p>
+            <p>题知链 408 · 真题 2009–2026 共 18 卷。</p>
             <!--
               内容来源说明（simple408，CC BY 4.0）的完整声明放在仓库的 LICENSE 与 README 中。
               CC BY 4.0 只要求「以合理方式署名」，未要求逐页展示，因此此处仅保留一句指路。

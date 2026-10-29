@@ -210,7 +210,7 @@ onUnmounted(() => {
             ← 上一步
           </button>
           <button
-            class="rounded-lg bg-[var(--k-accent)] px-3.5 py-1.5 text-[13px] font-semibold text-white transition hover:bg-[var(--k-accent-hover)] disabled:cursor-not-allowed disabled:opacity-30"
+            class="rounded-lg bg-[var(--k-accent)] px-3.5 py-1.5 text-[13px] font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:cursor-not-allowed disabled:opacity-30"
             type="button"
             :disabled="current === stepCount - 1 || isRendering"
             @click="next"

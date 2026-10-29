@@ -2,17 +2,11 @@
 import { onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import type { ExamSummary } from '@/api/types'
+import { subjectMeta } from '@/constants/subjects'
 
 const exams = ref<ExamSummary[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
-
-const subjectMeta: Record<string, { name: string; dot: string }> = {
-  ds: { name: '数据结构', dot: 'bg-[#2d68ef]' },
-  os: { name: '操作系统', dot: 'bg-[#7c5cf0]' },
-  co: { name: '组成原理', dot: 'bg-[#f0a020]' },
-  cn: { name: '计算机网络', dot: 'bg-[#12a594]' },
-}
 
 onMounted(async () => {
   try {
@@ -35,7 +29,7 @@ onMounted(async () => {
       <!-- 整卷阅读与限时模拟是两种用法：前者按需看题，后者还原考场 -->
       <RouterLink
         to="/mock/start"
-        class="shrink-0 rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-white no-underline transition hover:bg-[var(--k-accent-hover)]"
+        class="shrink-0 rounded-lg bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-[var(--k-on-accent)] no-underline transition hover:bg-[var(--k-accent-hover)]"
       >
         开始模拟考试 →
       </RouterLink>
@@ -67,7 +61,7 @@ onMounted(async () => {
             :key="subject"
             class="inline-flex items-center gap-1.5"
           >
-            <span class="h-1.5 w-1.5 rounded-full" :class="subjectMeta[subject]?.dot ?? 'bg-[var(--k-text-faint)]'" />
+            <span class="h-1.5 w-1.5 rounded-full" :class="subjectMeta(subject).bar ?? 'bg-[var(--k-text-faint)]'" />
             {{ subjectMeta[subject]?.name ?? subject }} {{ count }}
           </span>
         </div>

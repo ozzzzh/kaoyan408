@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
+import BrandMark from '@/components/brand/BrandMark.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -25,8 +26,8 @@ const isActive = (to: string) => route.path === to || route.path.startsWith(to +
   <header class="md:hidden sticky top-0 z-30 border-b border-[var(--k-border)] bg-[var(--k-surface)]/95 backdrop-blur">
     <div class="flex h-14 items-center gap-3 px-4">
       <RouterLink to="/" class="flex items-center gap-2 no-underline">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-[var(--k-accent)] text-[11px] font-bold tracking-tight text-white">408</span>
-        <span class="text-[15px] font-bold text-[var(--k-text)]">考研 408 工作台</span>
+        <BrandMark :size="28" />
+        <span class="text-[15px] font-bold text-[var(--k-text)]">题知链 408</span>
       </RouterLink>
 
       <div class="ml-auto flex items-center gap-3">
