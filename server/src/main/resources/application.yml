@@ -60,6 +60,16 @@ spring:
 # 内容种子（846 题等）由 scripts/import-content.mjs 生成到 resources/seed/content.sql，
 # 刻意不进 Flyway 版本链（内容会频繁重生成，作为迁移会导致 checksum 漂移）。
 # force=true 时每次启动都重灌，用于内容更新后刷新。
+  # AI 学习助手（Command Code Provider API，OpenAI 兼容格式）
+  # 未配置 api-key 时 /api/v1/ai/* 会返回「服务未配置」，页面仍可打开
+  ai:
+    base-url: ${KAOYAN_AI_BASE_URL:https://api.commandcode.ai/provider/v1}
+    api-key: ${KAOYAN_AI_API_KEY:}
+    model: ${KAOYAN_AI_MODEL:deepseek/deepseek-v4.1-flash}
+    # 该模型带推理，推理 token 与正文共用 max_tokens；
+    # 给 800 时推理会吃掉大半，正文被截断，所以给到 2000。
+    max-tokens: ${KAOYAN_AI_MAX_TOKENS:2000}
+    temperature: ${KAOYAN_AI_TEMPERATURE:0.3}
 kaoyan:
   seed:
     enabled: true
@@ -77,6 +87,8 @@ kaoyan:
     # 收件人看到的发件人名称。只给裸地址时，邮箱客户端会显示
     # 「你给这个地址起的备注」（QQ 里就显示成备注名），看起来像陌生人来信。
     sender-name: ${MAIL_SENDER_NAME:题知链平台}
+    # 邮件页眉里品牌名下方的标语，留空则不显示该行
+    sender-slogan: ${MAIL_SENDER_SLOGAN:题知互链 · 数据驱动 · 学练测规划闭环}
     subject: ${MAIL_SUBJECT:题知链平台 · 注册验证码}
 
 logging:

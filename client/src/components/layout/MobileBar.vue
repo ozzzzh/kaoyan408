@@ -25,7 +25,7 @@ const isActive = (to: string) => route.path === to || route.path.startsWith(to +
 <template>
   <header class="md:hidden sticky top-0 z-30 border-b border-[var(--k-border)] bg-[var(--k-surface)]/95 backdrop-blur">
     <div class="flex h-14 items-center gap-3 px-4">
-      <RouterLink to="/" class="flex items-center gap-2 no-underline">
+      <RouterLink to="/welcome" title="返回题知链落地页" class="flex items-center gap-2 no-underline">
         <BrandMark :size="28" />
         <span class="text-[15px] font-bold text-[var(--k-text)]">题知链 408</span>
       </RouterLink>

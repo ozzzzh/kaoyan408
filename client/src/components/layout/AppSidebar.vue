@@ -82,8 +82,14 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
   <aside
     class="hidden md:flex w-[248px] shrink-0 flex-col border-r border-[var(--k-border)] bg-[var(--k-surface)]"
   >
-    <!-- 品牌 -->
-    <RouterLink to="/" class="flex items-center px-5 py-5 no-underline">
+    <!-- 品牌：点 Logo 回落地页，而不是工作台。
+         落地页是「这个平台是什么」的门面，工作台是功能页；分开后任何页面
+         都能一键回到介绍页。此前指向 /，点下去只是回到工作台，看上去"没反应"。 -->
+    <RouterLink
+      to="/welcome"
+      title="返回题知链落地页"
+      class="mx-2 flex items-center rounded-xl px-3 py-5 no-underline transition hover:bg-[var(--k-surface-soft)]"
+    >
       <BrandLogo :height="34" />
     </RouterLink>
 

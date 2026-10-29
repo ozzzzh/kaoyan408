@@ -44,6 +44,8 @@ public class MailCodeService {
     private static final DateTimeFormatter HOUR_FMT = DateTimeFormatter.ofPattern("yyyyMMddHH");
     private static final DateTimeFormatter DAY_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter LOG_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
+    /** 邮件正文里的发送时间，带日期，方便收件人判断是否过期。 */
+    private static final DateTimeFormatter MAIL_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     /** 验证码错误达到该次数即作废，防止穷举 6 位码。 */
     private static final int MAX_VERIFY_ATTEMPTS = 3;
@@ -77,6 +79,10 @@ public class MailCodeService {
     /** 发件人显示名。收件人看到的「谁发的」就是这里，配置项见 application.yml。 */
     @Value("${kaoyan.mail.sender-name:题知链平台}")
     private String senderName;
+
+    /** 品牌标语，出现在邮件页眉品牌名下方。留空则不显示该行。 */
+    @Value("${kaoyan.mail.sender-slogan:题知互链 · 数据驱动 · 学练测规划闭环}")
+    private String senderSlogan;
 
     /** 邮件主题。 */
     @Value("${kaoyan.mail.subject:题知链平台 · 注册验证码}")
@@ -195,8 +201,11 @@ public class MailCodeService {
             return;
         }
         try {
+            LocalDateTime now = LocalDateTime.now();
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+            // multipart=true 才能同时放 HTML 与纯文本两段（multipart/alternative）。
+            // 客户端优先显示 HTML，不支持时回落到纯文本，验证码不会丢。
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
             // 发件人必须带显示名：只给裸地址时，各大邮箱会显示「收件人自己给这个地址起的备注」
             // （QQ 邮箱里就显示成备注「华」），看起来像陌生人发来的钓鱼邮件。
@@ -207,19 +216,17 @@ public class MailCodeService {
             }
             helper.setTo(email);
             helper.setSubject(subject);
-            helper.setText(buildMailBody(code), false);
+
+            int minutes = codeExpireSeconds / 60;
+            String sentAt = now.format(MAIL_TIME_FMT);
+            helper.setText(
+                    MailTemplate.renderPlain(code, minutes, senderName, sentAt),
+                    MailTemplate.render(code, minutes, senderName, senderSlogan, now));
             mailSender.send(message);
-            log.info("验证码已发送 email={} time={}", email, LocalDateTime.now().format(LOG_FMT));
+            log.info("验证码已发送 email={} time={}", email, now.format(LOG_FMT));
         } catch (Exception e) {
             log.error("验证码发送失败 email={} error={}", email, e.getMessage());
             throw new BusinessException(500, "验证码发送失败，请稍后重试。");
         }
     }
-
-    /** 邮件正文。纯文本，避免各家邮箱对 HTML 的渲染差异。 */
-    private String buildMailBody(String code) {
-        return "你的验证码是：" + code + "\n\n"
-                + "有效期 " + (codeExpireSeconds / 60) + " 分钟。\n"
-                + "若非本人操作请忽略本邮件。";
-    }
-}
+}
