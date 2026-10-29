@@ -95,7 +95,7 @@ const navItems = [
 
         <RouterLink
           to="/practice"
-          class="hidden items-center gap-1.5 rounded-[11px] bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-white no-underline transition-colors hover:bg-[var(--k-accent-hover)] sm:inline-flex"
+          class="hidden items-center gap-1.5 rounded-[11px] bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-[var(--k-on-accent)] no-underline transition-colors hover:bg-[var(--k-accent-hover)] sm:inline-flex"
         >
           进入工作台
           <span aria-hidden="true">→</span>
@@ -130,7 +130,7 @@ const navItems = [
       </button>
       <RouterLink
         to="/practice"
-        class="mt-2 block rounded-[11px] bg-[var(--k-accent)] px-4 py-2.5 text-center text-sm font-semibold text-white no-underline"
+        class="mt-2 block rounded-[11px] bg-[var(--k-accent)] px-4 py-2.5 text-center text-sm font-semibold text-[var(--k-on-accent)] no-underline"
       >
         进入工作台 →
       </RouterLink>
