@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { useThemeStore } from '@/store/theme'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
@@ -7,6 +8,16 @@ import MobileBar from '@/components/layout/MobileBar.vue'
 
 const userStore = useUserStore()
 const themeStore = useThemeStore()
+const route = useRoute()
+
+/**
+ * 是否使用「无外壳」版式。
+ *
+ * 落地页是面向站外的营销页，自带顶栏与页脚，套上工作台侧边栏会变成
+ * 「营销页里嵌了个后台」的怪异结构。路由里用 meta.bare 标记，
+ * 这里据此决定是否渲染侧边栏与外层容器。
+ */
+const bare = computed(() => route.meta.bare === true)
 
 onMounted(async () => {
   themeStore.start()
@@ -15,8 +26,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- 左侧栏工作台版式（首页即工作台） -->
-  <div class="flex h-screen overflow-hidden bg-[var(--k-bg)]">
+  <!-- 落地页：整页自行排版，不套工作台外壳 -->
+  <RouterView v-if="bare" />
+
+  <!-- 左侧栏工作台版式 -->
+  <div v-else class="flex h-screen overflow-hidden bg-[var(--k-bg)]">
     <AppSidebar />
 
     <div class="flex min-w-0 flex-1 flex-col">
