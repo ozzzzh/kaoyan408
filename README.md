@@ -1,12 +1,84 @@
-# 考研 408 工作台
+# 题知链 408 · 考研 408 备考平台
 
-> 计算机统考 408 复习平台：把 **真题**、**知识体系** 与 **掌握度看板** 连成一条复习主线。
+> 把 **846 道真题** 钉在 **147 个知识点** 上：刷题、看正文、查掌握度、问 AI，四件事共用一套知识索引。
 
 [![CI](https://github.com/ozzzzh/kaoyan408/actions/workflows/ci.yml/badge.svg)](https://github.com/ozzzzh/kaoyan408/actions/workflows/ci.yml)
 [![真题](https://img.shields.io/badge/真题-2009–2026%20·%2018%20卷-2f6fe4)]()
 [![题量](https://img.shields.io/badge/题库-846%20题-2f6fe4)]()
+[![知识点](https://img.shields.io/badge/知识点-147%20个-0b7c73)]()
 [![后端](https://img.shields.io/badge/后端-Spring%20Boot%203%20·%20Java%2017-green)]()
 [![前端](https://img.shields.io/badge/前端-Vue%203%20·%20Vite%20·%20Tailwind%204-42b883)]()
+[![许可](https://img.shields.io/badge/内容许可-CC%20BY%204.0-lightgrey)]()
+
+## 界面预览
+
+**工作台** —— 四科进度、掌握度、热力图与今日待办在同一屏。
+
+![工作台](docs/screenshots/01-dashboard.jpg)
+
+**知识点正文** —— 侧栏知识点树 + 正文 + 本节真题入口 + 「问问 AI」。
+
+![知识点正文](docs/screenshots/02-knowledge.jpg)
+
+**AI 学习助手** —— 回答末尾给出知识点卡片，点击直接跳到正文；也能从正文反向提问。
+
+![AI 学习助手](docs/screenshots/09-ai-chat.jpg)
+
+<details>
+<summary>展开更多截图（刷题 / 真题卷 / 模拟考试 / 学习看板 / 落地页）</summary>
+
+**AI 学习助手（空态）** —— 游客可试用 3 次，登录后能结合错题与掌握度。
+
+![AI 助手](docs/screenshots/06-ai.jpg)
+
+**刷题** —— 逐题作答，交卷即出解析与关联知识块。
+
+![刷题](docs/screenshots/03-practice.jpg)
+
+**真题卷** —— 2009–2026 共 18 卷，可按年份整卷查看。
+
+![真题卷](docs/screenshots/04-exams.jpg)
+
+**模拟考试** —— 整卷计时，选择题自动判分，综合题自评。
+
+![模拟考试](docs/screenshots/05-mock.jpg)
+
+**学习看板** —— 按知识点掌握度排序，找出该补的章节。
+
+![学习看板](docs/screenshots/07-stats.jpg)
+
+**落地页** —— 站外介绍页，未登录可从 Logo 或「了解题知链」进入。
+
+![落地页](docs/screenshots/08-landing.jpg)
+
+</details>
+
+## 功能
+
+| 模块 | 说明 |
+| --- | --- |
+| **刷题** | 846 道真题，按科目 / 年份 / 未做 / 错题筛选；作答即判分，附解析与关联知识块 |
+| **知识点正文** | 147 个知识点、1634 个知识块；KaTeX 公式就地渲染，42 个知识块配 manim 动画 |
+| **真题卷** | 18 卷（2009–2026），每卷 47 题（选择 40 + 综合 7） |
+| **模拟考试** | 整卷限时作答，选择题自动判分（80 分），综合题对照参考答案自评（70 分） |
+| **背诵** | 间隔重复（Leitner 8 盒，0/1/2/4/7/15/30/60 天） |
+| **错题本** | 错题重做闭环，订正后标记掌握并移出队列 |
+| **学习看板** | 四科掌握度、逐知识点正确率、90 天热力图 |
+| **AI 学习助手** | 流式对话，注入用户掌握度与错题；回答带知识点跳转卡片 |
+| **搜索** | 知识点 / 题目 / 正文全文检索 |
+
+**免注册即可试做**：游客能完成刷题、模拟考试与 3 次 AI 对话，只是不保存记录。
+
+## 技术栈
+
+| 层 | 选型 |
+| --- | --- |
+| 前端 | Vue 3.5 + Vite 8 + TypeScript + Tailwind CSS 4 + Pinia + vue-router |
+| 渲染 | KaTeX（公式）、marked + DOMPurify（正文）、manim-web（动画） |
+| 后端 | Spring Boot 3.4 + Spring Security + MyBatis-Plus + Flyway |
+| 存储 | MySQL 8（内容与做题数据） |
+| AI | Command Code Provider API（OpenAI 兼容），SSE 流式 |
+| 部署 | Docker Compose（nginx + api + mysql） |
 
 ## 持续集成
 
@@ -28,25 +100,7 @@ TEST_USERNAME / TEST_PASSWORD                        # 默认 tester01 / test123
 
 ---
 
-## 这是什么
-
-考研 408 工作台面向计算机统考（408）考生，把三件事串成闭环：
-
-1. **刷题** → 题目挂到知识点上（`question_knowledge` 关联表）；
-2. **看正文** → 从错题直接跳到对应知识块，公式与动画就地展开；
-3. **看掌握度** → 按知识块聚合正确率，薄弱点回流到复习计划。
-
-真题范围为 2009–2026 共 18 卷 **846 题**，题面/选项/答案/解析以 **408os 为官方参照** 校准。
-
-## 技术栈
-
-| 层 | 选型 |
-| --- | --- |
-| 前端 | Vue 3.5 + Vite 8 + TypeScript + Tailwind CSS 4 + Pinia + vue-router |
-| 渲染 | KaTeX（公式）、marked + DOMPurify（正文）、manim-web（动画） |
-| 后端 | Spring Boot 3.4 + Spring Security + MyBatis-Plus + Flyway |
-| 存储 | MySQL 8（内容与做题数据） |
-| 部署 | Docker Compose（nginx + api + mysql） |
+---
 
 ## 目录结构
 
@@ -217,9 +271,14 @@ Migration checksum mismatch for migration version N
 | 400 | 参数校验失败 |
 | 401 | 未登录 / 登录失效（`认证失败，无法访问系统资源。`） |
 | 404 | 端点或资源不存在（`No endpoint GET /xxx.` 与 408os 一致） |
+| 429 | 触发限流（登录失败锁定 / 验证码发送过频 / 游客试用次数用完） |
 | 500 | 服务端异常 |
+| 503 | 依赖服务未配置（如 AI 未配置 API Key） |
 
 鉴权：`Authorization: Bearer <token>`（HS256 JWT）。
+
+绝大部分接口返回上述统一 JSON；**唯一例外是 AI 对话** `POST /api/v1/ai/chat`，
+它以 `text/event-stream` 流式返回，事件类型为 `thinking` / `delta` / `done` / `error`。
 
 主要端点：
 
@@ -253,7 +312,9 @@ Migration checksum mismatch for migration version N
 | M1 | 知识阅读页（KaTeX 公式 + 42 个 manim 动画）、全文搜索、刷题队列、错题重做闭环、真题卷整卷阅读 | ✅ 完成 |
 | M2 | 学习看板深化（知识点级薄弱点）、间隔重复背诵卡片 | ✅ 完成 |
 | — | Docker 部署实测跑通（含 nginx 反代与迁移流程） | ✅ 完成 |
-| 待定 | 计时模拟考试（答题卡 / 自动评分 / 成绩单） | 暂缓，按需再评估 |
-| 待定 | 上线（域名 / HTTPS / 备案检查）、CC BY 署名策略复核 | 未开始 |
+| M3 | 整卷限时模拟考试（答题卡 / 自动评分 / 成绩单 / 综合题自评） | ✅ 完成 |
+| M4 | 账号体系（邮箱验证码注册 / 登录锁定 / 禁用账号）、游客模式 | ✅ 完成 |
+| M5 | AI 学习助手（流式对话 / 注入学习数据 / 知识点跳转）、营销落地页 | ✅ 完成 |
+| 待定 | 自定义域名与 HTTPS、CC BY 署名策略复核 | 未开始 |
 
 规划全文见 [`docs/考研408工作台规划书.md`](./docs/考研408工作台规划书.md)。
