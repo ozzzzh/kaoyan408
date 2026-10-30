@@ -20,7 +20,7 @@ const segmentCache = new Map<string, unknown[]>()
  * 2. 首字之前有一段推理时间（3-4 秒），期间显示「思考中」而不是空白。
  * 3. 游客只给 3 次，用完提示登录——所以状态里要一直能看到剩余次数。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api, ApiError, streamAiChat } from '@/api/client'
 import type { AiChatMessage, AiConversationSummary, AiStatus } from '@/api/types'
@@ -150,7 +150,17 @@ async function send(preset?: string) {
   input.value = ''
   sending.value = true
   messages.value.push({ role: 'user', content: question })
-  const reply: AiChatMessage = { role: 'assistant', content: '', streaming: true, thinking: true }
+
+  // 必须用 reactive 包一层再 push。
+  // 直接 push 一个普通对象时，Vue 只在数组本身变化时重渲染，
+  // 后续对 reply.content 的累加不会进响应式追踪——实测表现为
+  // 「等全部输出完才一次性蹦出来」，流式完全失效。
+  const reply = reactive<AiChatMessage>({
+    role: 'assistant',
+    content: '',
+    streaming: true,
+    thinking: true,
+  })
   messages.value.push(reply)
   await scrollToBottom()
 
