@@ -27,6 +27,7 @@ import type { AiChatMessage, AiConversationSummary, AiStatus } from '@/api/types
 import { useUserStore } from '@/store/user'
 import StemMarkdown from '@/components/mock/StemMarkdown.vue'
 import DiagramView from '@/components/ai/DiagramView.vue'
+import AnimationView from '@/components/ai/AnimationView.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -255,7 +256,10 @@ function segmentsOf(content: string): Segment[] {
   if (cached) return cached
 
   const out: Segment[] = []
-  const re = /\[\[kp:([^|\]]+)\|([^\]]+)\]\]/g
+  // 模型偶尔会漏掉 kp: 前缀（写成 [[os-process|进程]] 而不是 [[kp:os-process|进程]]），
+  // 这时整段标记会原样显示在正文里。两种写法都接受。
+  // 不加前缀的分支要求 id 里含 -，避免把 {{x|y}} 这类正常文本误判成知识点。
+  const re = /\[\[(?:kp:)?([a-z][a-z0-9]*(?:-[a-z0-9]+)+)\|([^\]]+)\]\]/g
   let last = 0
   let m: RegExpExecArray | null
   while ((m = re.exec(content)) !== null) {
@@ -316,6 +320,37 @@ async function generateDiagram(target: AiChatMessage, question: string) {
     target.diagramError = e instanceof ApiError ? e.message : '图解生成失败，换个问法试试。'
   } finally {
     target.diagramLoading = false
+  }
+}
+
+/**
+ * 生成分步动画。
+ *
+ * 与图解分开触发：两者都可能被需要（先看图理解结构，再看动画理解过程），
+ * 但一次生成两个会让等待时间翻倍，所以让用户各点各的。
+ */
+async function generateAnimation(target: AiChatMessage, question: string) {
+  if (target.animationLoading) return
+  target.animationLoading = true
+  target.animationError = undefined
+  try {
+    const result = await api.aiAnimation(
+      question || '这个知识点',
+      (target.content || '').slice(0, 400),
+      '',
+    )
+    target.animation = result.dsl
+    if (isGuest.value) {
+      try {
+        status.value = await api.aiStatus()
+      } catch {
+        /* 忽略 */
+      }
+    }
+  } catch (e) {
+    target.animationError = e instanceof ApiError ? e.message : '动画生成失败，换个问法试试。'
+  } finally {
+    target.animationLoading = false
   }
 }
 
@@ -536,35 +571,69 @@ function goToPoint(id: string) {
                     而多数问题并不需要图；让用户点，也是让「失败」有明确归属。
                   -->
                   <div v-if="!m.streaming" class="mt-2.5">
-                    <DiagramView v-if="m.diagram" :dsl="m.diagram" />
+                    <DiagramView v-if="m.diagram" :dsl="m.diagram" class="mb-2.5" />
+                    <AnimationView v-if="m.animation" :dsl="m.animation" />
 
                     <template v-else>
-                      <button
-                        v-if="!m.diagramLoading"
-                        type="button"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--k-border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--k-accent-text)] transition-colors hover:border-[var(--k-accent)] hover:bg-[var(--k-accent-soft)]"
-                        @click="generateDiagram(m, previousQuestion(i))"
-                      >
-                        <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
-                          <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                          <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                          <path d="M10 6.5h4a3 3 0 0 1 3 3V14" stroke-linecap="round" />
-                        </svg>
-                        生成图解
-                      </button>
-                      <p
-                        v-else
-                        class="inline-flex items-center gap-2 rounded-lg bg-[var(--k-surface-soft)] px-2.5 py-1.5 text-[11px] text-[var(--k-text-muted)]"
-                      >
-                        <span class="flex gap-1">
-                          <span class="ai-dot" />
-                          <span class="ai-dot" style="animation-delay: 0.15s" />
-                          <span class="ai-dot" style="animation-delay: 0.3s" />
-                        </span>
-                        正在画图…
-                      </p>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <button
+                          v-if="!m.diagramLoading"
+                          type="button"
+                          class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--k-border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--k-accent-text)] transition-colors hover:border-[var(--k-accent)] hover:bg-[var(--k-accent-soft)]"
+                          @click="generateDiagram(m, previousQuestion(i))"
+                        >
+                          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                            <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                            <path d="M10 6.5h4a3 3 0 0 1 3 3V14" stroke-linecap="round" />
+                          </svg>
+                          生成图解
+                        </button>
+                        <p
+                          v-else
+                          class="inline-flex items-center gap-2 rounded-lg bg-[var(--k-surface-soft)] px-2.5 py-1.5 text-[11px] text-[var(--k-text-muted)]"
+                        >
+                          <span class="flex gap-1">
+                            <span class="ai-dot" />
+                            <span class="ai-dot" style="animation-delay: 0.15s" />
+                            <span class="ai-dot" style="animation-delay: 0.3s" />
+                          </span>
+                          正在画图…
+                        </p>
+
+                        <!-- 分步动画：比静态图慢一倍，但能讲清「过程」 -->
+                        <button
+                          v-if="!m.animationLoading"
+                          type="button"
+                          class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--k-border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--k-accent-text)] transition-colors hover:border-[var(--k-accent)] hover:bg-[var(--k-accent-soft)]"
+                          @click="generateAnimation(m, previousQuestion(i))"
+                        >
+                          <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <circle cx="6" cy="6" r="2.5" />
+                            <circle cx="18" cy="12" r="2.5" />
+                            <circle cx="6" cy="18" r="2.5" />
+                            <path d="M8.5 6H15M8.5 18H15M15 6.5l1.5 3M15 17.5l1.5-3" stroke-linecap="round" />
+                          </svg>
+                          分步动画
+                        </button>
+                        <p
+                          v-else
+                          class="inline-flex items-center gap-2 rounded-lg bg-[var(--k-surface-soft)] px-2.5 py-1.5 text-[11px] text-[var(--k-text-muted)]"
+                        >
+                          <span class="flex gap-1">
+                            <span class="ai-dot" />
+                            <span class="ai-dot" style="animation-delay: 0.15s" />
+                            <span class="ai-dot" style="animation-delay: 0.3s" />
+                          </span>
+                          正在拆分镜…
+                        </p>
+                      </div>
+
                       <p v-if="m.diagramError" class="mt-1.5 text-[11px] text-[var(--k-danger)]">
                         {{ m.diagramError }}
+                      </p>
+                      <p v-if="m.animationError" class="mt-1.5 text-[11px] text-[var(--k-danger)]">
+                        {{ m.animationError }}
                       </p>
                     </template>
                   </div>

@@ -48,6 +48,11 @@ public class DiagramService {
     private static final Set<String> COLORS = Set.of("default", "accent", "warn", "danger", "muted");
     private static final Set<String> EDGE_STYLES = Set.of("solid", "dashed", "arrow");
 
+    /** 动画：步骤上限。超过 6 步一是不好讲，二是渲染会拖。 */
+    private static final int MAX_STEPS = 6;
+    private static final int MIN_STEPS = 2;
+    private static final int MAX_CAPTION_LEN = 40;
+
     private final CommandCodeClient client;
     private final AiDiagramMapper diagramMapper;
 
@@ -115,6 +120,183 @@ public class DiagramService {
         Map<String, Object> out = new HashMap<>();
         out.put("dsl", validated);
         out.put("cached", false);
+        return out;
+    }
+
+    /* ---------- 动画 ---------- */
+
+    /**
+     * 为一个问题生成分步动画。
+     *
+     * <p>和静态图共用一套校验思路，但多一层**引用完整性**检查：
+     * 每一步 highlight/dim/moveNodes/addEdges 里提到的节点 id 必须真的存在。
+     * 模型经常在后续步骤里凭空引用一个没定义过的 id，
+     * 前端渲染时就会找不到目标——这种错误必须在入库前拦掉。
+     *
+     * @param key 缓存键的后缀，用于和静态图区分
+     */
+    public Map<String, Object> generateAnimation(String question, String answerExcerpt, String knowledge) {
+        if (!client.isConfigured()) {
+            throw new BusinessException(503, "AI 服务未配置，无法生成动画。");
+        }
+        String q = question == null ? "" : question.trim();
+        if (q.isEmpty()) {
+            throw new BusinessException(400, "缺少问题内容。");
+        }
+
+        // 加 anim: 前缀，避免和同问题的静态图解互相命中
+        String key = hash("anim:" + q + "|" + (knowledge == null ? "" : knowledge));
+
+        AiDiagram cached = diagramMapper.selectOne(
+                new QueryWrapper<AiDiagram>().eq("question_hash", key).last("LIMIT 1"));
+        if (cached != null) {
+            cached.setHitCount((cached.getHitCount() == null ? 0 : cached.getHitCount()) + 1);
+            diagramMapper.updateById(cached);
+            Map<String, Object> out = new HashMap<>();
+            out.put("dsl", readTree(cached.getDslJson()));
+            out.put("cached", true);
+            return out;
+        }
+
+        // 动画要输出节点 + 边 + 多步分镜，比静态图长得多，给到 4000
+        String raw = client.complete(
+                AnimationPrompt.systemPrompt(knowledge),
+                AnimationPrompt.userPrompt(q, answerExcerpt),
+                4000);
+
+        JsonNode validated = validateAnimation(extractJson(raw));
+        if (validated == null) {
+            log.warn("动画生成不合格，已丢弃。原始输出前 300 字: {}", truncate(raw, 300));
+            throw new BusinessException(502, "这次没能拆出合格的分步动画，换个问法或再试一次。");
+        }
+
+        AiDiagram row = new AiDiagram();
+        row.setQuestionHash(key);
+        row.setQuestion(truncate(q, 500));
+        row.setDslJson(validated.toString());
+        row.setModel(client.modelName());
+        row.setHitCount(0);
+        row.setCreatedAt(LocalDateTime.now());
+        try {
+            diagramMapper.insert(row);
+        } catch (Exception e) {
+            log.debug("动画入库冲突，忽略: {}", e.getMessage());
+        }
+
+        Map<String, Object> out = new HashMap<>();
+        out.put("dsl", validated);
+        out.put("cached", false);
+        return out;
+    }
+
+    /**
+     * 动画的校验。先复用静态图的节点/边校验，再校验 steps。
+     *
+     * <p>返回 null 表示不合格。
+     */
+    private JsonNode validateAnimation(JsonNode root) {
+        // 节点与边沿用同一套规则
+        JsonNode base = validate(root);
+        if (base == null) {
+            return null;
+        }
+        ObjectNode out = (ObjectNode) base;
+
+        int width = out.path("width").asInt(720);
+        int height = out.path("height").asInt(420);
+
+        // 收集合法 id，用于后面校验引用
+        Set<String> ids = new java.util.HashSet<>();
+        for (JsonNode n : out.path("nodes")) {
+            ids.add(n.path("id").asText());
+        }
+
+        JsonNode stepsIn = root.path("steps");
+        if (!stepsIn.isArray()) {
+            return null;
+        }
+
+        ArrayNode steps = out.putArray("steps");
+        int i = 0;
+        for (JsonNode step : stepsIn) {
+            if (i++ >= MAX_STEPS) {
+                break;
+            }
+            String caption = clean(step.path("caption").asText(""), MAX_CAPTION_LEN);
+            if (caption.isEmpty()) {
+                // 没有旁白的分步没有讲解价值，跳过这一步
+                continue;
+            }
+
+            ObjectNode s = steps.addObject();
+            s.put("caption", caption);
+
+            // 高亮 / 淡化：只保留确实存在的 id
+            s.set("highlight", filterIds(step.path("highlight"), ids));
+            s.set("dim", filterIds(step.path("dim"), ids));
+
+            // 这一帧新出现的连线
+            ArrayNode addEdges = s.putArray("addEdges");
+            JsonNode addIn = step.path("addEdges");
+            if (addIn.isArray()) {
+                int e = 0;
+                for (JsonNode edge : addIn) {
+                    if (e++ >= MAX_EDGES) {
+                        break;
+                    }
+                    String from = edge.path("from").asText("");
+                    String to = edge.path("to").asText("");
+                    if (!ids.contains(from) || !ids.contains(to) || from.equals(to)) {
+                        continue;
+                    }
+                    ObjectNode o = addEdges.addObject();
+                    o.put("from", from);
+                    o.put("to", to);
+                    o.put("label", clean(edge.path("label").asText(""), 16));
+                    o.put("style", enumOr(edge.path("style").asText(""), EDGE_STYLES, "arrow"));
+                }
+            }
+
+            // 节点移动：目标坐标必须夹进画布
+            ArrayNode moves = s.putArray("moveNodes");
+            JsonNode moveIn = step.path("moveNodes");
+            if (moveIn.isArray()) {
+                int m = 0;
+                for (JsonNode mv : moveIn) {
+                    if (m++ >= MAX_NODES) {
+                        break;
+                    }
+                    String id = mv.path("id").asText("");
+                    if (!ids.contains(id)) {
+                        continue;
+                    }
+                    ObjectNode o = moves.addObject();
+                    o.put("id", id);
+                    o.put("x", clamp(mv.path("x").asInt(width / 2), 40, width - 40));
+                    o.put("y", clamp(mv.path("y").asInt(height / 2), 30, height - 30));
+                }
+            }
+        }
+
+        if (steps.size() < MIN_STEPS) {
+            return null;
+        }
+        return out;
+    }
+
+    /** 把 id 数组过滤成只含已存在的 id，并去重。 */
+    private static ArrayNode filterIds(JsonNode arr, Set<String> valid) {
+        ArrayNode out = JSON.createArrayNode();
+        if (!arr.isArray()) {
+            return out;
+        }
+        Set<String> seen = new java.util.HashSet<>();
+        for (JsonNode x : arr) {
+            String id = x.asText("");
+            if (valid.contains(id) && seen.add(id)) {
+                out.add(id);
+            }
+        }
         return out;
     }
 
@@ -199,9 +381,11 @@ public class DiagramService {
             if (id.isEmpty() || label.isEmpty() || !ids.add(id)) {
                 continue;
             }
-            // 坐标必须落在画布内，否则节点会画到看不见的地方
-            int x = clamp(node.path("x").asInt(width / 2), 30, width - 30);
-            int y = clamp(node.path("y").asInt(height / 2), 24, height - 24);
+            // 这里只把明显越界的坐标夹回来；真正的防裁剪靠下面的 autoFit：
+            // 节点宽高随文字变化，固定的边距算不准，贴着边缘的节点会被裁掉半截
+            // （之前 a1 上方那个残缺的「字」就是这么来的）。
+            int x = clamp(node.path("x").asInt(width / 2), 40, width - 40);
+            int y = clamp(node.path("y").asInt(height / 2), 30, height - 30);
             String shape = enumOr(node.path("shape").asText(""), SHAPES, "box");
             String color = enumOr(node.path("color").asText(""), COLORS, "default");
 

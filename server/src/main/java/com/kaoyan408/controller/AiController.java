@@ -103,6 +103,27 @@ public class AiController {
     }
 
     /**
+     * 生成分步动画（一次性返回，非流式）。
+     *
+     * <p>和 /diagram 的区别：返回的 DSL 多了 steps，前端可逐步播放。
+     * 缓存键带 anim: 前缀，与同问题的静态图解互不干扰。
+     *
+     * <p>同样计入游客 3 次限额：动画比静态图更贵（输出长一倍以上）。
+     */
+    @PostMapping("/animation")
+    public Result<Map<String, Object>> animation(@RequestBody(required = false) DiagramRequest body,
+                                                 Authentication authentication,
+                                                 jakarta.servlet.http.HttpServletRequest request) {
+        Long userId = userIdOf(authentication);
+        String ip = clientIp(request);
+        aiChatService.ensureQuota(userId, ip);
+        return Result.ok(diagramService.generateAnimation(
+                body == null ? null : body.question(),
+                body == null ? null : body.answerExcerpt(),
+                body == null ? null : body.knowledge()));
+    }
+
+    /**
      * 生成图解（一次性返回，非流式）。
      *
      * <p>不流式：图要拿到完整 JSON 才能画，边收边画没有意义。

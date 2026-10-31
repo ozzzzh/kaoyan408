@@ -454,6 +454,10 @@ export interface AiChatMessage {
   diagramLoading?: boolean
   /** 图解生成失败的原因 */
   diagramError?: string
+  /** 该条回答对应的分步动画 */
+  animation?: AiAnimationResult['dsl']
+  animationLoading?: boolean
+  animationError?: string
 }
 
 export interface AiUsage {
@@ -484,5 +488,24 @@ export interface AiDiagramResult {
     notes?: Array<{ text: string; x: number; y: number }>
   }
   /** true 表示命中缓存，未重新调用模型 */
+  cached: boolean
+}
+
+/** AI 生成的分步动画。结构由服务端校验后返回。 */
+export interface AiAnimationResult {
+  dsl: {
+    title: string
+    width: number
+    height: number
+    nodes: AiDiagramResult['dsl']['nodes']
+    edges: AiDiagramResult['dsl']['edges']
+    steps: Array<{
+      caption: string
+      highlight?: string[]
+      dim?: string[]
+      addEdges?: AiDiagramResult['dsl']['edges']
+      moveNodes?: Array<{ id: string; x: number; y: number }>
+    }>
+  }
   cached: boolean
 }

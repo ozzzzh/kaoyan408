@@ -48,15 +48,72 @@ const props = defineProps<{ dsl: DiagramDsl }>()
 const W = computed(() => Math.max(320, Math.min(900, props.dsl.width || 720)))
 const H = computed(() => Math.max(240, Math.min(700, props.dsl.height || 420)))
 
+/**
+ * 自动扩边：按节点实际占位重算可视区域。
+ *
+ * 节点宽高随文字变化，后端无从预知，所以坐标钳制只能做粗筛；
+ * 真正的「不被裁掉」靠这里——把每个节点的外接矩形并起来，
+ * 再把 viewBox 扩到能装下全部内容。画布只变大不变小。
+ */
+const fit = computed(() => {
+  const W0 = W.value
+  const H0 = H.value
+  let minX = 0
+  let minY = 0
+  let maxX = W0
+  let maxY = H0
+  for (const n of props.dsl.nodes ?? []) {
+    const s = nodeSize(n)
+    minX = Math.min(minX, n.x - s.w / 2 - 10)
+    maxX = Math.max(maxX, n.x + s.w / 2 + 10)
+    minY = Math.min(minY, n.y - s.h / 2 - 10)
+    maxY = Math.max(maxY, n.y + s.h / 2 + 14)
+  }
+  return {
+    minX,
+    minY,
+    w: Math.max(1, maxX - minX),
+    h: Math.max(1, maxY - minY),
+  }
+})
+
 const nodeById = computed(() => {
   const m = new Map<string, DiagramNode>()
   for (const n of props.dsl.nodes ?? []) m.set(n.id, n)
   return m
 })
 
-/** 每种形状的包围盒尺寸，用于算连线交点与文字区域 */
-const NODE_W = 108
-const NODE_H = 48
+/**
+ * 节点尺寸按文字长度算出来，而不是写死。
+ *
+ * 之前写死 108×48：模型把公式（如 LOC(ai)=LOC(a1)+(i-1)L）塞进 label 时，
+ * 框不会跟着变宽，文字直接溢出到框外。
+ * 这里按最宽一行的**估算宽度**决定框宽，中文按全角算。
+ */
+const FONT_SIZE = 12.5
+const LINE_HEIGHT = 15
+const PAD_X = 16
+const PAD_Y = 14
+
+/** 估算一行文字占多少像素：中日韩字符算 1 个字号，其余算 0.58 个。 */
+function textWidth(s: string): number {
+  let w = 0
+  for (const ch of s) {
+    // 全角字符（CJK、全角标点）按 1 个字宽，ASCII 按 0.58
+    w += /[　-鿿＀-￯]/.test(ch) ? FONT_SIZE : FONT_SIZE * 0.58
+  }
+  return w
+}
+
+/** 一个节点实际占的宽高（含内边距）。 */
+function nodeSize(n: { label: string }): { w: number; h: number } {
+  const ls = lines(n.label)
+  const widest = Math.max(...ls.map(textWidth), 0)
+  return {
+    w: Math.max(72, Math.round(widest + PAD_X * 2)),
+    h: Math.max(40, Math.round(ls.length * LINE_HEIGHT + PAD_Y * 2)),
+  }
+}
 
 const fill = (color: string) =>
   ({
@@ -97,11 +154,12 @@ function edgeGeometry(a: DiagramNode, b: DiagramNode) {
   const ux = dx / dist
   const uy = dy / dist
 
-  // 从中心出发，沿方向走到矩形边框的距离
-  const halfW = NODE_W / 2 + 6
-  const halfH = NODE_H / 2 + 6
-  const tA = Math.min(Math.abs(halfW / (ux || 1e-6)), Math.abs(halfH / (uy || 1e-6)))
-  const tB = tA
+  // 从中心出发，沿方向走到矩形边框的距离。
+  // 两端各用自己的尺寸，宽窄不同的节点相连时端点才不会压进框里。
+  const sa = nodeSize(a)
+  const sb = nodeSize(b)
+  const tA = Math.min(Math.abs((sa.w / 2 + 5) / (ux || 1e-6)), Math.abs((sa.h / 2 + 5) / (uy || 1e-6)))
+  const tB = Math.min(Math.abs((sb.w / 2 + 5) / (ux || 1e-6)), Math.abs((sb.h / 2 + 5) / (uy || 1e-6)))
 
   return {
     x1: a.x + ux * tA,
@@ -131,9 +189,9 @@ function lines(label: string): string[] {
 
     <div class="overflow-x-auto rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]">
       <svg
-        :viewBox="`0 0 ${W} ${H}`"
-        :width="W"
-        :height="H"
+        :viewBox="`${fit.minX} ${fit.minY} ${fit.w} ${fit.h}`"
+        :width="fit.w"
+        :height="fit.h"
         class="block h-auto w-full max-w-full"
         role="img"
         :aria-label="dsl.title || '原理图解'"
@@ -189,10 +247,10 @@ function lines(label: string): string[] {
           <template v-for="n in dsl.nodes" :key="n.id">
             <rect
               v-if="n.shape === 'box' || n.shape === 'text'"
-              :x="n.x - NODE_W / 2"
-              :y="n.y - NODE_H / 2"
-              :width="NODE_W"
-              :height="NODE_H"
+              :x="n.x - nodeSize(n).w / 2"
+              :y="n.y - nodeSize(n).h / 2"
+              :width="nodeSize(n).w"
+              :height="nodeSize(n).h"
               :rx="n.shape === 'box' ? 10 : 0"
               :fill="n.shape === 'text' ? 'none' : fill(n.color)"
               :stroke="n.shape === 'text' ? 'none' : stroke(n.color)"
@@ -202,14 +260,14 @@ function lines(label: string): string[] {
               v-else-if="n.shape === 'circle'"
               :cx="n.x"
               :cy="n.y"
-              :r="NODE_H / 2 + 2"
+              :r="nodeSize(n).h / 2 + 2"
               :fill="fill(n.color)"
               :stroke="stroke(n.color)"
               stroke-width="1.5"
             />
             <path
               v-else
-              :d="`M ${n.x} ${n.y - NODE_H / 2 - 4} L ${n.x + NODE_W / 2 + 8} ${n.y} L ${n.x} ${n.y + NODE_H / 2 + 4} L ${n.x - NODE_W / 2 - 8} ${n.y} Z`"
+              :d="`M ${n.x} ${n.y - nodeSize(n).h / 2 - 4} L ${n.x + nodeSize(n).w / 2 + 6} ${n.y} L ${n.x} ${n.y + nodeSize(n).h / 2 + 4} L ${n.x - nodeSize(n).w / 2 - 6} ${n.y} Z`"
               :fill="fill(n.color)"
               :stroke="stroke(n.color)"
               stroke-width="1.5"
@@ -220,7 +278,7 @@ function lines(label: string): string[] {
               :y="n.y"
               text-anchor="middle"
               dominant-baseline="middle"
-              font-size="12.5"
+              :font-size="FONT_SIZE"
               font-weight="600"
               :fill="textColor(n.color)"
             >
