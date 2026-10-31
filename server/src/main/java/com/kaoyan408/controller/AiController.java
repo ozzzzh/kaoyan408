@@ -5,6 +5,7 @@ import com.kaoyan408.core.Result;
 import com.kaoyan408.entity.User;
 import com.kaoyan408.service.AuthService;
 import com.kaoyan408.service.ai.AiChatService;
+import com.kaoyan408.service.ai.DiagramService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -55,10 +56,14 @@ public class AiController {
     });
 
     private final AiChatService aiChatService;
+    private final DiagramService diagramService;
     private final AuthService authService;
 
-    public AiController(AiChatService aiChatService, AuthService authService) {
+    public AiController(AiChatService aiChatService,
+                        DiagramService diagramService,
+                        AuthService authService) {
         this.aiChatService = aiChatService;
+        this.diagramService = diagramService;
         this.authService = authService;
     }
 
@@ -92,6 +97,30 @@ public class AiController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("deleted", true);
         return Result.ok(out);
+    }
+
+    public record DiagramRequest(String question, String answerExcerpt, String knowledge) {
+    }
+
+    /**
+     * 生成图解（一次性返回，非流式）。
+     *
+     * <p>不流式：图要拿到完整 JSON 才能画，边收边画没有意义。
+     * 生成结果按问题哈希缓存，同一问题第二次几乎是秒回。
+     *
+     * <p>对游客同样开放，但计入同一条 3 次限额——生成一张图比一轮对话更贵。
+     */
+    @PostMapping("/diagram")
+    public Result<Map<String, Object>> diagram(@RequestBody(required = false) DiagramRequest body,
+                                               Authentication authentication,
+                                               jakarta.servlet.http.HttpServletRequest request) {
+        Long userId = userIdOf(authentication);
+        String ip = clientIp(request);
+        aiChatService.ensureQuota(userId, ip);
+        return Result.ok(diagramService.generate(
+                body == null ? null : body.question(),
+                body == null ? null : body.answerExcerpt(),
+                body == null ? null : body.knowledge()));
     }
 
     /**

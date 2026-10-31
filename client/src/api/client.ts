@@ -1,5 +1,6 @@
 import type {
   AiConversationDetail,
+  AiDiagramResult,
   AiConversationSummary,
   AiStatus,
   AnswerResult,
@@ -186,6 +187,8 @@ export const api = {
     aiStatus: () => request<AiStatus>('/api/v1/ai/status'),
     aiConversations: () => request<AiConversationSummary[]>('/api/v1/ai/conversations'),
     aiConversation: (id: number) => request<AiConversationDetail>(`/api/v1/ai/conversations/${id}`),
+    aiDiagram: (question: string, answerExcerpt?: string, knowledge?: string) =>
+      post<AiDiagramResult>('/api/v1/ai/diagram', { question, answerExcerpt, knowledge }),
     aiDeleteConversation: (id: number) =>
       request<{ deleted: boolean }>(`/api/v1/ai/conversations/${id}`, { method: 'DELETE' }),
   health: () => request<{ name: string; version: string; status: string }>('/api/v1/health'),

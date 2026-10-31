@@ -137,6 +137,29 @@ public class AiChatService {
         conversationMapper.deleteById(conversationId);
     }
 
+
+    /**
+     * 检查并扣减游客额度。登录用户不限次，直接返回。
+     *
+     * <p>抽成公开方法是因为图解生成也要走同一份额度：
+     * 生成一张图比一轮对话更贵，游客不该靠换接口绕开限制。
+     *
+     * <p>在调用模型**之前**扣：模型调用可能失败或超时，
+     * 若等成功再扣，失败重试就能无限刷。
+     */
+    public void ensureQuota(Long userId, String clientIp) {
+        if (userId != null) {
+            return;
+        }
+        int used = guestUsed(clientIp);
+        if (used >= GUEST_TRIAL_LIMIT) {
+            throw new BusinessException(429,
+                    "游客试用次数已用完（共 " + GUEST_TRIAL_LIMIT
+                            + " 次）。登录后可继续使用，并能结合你的做题数据。");
+        }
+        consumeGuestQuota(clientIp);
+    }
+
     /**
      * 发起一轮对话。
      *
@@ -166,14 +189,7 @@ public class AiChatService {
         }
 
         boolean guest = userId == null;
-        if (guest) {
-            int used = guestUsed(clientIp);
-            if (used >= GUEST_TRIAL_LIMIT) {
-                throw new BusinessException(429,
-                        "游客试用次数已用完（共 " + GUEST_TRIAL_LIMIT + " 次）。登录后可继续使用，并能结合你的做题数据。");
-            }
-            consumeGuestQuota(clientIp);
-        }
+        ensureQuota(userId, clientIp);
 
         // 会话：游客不落库，每次都是新会话
         AiConversation conv = null;

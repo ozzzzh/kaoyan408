@@ -141,6 +141,67 @@ public class CommandCodeClient {
         }
     }
 
+
+    /**
+     * 一次性返回完整回答（非流式）。
+     *
+     * <p>用于生成结构化内容（图解 DSL）：那种场景要的是完整 JSON，
+     * 流式反而得先拼起来再解析，多一层不必要的复杂度。
+     *
+     * <p>注意本模型的推理 token 与正文共用 max_tokens，
+     * 生成 JSON 时容易先被推理吃掉大半导致输出截断，所以这里单独放宽。
+     */
+    public String complete(String systemPrompt, String question, int maxTokensOverride) {
+        if (!isConfigured()) {
+            throw new IllegalStateException("AI 服务未配置：缺少 kaoyan.ai.api-key");
+        }
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            messages.add(Map.of("role", "system", "content", systemPrompt));
+        }
+        messages.add(Map.of("role", "user", "content", question));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("messages", messages);
+        body.put("max_tokens", maxTokensOverride > 0 ? maxTokensOverride : maxTokens);
+        body.put("temperature", 0.2);
+
+        String payload;
+        try {
+            payload = JSON.writeValueAsString(body);
+        } catch (Exception e) {
+            throw new IllegalStateException("构造请求体失败", e);
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/chat/completions"))
+                .timeout(Duration.ofSeconds(120))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                .build();
+
+        try {
+            HttpResponse<String> response =
+                    http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                log.error("AI 上游返回 {}: {}", response.statusCode(),
+                        truncate(response.body(), 500));
+                throw new IllegalStateException("AI 服务返回错误（" + response.statusCode() + "）");
+            }
+            JsonNode root = JSON.readTree(response.body());
+            return root.path("choices").path(0).path("message").path("content").asText("");
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("AI 请求失败: {}", e.getMessage());
+            throw new IllegalStateException("AI 服务连接失败：" + e.getMessage(), e);
+        }
+    }
+
     /** 逐行解析 SSE，把 reasoning 与 content 分流。 */
     private Usage readSse(java.io.InputStream stream, Runnable onThinking, Consumer<String> onDelta)
             throws Exception {

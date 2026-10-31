@@ -448,9 +448,41 @@ export interface AiChatMessage {
   thinking?: boolean
   /** 出错时的提示 */
   error?: string
+  /** 该条回答对应的图解；只在用户点「生成图解」后才有 */
+  diagram?: AiDiagramResult['dsl']
+  /** 图解正在生成 */
+  diagramLoading?: boolean
+  /** 图解生成失败的原因 */
+  diagramError?: string
 }
 
 export interface AiUsage {
   promptTokens?: number
   completionTokens?: number
+}
+
+/** AI 生成的图解。结构由服务端校验后返回，前端只负责画。 */
+export interface AiDiagramResult {
+  dsl: {
+    title: string
+    width: number
+    height: number
+    nodes: Array<{
+      id: string
+      label: string
+      shape: 'box' | 'circle' | 'diamond' | 'text'
+      x: number
+      y: number
+      color: 'default' | 'accent' | 'warn' | 'danger' | 'muted'
+    }>
+    edges: Array<{
+      from: string
+      to: string
+      label: string
+      style: 'solid' | 'dashed' | 'arrow'
+    }>
+    notes?: Array<{ text: string; x: number; y: number }>
+  }
+  /** true 表示命中缓存，未重新调用模型 */
+  cached: boolean
 }
