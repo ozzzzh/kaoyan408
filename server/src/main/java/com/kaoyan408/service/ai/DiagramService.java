@@ -91,11 +91,13 @@ public class DiagramService {
             return out;
         }
 
-        // 图解与正文共用 max_tokens 时容易被推理吃掉，单独放宽到 3000
+        // 该模型先推理再输出，两者共用 max_tokens。
+        // 3000 在复杂布局（TCP 时序图等）时会被推理吃光，正文为空；
+        // 给到 5000，仍不够时 complete() 内部还会翻倍重试一次。
         String raw = client.complete(
                 DiagramPrompt.systemPrompt(knowledge),
                 DiagramPrompt.userPrompt(q, answerExcerpt),
-                3000);
+                5000);
 
         JsonNode validated = validate(extractJson(raw));
         if (validated == null) {
@@ -158,11 +160,11 @@ public class DiagramService {
             return out;
         }
 
-        // 动画要输出节点 + 边 + 多步分镜，比静态图长得多，给到 4000
+        // 动画要输出节点 + 边 + 多步分镜，比静态图长得多，给到 6000
         String raw = client.complete(
                 AnimationPrompt.systemPrompt(knowledge),
                 AnimationPrompt.userPrompt(q, answerExcerpt),
-                4000);
+                6000);
 
         JsonNode validated = validateAnimation(extractJson(raw));
         if (validated == null) {

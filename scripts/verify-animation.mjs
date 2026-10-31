@@ -13,6 +13,23 @@ const post = async (p, b) => {
 }
 
 const main = async () => {
+  // CI 没有 API Key，也不该把真实 Key 写进仓库。
+  // 未配置时只验证接口降级到 503，并明确报告「用例已跳过」，
+  // 不把它算成通过。
+  const st = await fetch(B + '/ai/status').then((r) => r.json()).catch(() => null)
+  if (st?.data?.configured === false) {
+    console.log('\n  ⚠️ AI 未配置（无 KAOYAN_AI_API_KEY），动画用例已跳过')
+    const r = await fetch(B + '/ai/animation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: '测试' }),
+    })
+    const j = await r.json().catch(() => ({}))
+    ok(j.code === 503, '未配置时返回 503', 'code=' + j.code)
+    console.log(`\n通过 ${pass} 项，失败 ${fail} 项（动画用例已跳过）`)
+    process.exit(fail === 0 ? 0 : 1)
+  }
+
   const { connect } = await import('./_env.mjs')
   let db = null
   try {

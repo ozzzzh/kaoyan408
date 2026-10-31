@@ -152,6 +152,13 @@ public class CommandCodeClient {
      * 生成 JSON 时容易先被推理吃掉大半导致输出截断，所以这里单独放宽。
      */
     public String complete(String systemPrompt, String question, int maxTokensOverride) {
+        return complete(systemPrompt, question, maxTokensOverride, true);
+    }
+
+    /**
+     * @param retryOnEmpty 正文为空时是否用更大预算重试一次
+     */
+    public String complete(String systemPrompt, String question, int maxTokensOverride, boolean retryOnEmpty) {
         if (!isConfigured()) {
             throw new IllegalStateException("AI 服务未配置：缺少 kaoyan.ai.api-key");
         }
@@ -192,8 +199,33 @@ public class CommandCodeClient {
                         truncate(response.body(), 500));
                 throw new IllegalStateException("AI 服务返回错误（" + response.statusCode() + "）");
             }
-            JsonNode root = JSON.readTree(response.body());
-            return root.path("choices").path(0).path("message").path("content").asText("");
+            String bodyText = response.body();
+            JsonNode root = JSON.readTree(bodyText);
+            JsonNode choices = root.path("choices");
+            if (!choices.isArray() || choices.isEmpty()) {
+                log.error("AI 返回没有 choices 字段，响应前 300 字: {}", truncate(bodyText, 300));
+                throw new IllegalStateException("AI 返回格式异常");
+            }
+            JsonNode msg = choices.path(0).path("message");
+            String content = msg.path("content").asText("");
+            if (content.isEmpty()) {
+                // 有些上游在无法产出正文时把内容放进 reasoning，或直接返回空，
+                // 把关键信息打进日志，否则线上只能看到一句「生成不合格」无从排查。
+                log.error("AI 返回空正文。finish_reason={}，reasoning 长度={}，message 字段={}",
+                        choices.path(0).path("finish_reason").asText(),
+                        msg.path("reasoning_content").asText("").length(),
+                        msg.fieldNames().hasNext() ? msg.toString().substring(0, Math.min(200, msg.toString().length())) : "空");
+            }
+            if (content.isEmpty() && retryOnEmpty) {
+                // 该模型先推理再输出，推理与正文共用 max_tokens。
+                // 遇到需要设计复杂布局的问题（如 TCP 时序图），推理会膨胀到几千字，
+                // 把预算吃光，正文一个字都出不来（实测 reasoning 8761 字、finish_reason=length）。
+                // 这里翻倍预算重试一次，比直接告诉用户「生成失败」有用得多。
+                int doubled = Math.max(4000, (maxTokensOverride > 0 ? maxTokensOverride : maxTokens) * 2);
+                log.warn("AI 正文为空（推理吃掉全部预算），用 {} tokens 重试一次", doubled);
+                return complete(systemPrompt, question, doubled, false);
+            }
+            return content;
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {

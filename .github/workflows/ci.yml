@@ -277,6 +277,18 @@ jobs:
           DB_NAME: kaoyan_db
         run: node scripts/verify-ai.mjs
 
+      - name: 图解与动画回归（结构校验 / 引用完整性 / 缓存）
+        env:
+          # 同 AI：CI 无 Key，脚本只验证接口降级到 503 并明确跳过。
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+          DB_NAME: kaoyan_db
+        run: |
+          node scripts/verify-diagram.mjs
+          node scripts/verify-animation.mjs
+
       - name: 模拟考试健壮性（刷新恢复/超时/不限时）
         env:
           # 需要连库制造「超时」场景并校验唯一约束
