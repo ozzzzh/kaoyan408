@@ -5,6 +5,7 @@ import com.kaoyan408.entity.KnowledgePoint;
 import com.kaoyan408.mapper.KnowledgePointMapper;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -44,11 +45,28 @@ public class AiPromptBuilder {
                 你是「题知链 408」的学习助手，服务对象是准备计算机统考 408 的考生。
                 408 包含四门：数据结构、计算机组成原理、操作系统、计算机网络，满分 150。
 
+                """);
+
+        // 当前时间。
+        // 不注入的话模型不知道自己处在哪一天，被问「现在几月」「还剩几个月」时
+        // 只能回答「我无法获取实时时间」——对一个备考规划助手来说这是硬伤。
+        // 每次请求现算，服务长期运行也不会给出过期日期。
+        LocalDate today = LocalDate.now();
+        sb.append("今天是 ").append(today.getYear()).append(" 年 ")
+                .append(today.getMonthValue()).append(" 月 ")
+                .append(today.getDayOfMonth()).append(" 日，")
+                .append(weekdayOf(today)).append("。\n")
+                .append("408 初试通常安排在 12 月的第三个或第四个周末，具体以教育部当年公告为准；")
+                .append("推算复习周期时以这个时间为基准，并说明是推算值。\n");
+
+        sb.append("""
+
                 ## 回答要求
                 1. 用中文回答，语气像一位耐心的助教，不要客套开场白。
                 2. 讲清原理，必要时给例子、对比、复杂度；涉及公式用 $...$ 或 $$...$$ 包起来。
                 3. 回答长度看问题复杂度，简单问题三五句话即可，不要为凑字数展开。
                 4. 不要编造 408 考试大纲之外的内容；不确定的直说。
+                5. 涉及时间与进度的问题，直接用上面给出的今天日期自己推算，不要反问用户今天是几号。
 
                 ## 知识点跳转（重要）
                 当你的回答涉及下面清单里的知识点时，在该段末尾单独一行写上：
@@ -69,6 +87,19 @@ public class AiPromptBuilder {
         }
 
         return sb.toString();
+    }
+
+    /** 中文星期，让模型能判断工作日/周末，安排计划时更自然。 */
+    private static String weekdayOf(LocalDate d) {
+        return switch (d.getDayOfWeek()) {
+            case MONDAY -> "星期一";
+            case TUESDAY -> "星期二";
+            case WEDNESDAY -> "星期三";
+            case THURSDAY -> "星期四";
+            case FRIDAY -> "星期五";
+            case SATURDAY -> "星期六";
+            case SUNDAY -> "星期日";
+        };
     }
 
     private String knowledgeCatalog() {
