@@ -16,8 +16,13 @@ const icon = computed(() => {
 </script>
 
 <template>
+  <!--
+    这里的间距与内边距要和 AppSidebar 的导航项严格一致（gap-3 / px-3 / py-2.5），
+    否则它紧挨着「我的」时，图标虽然对齐，文字却会左偏 4px。
+    原先写的是 gap-2 / py-2，肉眼能看出错位。
+  -->
   <button
-    class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[var(--k-text-muted)] transition hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]"
+    class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[var(--k-text-muted)] transition hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]"
     :title="`当前：${label}${theme.mode === 'auto' ? ` · ${theme.nextSwitchHint}` : ''}（点击切换 自动/日间/夜间）`"
     @click="theme.cycle()"
   >
