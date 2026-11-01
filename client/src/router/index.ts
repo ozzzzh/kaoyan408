@@ -3,32 +3,48 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 /**
  * 用 hash 路由：部署到任意静态目录都能直接打开（无 nginx rewrite 依赖）。
  *
- * 首页分流：未登录看到营销落地页，已登录直接进工作台。
- * 这样既保留了对外介绍页，老用户也不会每次进来都多点一次。
- * 落地页由前端会话状态决定，服务端不做重定向。
+ * 首页分流：根路径 `/` 是营销落地页，工作台在 `/dashboard`。
+ * 但分流**只在进入根路径时发生**，且用 beforeEnter 而不是全局守卫：
+ *
+ * 之前吃过亏——用全局守卫做「未登录 → 落地页」，结果游客点侧边栏的
+ * 「工作台」也会被拦回落地页，等于把工作台弄没了。
+ * 现在区分两件事：
+ *   - 打开 `/`（对外入口）→ 已登录给工作台，未登录给落地页；
+ *   - 直接打开 `/dashboard`（侧边栏入口）→ 永远给工作台，不看登录态。
  */
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
-      // 工作台固定占用根路径。
-      //
-      // 之前试过「未登录时 / 分流到落地页」，结果是游客点侧边栏的「工作台」
-      // 会被守卫拦回落地页，等于把工作台弄没了。工作台是主入口，
-      // 不该因为登录状态而消失，所以 / 永远是工作台。
-      // 落地页放在 /welcome，从首页 Logo 或直接输入地址进入。
+      // 根路径：按登录态决定看哪个。
+      // 用户 store 在 main.ts 里已经 restore 过，这里能直接读到。
       path: '/',
+      name: 'root',
+      component: () => import('@/views/LandingView.vue'),
+      meta: { bare: true },
+      beforeEnter: () => {
+        // 动态导入避免 router 与 store 的循环依赖
+        return import('@/store/user').then(({ useUserStore }) => {
+          const userStore = useUserStore()
+          // 已登录：根路径直接给工作台，不套 bare 外壳
+          return userStore.isLoggedIn ? { path: '/dashboard' } : true
+        })
+      },
+    },
+    // 工作台。不带 meta.bare，走侧边栏外壳。
+    {
+      path: '/dashboard',
       name: 'dashboard',
       component: () => import('@/views/DashboardView.vue'),
     },
-    // 独立路由：落地页不套工作台侧边栏外壳
+    // 落地页的固定地址：分享给别人介绍产品时用。
+    // 已登录也能进来（有人就是想看介绍页），所以不做跳转。
     {
       path: '/welcome',
       name: 'landing',
       component: () => import('@/views/LandingView.vue'),
       meta: { bare: true },
     },
-    { path: '/dashboard', redirect: '/' },
     { path: '/learn', name: 'learn', component: () => import('@/views/LearnView.vue') },
     { path: '/learn/:pointId', name: 'learn-detail', component: () => import('@/views/LearnView.vue') },
     { path: '/search', name: 'search', component: () => import('@/views/SearchView.vue') },
