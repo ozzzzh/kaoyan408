@@ -8,7 +8,7 @@ import ThemeToggle from './ThemeToggle.vue'
 
 const route = useRoute()
 const userStore = useUserStore()
-const { user, dashboard } = storeToRefs(userStore)
+const { user, dashboard, token, sessionExpired } = storeToRefs(userStore)
 
 interface NavItem {
   to: string
@@ -202,9 +202,22 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
           <span class="block truncate text-xs font-semibold text-[var(--k-text)]">{{
             user ? user.username : '游客模式'
           }}</span>
-          <span class="block truncate text-[10px] text-[var(--k-text-faint)]">{{
-            user ? '已登录' : '未保存做题记录'
-          }}</span>
+          <!--
+            三种状态必须能分清，否则用户会以为「做题记录丢了」：
+              - 正常已登录
+              - 登录已过期（服务端明确拒绝）→ 提示重新登录
+              - 有 token 但没取到用户信息（网络抖动）→ 提示同步中，别让人以为被登出
+            原先这里只有「已登录 / 未保存做题记录」两种，
+            被悄悄降级成游客时没有任何提示，看起来就像记录凭空消失。
+          -->
+          <span v-if="user" class="block truncate text-[10px] text-[var(--k-text-faint)]">已登录</span>
+          <span v-else-if="sessionExpired" class="block truncate text-[10px] font-semibold text-[var(--k-warn)]">
+            登录已过期，请重新登录
+          </span>
+          <span v-else-if="token" class="block truncate text-[10px] font-semibold text-[var(--k-warn)]">
+            登录态同步中…
+          </span>
+          <span v-else class="block truncate text-[10px] text-[var(--k-text-faint)]">未保存做题记录</span>
         </span>
         <button
           v-if="user"
