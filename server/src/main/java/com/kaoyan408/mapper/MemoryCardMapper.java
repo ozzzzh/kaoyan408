@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.util.Map;
 
 @Mapper
@@ -33,24 +34,27 @@ public interface MemoryCardMapper extends BaseMapper<MemoryCard> {
             JOIN knowledge_block b ON b.block_id = c.block_id
             JOIN knowledge_point p ON p.point_id = b.point_id
             WHERE c.user_id = #{userId}
-              AND (c.next_review_date IS NULL OR c.next_review_date <= CURDATE())
+              AND (c.next_review_date IS NULL OR c.next_review_date <= #{today})
             ORDER BY c.next_review_date IS NULL DESC, c.next_review_date ASC, c.review_count ASC
             LIMIT #{limit}
             """)
-    List<Map<String, Object>> dueCards(@Param("userId") Long userId, @Param("limit") int limit);
+    List<Map<String, Object>> dueCards(@Param("userId") Long userId,
+                                       @Param("today") LocalDate today,
+                                       @Param("limit") int limit);
 
     /** 卡片总量与掌握分布，用于统计。 */
     @Select("""
             SELECT COUNT(*)                                            AS total,
                    SUM(CASE WHEN c.box >= 5 THEN 1 ELSE 0 END)         AS solid,
-                   SUM(CASE WHEN c.next_review_date <= CURDATE()
+                   SUM(CASE WHEN c.next_review_date <= #{today}
                              OR c.next_review_date IS NULL THEN 1 ELSE 0 END) AS due,
                    COALESCE(SUM(c.review_count), 0)                     AS reviews,
                    COALESCE(SUM(c.correct_count), 0)                    AS corrects
             FROM memory_card c
             WHERE c.user_id = #{userId}
             """)
-    Map<String, Object> cardSummary(@Param("userId") Long userId);
+    Map<String, Object> cardSummary(@Param("userId") Long userId,
+                                    @Param("today") LocalDate today);
 
     /** 按科目统计卡片数。 */
     @Select("""

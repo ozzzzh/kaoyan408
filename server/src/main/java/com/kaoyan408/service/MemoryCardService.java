@@ -119,7 +119,7 @@ public class MemoryCardService {
 
     /** 到期卡片（内部复用，按科目可过滤）。 */
     private List<Map<String, Object>> dueCards(Long userId, String subject, int limit) {
-        List<Map<String, Object>> rows = cardMapper.dueCards(userId, limit);
+        List<Map<String, Object>> rows = cardMapper.dueCards(userId, LocalDate.now(), limit);
         if (subject == null || subject.isBlank()) {
             return rows;
         }
@@ -168,7 +168,7 @@ public class MemoryCardService {
 
     /** 背诵概览：总数、到期数、牢固数、分科目分布。 */
     public Map<String, Object> summary(Long userId) {
-        Map<String, Object> row = userId == null ? null : cardMapper.cardSummary(userId);
+        Map<String, Object> row = userId == null ? null : cardMapper.cardSummary(userId, LocalDate.now());
         long total = row == null ? 0 : toLong(row.get("total"));
         long solid = row == null ? 0 : toLong(row.get("solid"));
         long due = row == null ? 0 : toLong(row.get("due"));
