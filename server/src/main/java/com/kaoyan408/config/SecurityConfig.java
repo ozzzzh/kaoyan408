@@ -18,6 +18,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -91,34 +92,63 @@ public class SecurityConfig {
      * Spring Security 判定为跨域并直接返回 403——命令行 curl 不带 Origin
      * 却正常，所以这个坑只在浏览器里出现，很容易被误判成"注册接口坏了"。
      *
-     * 现在分两部分：
+     * 现在分三部分：
      *   1. 固定允许本地开发的各种端口（Vite 5173、DSH 面板 19387 等）；
      *   2. 通过 KAOYAN_CORS_ORIGINS 环境变量追加部署地址，
      *      用逗号分隔，形如 http://10.0.219.241:17073。
-     *      不在代码里写死具体 IP，避免每换一台机器就要改代码重新构建。
+     *   3. **同源自动放行**：Origin 的 host:port 与请求的 Host 相同就允许。
+     *
+     * 第 3 条是补一个真实事故：接入 Cloudflare 隧道后域名变成
+     * https://tizhilian408.de5.net，而白名单里还留着内网 IP，
+     * 于是公网域名下**所有 POST 都被拒**——注册、登录、交卷、AI 对话
+     * 全部 "Invalid CORS request"，GET 却正常（浏览器同源 GET 不带 Origin），
+     * 页面看起来完全正常，只有点按钮才失败。
+     *
+     * 加同源判断后，以后换任何域名都不用再改白名单：nginx 把前端和 /api
+     * 放在同一个源下，天然满足同源条件。
+     * 真正的跨域请求仍然要显式配置，安全性没有放宽。
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${kaoyan.cors.origins:}") String extraOrigins) {
-        List<String> patterns = new ArrayList<>(List.of(
+        List<String> basePatterns = new ArrayList<>(List.of(
                 "http://localhost:*", "http://127.0.0.1:*"));
         if (extraOrigins != null && !extraOrigins.isBlank()) {
             for (String origin : extraOrigins.split(",")) {
                 String trimmed = origin.trim();
                 if (!trimmed.isEmpty()) {
-                    patterns.add(trimmed);
+                    basePatterns.add(trimmed);
                 }
             }
         }
 
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(patterns);
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", config);
-        return source;
+        // 每个请求单独算一次配置：只有这样才能拿到 Host 做同源比较
+        return request -> {
+            if (!request.getRequestURI().startsWith("/api/")) {
+                return null;
+            }
+
+            List<String> allowed = new ArrayList<>(basePatterns);
+            String origin = request.getHeader("Origin");
+            String host = request.getHeader("Host");
+            if (origin != null && host != null && !host.isBlank()) {
+                try {
+                    String authority = URI.create(origin).getAuthority();
+                    if (authority != null && authority.equalsIgnoreCase(host)) {
+                        allowed.add(origin);
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    // Origin 不是合法 URL，退回用白名单判断
+                }
+            }
+
+            CorsConfiguration config = new CorsConfiguration();
+            config.setAllowedOriginPatterns(allowed);
+            config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+            config.setAllowedHeaders(List.of("*"));
+            config.setAllowCredentials(true);
+            config.setMaxAge(3600L);
+            return config;
+        };
     }
 }
