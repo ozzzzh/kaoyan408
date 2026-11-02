@@ -24,6 +24,13 @@ const submitting = ref(false)
 const message = ref<string | null>(null)
 /** 游客尝试提交时为 true，用于在提示条里给出「去登录」按钮 */
 const needLogin = ref(false)
+/**
+ * 界面显示已登录、后端却按游客处理。
+ *
+ * 说明浏览器发出的请求没带上登录凭证（经过会丢弃 Authorization 头的代理/预览网关），
+ * 这时提示用户「去登录」没有意义——他会以为自己没登录。要让他换地址访问。
+ */
+const authNotPropagated = ref(false)
 
 /* ---------- 视频指引 ---------- */
 const videoOpen = ref(false)
@@ -294,8 +301,20 @@ async function submit() {
   try {
     const answer = await api.submitAnswer(item.examRef, selected.value || '已完成')
     // 游客也能判分与看解析，只是结果不落库。这里如实告知，避免用户以为记录被保存了。
+    //
+    // 但「界面上是登录的、后端却按游客处理」是另一种情况，不能一律说成游客模式：
+    // 这种矛盾说明**浏览器发出的请求没带上登录凭证**（典型场景是经过了会丢弃
+    // Authorization 头的代理/预览网关），此时用户会看到「明明登录了却提示游客模式」。
+    // 那种情况下要明确告诉用户换个地址访问，否则他会以为是自己没登录。
     if (answer.guest) {
-      message.value = '游客模式：本题已判分，但答题记录不会保存。登录后可累积错题本与掌握度。'
+      const looksLoggedIn = Boolean(userStore.user || userStore.token)
+      if (looksLoggedIn) {
+        authNotPropagated.value = true
+        message.value =
+          '登录信息没能传到服务器（当前访问地址可能经过代理，丢弃了认证头），本题不会记录。请改用主域名访问。'
+      } else {
+        message.value = '游客模式：本题已判分，但答题记录不会保存。登录后可累积错题本与掌握度。'
+      }
     }
     result.value = {
       correct: answer.correct,
