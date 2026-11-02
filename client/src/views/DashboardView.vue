@@ -88,18 +88,17 @@ const todayStat = computed(() => {
 })
 
 onMounted(async () => {
-  try {
-    entrances.value = await api.practiceEntrances()
-  } catch {
-    entrances.value = null
-  }
-  if (user.value) {
-    try {
-      memory.value = await api.memorySummary()
-    } catch {
-      memory.value = null
-    }
-  }
+  // 两个请求互不依赖，必须并行。
+  //
+  // 原来是 entrances 拿完再拿 memorySummary，串成两趟。
+  // 这条链路要穿隧道到校园网，单趟 600–1000ms，串行等于白等一趟。
+  // 各自 catch，任何一个失败都不影响另一块渲染。
+  const [entranceResult, memoryResult] = await Promise.all([
+    api.practiceEntrances().catch(() => null),
+    user.value ? api.memorySummary().catch(() => null) : Promise.resolve(null),
+  ])
+  entrances.value = entranceResult
+  memory.value = memoryResult
 })
 </script>
 

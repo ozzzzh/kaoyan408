@@ -107,28 +107,25 @@ const SUBJECT_SHORT: Record<string, string> = {
   cn: '计网',
 }
 
-async function loadSummary() {
-  try {
-    summary.value = await api.memorySummary()
-  } catch {
-    summary.value = null
-  }
-}
-
 async function load() {
   loading.value = true
   message.value = null
   lastInterval.value = null
   lastResult.value = null
   try {
-    const due = await api.memoryDue()
+    // due 和 summary 互不依赖，并行发。
+    // 串行等于多等一整趟（隧道单趟 600–1000ms）。
+    const [due, sum] = await Promise.all([
+      api.memoryDue(),
+      api.memorySummary().catch(() => null),
+    ])
     cards.value = due.items
     index.value = 0
     revealed.value = false
     sessionDone.value = 0
     sessionCorrect.value = 0
-    await loadSummary()
-    boxesAtStart.value = [...(summary.value?.boxes ?? [])]
+    summary.value = sum
+    boxesAtStart.value = [...(sum?.boxes ?? [])]
   } catch (e) {
     message.value = e instanceof Error ? e.message : '加载失败'
     cards.value = []

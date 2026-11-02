@@ -41,18 +41,18 @@ const historyByYear = computed(() => {
 async function load() {
   loading.value = true
   try {
-    exams.value = await api.exams()
+    // 真题卷列表和历史成绩互不依赖，并行发。
+    // 原来串成两趟，在隧道上等于白等 600–1000ms。
+    const [examList, historyResult] = await Promise.all([
+      api.exams(),
+      userStore.user ? api.mockHistory(50).catch(() => null) : Promise.resolve(null),
+    ])
+
+    exams.value = examList
     if (!year.value) {
-      year.value = initialYear || exams.value[exams.value.length - 1]?.year || 2009
+      year.value = initialYear || examList[examList.length - 1]?.year || 2009
     }
-    if (userStore.user) {
-      try {
-        const h = await api.mockHistory(50)
-        history.value = h.items
-      } catch {
-        history.value = []
-      }
-    }
+    history.value = historyResult?.items ?? []
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败'
   } finally {
