@@ -92,6 +92,83 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
 
+/* ---------------- 内容缓存与请求去重 ---------------- */
+
+/**
+ * 为什么需要这一层：
+ *
+ * 1. 去重。实测发现同一个请求会被并发发两次——
+ *    App.vue 和落地页都会拉 /stats/dash，知识点页路由变化时
+ *    /knowledge 也会被重复拉。这两个请求各自穿越隧道，各花 400ms+。
+ *    只要两次调用还在飞行中就共享同一个 Promise，就能省掉一整趟。
+ *
+ * 2. 缓存。知识树（147 条）和知识点正文只随部署变化、不随用户变化，
+ *    在站内来回切换却每次都要重新下载。缓存后切换知识点只下载新正文。
+ *
+ * 只缓存明确的内容型接口，用户相关数据（进度、错题、AI 会话）一律不缓存，
+ * 否则换账号或做题后会看到旧数据。
+ */
+const inflight = new Map<string, Promise<unknown>>()
+const contentCache = new Map<string, { at: number; data: unknown }>()
+
+/** 内容型接口的缓存时长；与 nginx 的 Cache-Control 保持一致。 */
+const CONTENT_TTL_MS = 5 * 60 * 1000
+
+/** 正文缓存最多留多少条，避免 147 个知识点全攒在内存里。 */
+const MAX_CACHED_ARTICLES = 24
+
+/**
+ * 并发去重：同一个 key 的请求还在路上时，直接复用那个 Promise。
+ *
+ * 失败时要清掉记录，否则一次网络抖动会让后续请求永远拿到同一个失败结果。
+ */
+function dedupe<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const pending = inflight.get(key)
+  if (pending) return pending as Promise<T>
+  const p = loader()
+    .then((data) => {
+      inflight.delete(key)
+      return data
+    })
+    .catch((e) => {
+      inflight.delete(key)
+      throw e
+    })
+  inflight.set(key, p)
+  return p
+}
+
+/**
+ * 带缓存 + 去重的内容请求。
+ *
+ * @param key    缓存键，必须能唯一标识这次请求（含全部查询参数）
+ * @param loader 真正的请求
+ * @param cap    缓存条目上限（按插入顺序淘汰最旧的）
+ */
+function cachedContent<T>(key: string, loader: () => Promise<T>, cap = Infinity): Promise<T> {
+  const hit = contentCache.get(key)
+  if (hit && Date.now() - hit.at < CONTENT_TTL_MS) {
+    return Promise.resolve(hit.data as T)
+  }
+  return dedupe(key, () =>
+    loader().then((data) => {
+      if (contentCache.size >= cap) {
+        // Map 保持插入顺序，删第一个就是删最旧的
+        const oldest = contentCache.keys().next().value
+        if (oldest !== undefined) contentCache.delete(oldest)
+      }
+      contentCache.set(key, { at: Date.now(), data })
+      return data
+    }),
+  )
+}
+
+/** 手动清空内容缓存（比如用户点了「刷新」或重新部署后）。 */
+export function clearContentCache(): void {
+  contentCache.clear()
+  inflight.clear()
+}
+
 /**
  * AI 对话（SSE 流式）。
  *
@@ -211,11 +288,18 @@ export const api = {
 
   currentUser: () => request<AuthUser>('/api/v1/user/current'),
 
-  dashboard: () => request<Dashboard>('/api/v1/stats/dash'),
+  /**
+   * 看板数据。含用户进度，**不缓存**，只做并发去重。
+   *
+   * 实测它会被拉两次：App.vue 挂载时 loadDashboard() 一次，
+   * 落地页自己也拉一次，两个请求几乎同时发出，各走一趟隧道。
+   */
+  dashboard: () => dedupe('dashboard', () => request<Dashboard>('/api/v1/stats/dash')),
 
-  exams: () => request<ExamSummary[]>('/api/v1/exams'),
+  exams: () => cachedContent('exams', () => request<ExamSummary[]>('/api/v1/exams')),
 
-  exam: (year: number) => request<ExamDetail>(`/api/v1/exams/${year}`),
+  exam: (year: number) =>
+    cachedContent(`exam:${year}`, () => request<ExamDetail>(`/api/v1/exams/${year}`)),
 
   /**
    * 单题详情。
@@ -232,17 +316,30 @@ export const api = {
       durationMs,
     }),
 
+  // 知识树内容只随部署变化，缓存后站内切换知识点不必重复下载。
   knowledgePoints: (subject?: string) =>
-    request<KnowledgePointView[]>(
-      `/api/v1/knowledge${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`,
+    cachedContent(`knowledge:${subject ?? ''}`, () =>
+      request<KnowledgePointView[]>(
+        `/api/v1/knowledge${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`,
+      ),
     ),
 
   knowledgeBlock: (blockId: string) =>
-    request<KnowledgeBlockDetail>(`/api/v1/knowledge/block/${encodeURIComponent(blockId)}`),
+    cachedContent(`block:${blockId}`, () =>
+      request<KnowledgeBlockDetail>(`/api/v1/knowledge/block/${encodeURIComponent(blockId)}`),
+    ),
 
-  /** 某知识点的全部正文块（按 subpoint 分节，用于知识阅读页）。 */
+  /**
+   * 某知识点的全部正文块（按 subpoint 分节，用于知识阅读页）。
+   *
+   * 正文单条 10–34KB，缓存条数设上限，避免 147 个知识点全留在内存里。
+   */
   knowledgePoint: (pointId: string) =>
-    request<KnowledgePointResponse>(`/api/v1/knowledge/point/${encodeURIComponent(pointId)}`),
+    cachedContent(
+      `point:${pointId}`,
+      () => request<KnowledgePointResponse>(`/api/v1/knowledge/point/${encodeURIComponent(pointId)}`),
+      MAX_CACHED_ARTICLES,
+    ),
 
   /** 刷题队列（按年 / 科目 / 知识点 / 错题 / 未做筛选）。 */
   practiceQueue: (params: {
