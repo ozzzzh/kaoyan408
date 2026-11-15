@@ -1,0 +1,308 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/store/user'
+import { api } from '@/api/client'
+import type { MemorySummary, PracticeEntrances } from '@/api/types'
+// 注：鼠标跟随背景（BackgroundFx）已从工作台移除——信息密集页不适合透出动态背景。
+// 组件保留在 components/layout/BackgroundFx.vue，留给后续的落地页使用。
+import ContributionHeatmap from '@/components/dashboard/ContributionHeatmap.vue'
+import RecentActivityPanel from '@/components/dashboard/RecentActivityPanel.vue'
+import TodayPanel from '@/components/dashboard/TodayPanel.vue'
+import SubjectMasteryPanel from '@/components/dashboard/SubjectMasteryPanel.vue'
+import SearchBox from '@/components/dashboard/SearchBox.vue'
+import { subjectMeta } from '@/constants/subjects'
+
+const router = useRouter()
+const userStore = useUserStore()
+const { user, dashboard } = storeToRefs(userStore)
+
+/**
+ * 四科配色。soft 用「主色 + 透明度」而非固定浅色，
+ * 这样在夜间模式下也会自动变成合适的深色底，不必维护两套色值。
+ */
+const subjects = computed(() => dashboard.value?.subjects ?? [])
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  const part = hour < 6 ? '凌晨好' : hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好'
+  return `${part}${user.value ? '，' + user.value.username : ''}`
+})
+
+/** 快捷入口：跳到知识点与刷题。 */
+const shortcuts = [
+  {
+    title: '数据结构 · 线性表',
+    desc: '顺序表与链表的插入删除、时间复杂度对比，配 KMP 与二叉树动画。',
+    to: '/learn',
+    query: { subject: 'ds' },
+    tag: '知识点',
+    accent: 'border-[var(--k-border-strong)]',
+    icon: 'list',
+  },
+  {
+    title: '操作系统 · 进程管理',
+    desc: '进程状态转换、调度算法、同步互斥与银行家算法，考频最高的章节。',
+    to: '/learn',
+    query: { subject: 'os' },
+    tag: '知识点',
+    accent: 'border-[#7c5cf0]/40',
+    icon: 'list',
+  },
+  {
+    title: '按年份刷整卷',
+    desc: '2009–2026 共 18 卷，每组 47 题。做完自动记录掌握度。',
+    to: '/exams',
+    query: {},
+    tag: '真题卷',
+    accent: 'border-[var(--k-warn-border)]',
+    icon: 'paper',
+  },
+]
+
+function go(shortcut: (typeof shortcuts)[number]) {
+  router.push({ path: shortcut.to, query: shortcut.query })
+}
+
+const quickSubjects = computed(() =>
+  subjects.value.map((item) => ({
+    ...item,
+    meta: subjectMeta(item.subject),
+  })),
+)
+
+/** 刷题入口汇总（按科目 / 错题 / 未做），登录后才有个人数据。 */
+const entrances = ref<PracticeEntrances | null>(null)
+/** 背诵概览：只在登录后加载 */
+const memory = ref<MemorySummary | null>(null)
+
+/**
+ * 今日数据。recent 的最后一项就是今天（后端按当日返回），
+ * 找不到时回退为 0，避免首屏出现 undefined。
+ */
+const todayStat = computed(() => {
+  const list = dashboard.value?.recent ?? []
+  const today = new Date().toLocaleDateString('sv-SE') // sv-SE 输出 YYYY-MM-DD
+  const hit = list.find((d) => d.date === today) ?? list[list.length - 1]
+  return { questions: hit?.questions ?? 0, correct: hit?.correct ?? 0 }
+})
+
+onMounted(async () => {
+  // 两个请求互不依赖，必须并行。
+  //
+  // 原来是 entrances 拿完再拿 memorySummary，串成两趟。
+  // 这条链路要穿隧道到校园网，单趟 600–1000ms，串行等于白等一趟。
+  // 各自 catch，任何一个失败都不影响另一块渲染。
+  const [entranceResult, memoryResult] = await Promise.all([
+    api.practiceEntrances().catch(() => null),
+    user.value ? api.memorySummary().catch(() => null) : Promise.resolve(null),
+  ])
+  entrances.value = entranceResult
+  memory.value = memoryResult
+})
+</script>
+
+<template>
+  <div class="space-y-5">
+    <div class="space-y-5">
+      <!-- 欢迎 -->
+      <header>
+      <h1 class="text-2xl font-bold tracking-tight text-[var(--k-text)] md:text-[28px]">
+        {{ greeting }}，今天想复习哪一块？
+      </h1>
+      <p class="mt-2 text-sm text-[var(--k-text-muted)]">
+        <template v-if="dashboard">
+          题库共 {{ dashboard.totalQuestions }} 道真题，已刷 {{ dashboard.doneQuestions }} 道；
+          每道题都挂在知识点上，做完可以直接看对应正文与动画。
+        </template>
+        <template v-else>正在加载学习数据…</template>
+      </p>
+    </header>
+
+    <!-- 主入口：直接跳刷题 -->
+    <section
+      class="rounded-2xl border border-[var(--k-border-strong)] bg-[var(--k-surface)] p-2.5 shadow-[0_10px_30px_rgba(52,87,150,0.07)]"
+    >
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <SearchBox />
+        <RouterLink
+          to="/practice"
+          class="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--k-accent)] px-7 text-sm font-bold text-[var(--k-on-accent)] no-underline transition hover:bg-[var(--k-accent-hover)]"
+        >
+          <span class="text-base leading-none">＋</span>
+          <span>开始刷题</span>
+        </RouterLink>
+      </div>
+    </section>
+
+    <!-- 刷题入口 -->
+    <section v-if="entrances">
+      <h2 class="mb-3 text-sm font-bold text-[var(--k-heading)]">按范围刷题</h2>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <RouterLink
+          v-for="item in entrances.subjects"
+          :key="item.subject"
+          :to="{ path: '/practice', query: { subject: item.subject } }"
+          class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4 no-underline transition hover:-translate-y-0.5 hover:border-[var(--k-accent)]"
+        >
+          <p class="text-sm font-semibold text-[var(--k-text)]">{{ item.name }}</p>
+          <p class="mt-1.5 text-xs text-[var(--k-text-faint)] tabular-nums">
+            已做 {{ item.done }} / {{ item.total }}
+          </p>
+        </RouterLink>
+      </div>
+
+      <div class="mt-3 grid gap-3 sm:grid-cols-3">
+        <RouterLink
+          :to="{ path: '/practice', query: { scope: 'untouched' } }"
+          class="flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[var(--k-accent)]"
+        >
+          <span class="text-sm font-semibold text-[var(--k-text)]">未做的题</span>
+          <span class="text-sm font-bold tabular-nums text-[var(--k-accent-text)]">
+            {{ entrances.untouched }}
+          </span>
+        </RouterLink>
+        <RouterLink
+          :to="{ path: '/practice', query: { scope: 'wrong-pending' } }"
+          class="flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[#b23c3c]"
+        >
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold text-[var(--k-text)]">错题本</span>
+            <span
+              v-if="entrances.wrongMastered > 0"
+              class="block text-[11px] text-[var(--k-text-faint)]"
+            >
+              已订正 {{ entrances.wrongMastered }} 题
+            </span>
+          </span>
+          <span
+            class="shrink-0 text-sm font-bold tabular-nums"
+            :class="entrances.wrongPending > 0 ? 'text-[#b23c3c]' : 'text-[var(--k-text-faint)]'"
+          >
+            {{ entrances.wrongPending }}
+          </span>
+        </RouterLink>
+        <RouterLink
+          :to="{ path: '/exams' }"
+          class="flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[var(--k-accent)]"
+        >
+          <span class="text-sm font-semibold text-[var(--k-text)]">按年份刷整卷</span>
+          <span class="text-sm font-bold tabular-nums text-[var(--k-accent-text)]">18 卷</span>
+        </RouterLink>
+      </div>
+
+      <!-- 背诵入口：登录后显示到期数 -->
+      <RouterLink
+        v-if="memory"
+        :to="{ path: '/memory' }"
+        class="mt-3 flex items-center justify-between rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[var(--k-accent)]"
+      >
+        <span class="min-w-0">
+          <span class="block text-sm font-semibold text-[var(--k-text)]">背诵复习</span>
+          <span class="block text-[11px] text-[var(--k-text-faint)]">
+            <template v-if="memory.total > 0">
+              共 {{ memory.total }} 张 · 牢固 {{ memory.solid }} 张
+            </template>
+            <template v-else>把要点与公式加入记忆曲线</template>
+          </span>
+        </span>
+        <span class="flex shrink-0 items-center gap-2">
+          <span
+            v-if="memory.due > 0"
+            class="rounded-full bg-[var(--k-accent)] px-2.5 py-0.5 text-xs font-bold text-[var(--k-on-accent)]"
+          >
+            {{ memory.due }} 张到期
+          </span>
+          <span v-else class="text-xs font-semibold text-[#0f7a4d]">今日已清空</span>
+        </span>
+      </RouterLink>
+    </section>
+
+    <!--
+      掌握情况区：左 2/3 放「四科掌握进度」+「今日」，右 1/3 放热力图 + 近 14 天。
+      布局依据：四科面板约 384px，而热力图 + 近 14 天约 363px，两列高度基本齐平；
+      「今日」放在左下角补足左列（384+12+180 ≈ 576，右列 363），避免任何一列留空。
+    -->
+    <section v-if="dashboard" class="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div class="space-y-3">
+        <SubjectMasteryPanel
+          :subjects="dashboard.subjects"
+          :mastery-rate="dashboard.masteryRate"
+        />
+        <TodayPanel
+          :done-today="todayStat.questions"
+          :correct-today="todayStat.correct"
+          :memory-due="memory?.due ?? 0"
+          :wrong-pending="entrances?.wrongPending ?? 0"
+          :streak-days="dashboard.streakDays"
+        />
+      </div>
+      <div class="space-y-3">
+        <ContributionHeatmap
+          :heatmap="dashboard.heatmap ?? null"
+          :active-days="dashboard.activeDays"
+          :streak-days="dashboard.streakDays"
+        />
+        <RecentActivityPanel :recent="dashboard.recent" />
+      </div>
+    </section>
+
+    <!-- 快捷入口 -->
+    <section>
+      <div class="mb-3 flex items-center gap-2">
+        <svg
+          class="h-4 w-4 text-[#f0a020]"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
+        </svg>
+        <h2 class="text-sm font-bold text-[var(--k-heading)]">快捷复习入口</h2>
+      </div>
+      <div class="grid gap-3 md:grid-cols-3">
+        <button
+          v-for="shortcut in shortcuts"
+          :key="shortcut.title"
+          class="group flex flex-col rounded-xl border bg-[var(--k-surface)] p-5 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(52,87,150,0.1)]"
+          :class="shortcut.accent"
+          @click="go(shortcut)"
+        >
+          <span
+            class="mb-3 grid h-9 w-9 place-items-center rounded-lg bg-[var(--k-accent-soft)] text-[var(--k-accent)]"
+          >
+            <svg
+              v-if="shortcut.icon === 'paper'"
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <path d="M6 2h9l5 5v15H6V2Zm8 1v5h5" />
+            </svg>
+            <svg
+              v-else
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            >
+              <path d="M4 6h16M4 12h16M4 18h10" />
+            </svg>
+          </span>
+          <span class="mb-1 text-[11px] font-semibold text-[var(--k-text-faint)]">{{ shortcut.tag }}</span>
+          <span class="text-[15px] font-bold text-[var(--k-text)]">{{ shortcut.title }}</span>
+          <span class="mt-1.5 flex-1 text-xs leading-relaxed text-[var(--k-text-muted)]">{{ shortcut.desc }}</span>
+          <span class="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[var(--k-accent)]">
+            立即前往
+            <span class="transition-transform group-hover:translate-x-0.5">→</span>
+          </span>
+        </button>
+      </div>
+    </section>
+    </div>
+  </div>
+</template>

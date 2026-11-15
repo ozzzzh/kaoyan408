@@ -1,0 +1,22 @@
+# 统一换行：仓库内一律 LF，避免 Windows/macOS/Linux 交叉出全文件级 diff。
+# 二进制资源不参与换行转换。
+* text=auto eol=lf
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.zip  binary
+*.tgz  binary
+
+# 生成物/数据文件在 diff 里意义不大，但不影响内容
+*.mjs  text eol=lf
+*.ts   text eol=lf
+*.vue  text eol=lf
+*.java text eol=lf
+*.sql  text eol=lf

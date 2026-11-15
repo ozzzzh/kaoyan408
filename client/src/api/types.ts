@@ -1,0 +1,511 @@
+/**
+ * 与后端约定的统一响应体：{ code, msg, data }，HTTP 状态恒为 200。
+ */
+export interface ApiEnvelope<T> {
+  code: number
+  msg: string | null
+  data: T
+}
+
+export interface SubjectStat {
+  subject: 'ds' | 'os' | 'co' | 'cn'
+  total: number
+  done: number
+  correct: number
+  accuracy: number
+  progress: number
+  /** 掌握率 = 掌握题数 / 总题数 */
+  masteryRate: number
+  mastered: number
+  shaky: number
+  failed: number
+  untouched: number
+}
+
+export interface DailyPoint {
+  date: string
+  questions: number
+  correct: number
+}
+
+/** 热力图单元格：level 0–4，0 表示当日无做题记录。 */
+export interface HeatmapDay {
+  date: string
+  questions: number
+  correct: number
+  level: number
+}
+
+export interface Heatmap {
+  start: string
+  end: string
+  max: number
+  days: HeatmapDay[]
+}
+
+export interface Dashboard {
+  totalQuestions: number
+  doneQuestions: number
+  correctQuestions: number
+  accuracy: number
+  progress: number
+  masteryRate: number
+  subjects: SubjectStat[]
+  streakDays: number
+  recent: DailyPoint[]
+  heatmap: Heatmap | null
+  activeDays: number
+}
+
+export interface QuestionOption {
+  key: string
+  text: string
+}
+
+export interface SubQuestion {
+  number: number
+  score: number | null
+  description: string | null
+}
+
+export interface QuestionView {
+  id: string
+  number: number
+  subject: string
+  chapterName: string | null
+  questionType: 'choice' | 'comprehensive' | string
+  score: number
+  stem: string
+  difficulty: number | null
+  tags: string[]
+  imagePaths: string[]
+  knowledgeBlockIds: string[]
+  /** 关联知识点（带可读名称）。服务端一次查完，界面直接展示，无需逐个请求。 */
+  knowledgeBlocks?: KnowledgeBlockRef[]
+  answered: boolean
+  options: QuestionOption[]
+  subQuestions: SubQuestion[]
+  answer?: string | null
+  explanation?: string | null
+}
+
+/** 题目关联的一个知识块，label 为展示用名称（如「顺序表 · 顺序表的插入与删除」）。 */
+export interface KnowledgeBlockRef {
+  blockId: string
+  pointId: string | null
+  pointTitle: string | null
+  subpointTitle: string | null
+  label: string
+}
+
+export interface ExamSummary {
+  year: number
+  title: string
+  questionCount: number
+  subjects: Record<string, number>
+}
+
+export interface ExamDetail {
+  year: number
+  title: string
+  questionCount: number
+  questions: QuestionView[]
+}
+
+export interface KnowledgePointView {
+  pointId: string
+  subject: string
+  title: string
+  blockCount: number
+}
+
+/** 知识点正文（按顺序的扁平块列表，前端再按 subpointId 分节）。 */
+export interface KnowledgePointResponse {
+  pointId: string
+  title: string | null
+  subject: string | null
+  /** 该知识点下所有块关联真题的去重总数。 */
+  questionCount?: number
+  blocks: Array<{
+    blockId: string
+    subpointId: string | null
+    subpointTitle: string | null
+    order: number
+    type: string
+    content: string
+    /** 该块关联的真题数。 */
+    questionCount?: number
+  }>
+}
+
+/** 刷题队列中的一道题（轻量，不含题干与解析）。 */
+export interface PracticeQueueItem {
+  examRef: string
+  year: number
+  number: number
+  subject: string
+  chapterName: string | null
+  questionType: string
+  score: number
+  difficulty: number | null
+  answered: boolean
+  correct: boolean
+  /** 累计答错次数（答对不清零） */
+  wrongCount: number
+  /** 答错之后重做答对的次数 */
+  retryCorrectCount: number
+  /** 错题是否已订正（移出错题本） */
+  mastered: boolean
+}
+
+export interface PracticeQueue {
+  scope: string
+  year: number | null
+  subject: string | null
+  blockId: string | null
+  pointId: string | null
+  total: number
+  answered: number
+  correct: number
+  items: PracticeQueueItem[]
+}
+
+export interface WrongBook {
+  /** 待订正的错题数 */
+  pending: number
+  /** 已订正的错题数 */
+  mastered: number
+  total: number
+  subjects: Array<{ subject: string; name: string; pending: number; mastered: number }>
+}
+
+export interface PracticeEntrances {
+  subjects: Array<{ subject: string; name: string; total: number; done: number }>
+  years: Array<{ year: number; total: number }>
+  untouched: number
+  wrong: number
+  wrongPending: number
+  wrongMastered: number
+}
+
+/** 搜索命中的知识点。 */
+export interface SearchPointHit {
+  kind: 'point'
+  pointId: string
+  title: string
+  subject: string
+  blockCount: number
+  score: number
+  bodyHits: number
+}
+
+/** 搜索命中的题目。 */
+export interface SearchQuestionHit {
+  kind: 'question'
+  examRef: string
+  number: number
+  subject: string
+  chapterName: string | null
+  questionType: string
+  score: number
+  year: number
+  title: string
+  hint: string
+  snippet: string | null
+}
+
+/** 搜索命中的正文片段。 */
+export interface SearchBlockHit {
+  kind: 'block'
+  blockId: string
+  pointId: string
+  subpointTitle: string | null
+  type: string
+  pointTitle: string
+  subject: string
+  score: number
+  snippet: string
+}
+
+export interface SearchResult {
+  query: string
+  total: number
+  points: SearchPointHit[]
+  questions: SearchQuestionHit[]
+  blocks: SearchBlockHit[]
+}
+
+export interface SearchSuggestion {
+  type: 'point' | 'question'
+  label: string
+  hint: string
+  to: string
+}
+
+/** 一张背诵卡片（到期队列中的一项）。 */
+export interface MemoryCardItem {
+  cardId: number
+  blockId: string
+  type: string
+  /** 块的 content_json 原文，前端解析后展示要点/公式 */
+  content: string
+  subpointTitle: string | null
+  pointId: string
+  pointTitle: string
+  subject: string
+  /** 记忆盒序号 0-7 */
+  box: number
+  reviewCount: number
+  correctCount: number
+  /** 该知识点在真题中出现的题数 */
+  questionCount?: number
+  /** 该知识点下最新的一道真题，用于卡片底部建立「背诵 ↔ 考试」的联系 */
+  sampleQuestion?: { examRef: string; year: number; number: number } | null
+}
+
+export interface MemoryDue {
+  total: number
+  items: MemoryCardItem[]
+}
+
+export interface MemorySummary {
+  total: number
+  due: number
+  solid: number
+  reviews: number
+  corrects: number
+  accuracy: number
+  subjects: Array<{ subject: string; name: string; total: number; addable: number }>
+  /** 各记忆盒的卡片数，下标即盒号 0–7（间隔 0/1/2/4/7/15/30/60 天） */
+  boxes: number[]
+}
+
+/** 知识点级掌握度。 */
+export interface PointMasteryItem {
+  pointId: string
+  title: string
+  subject: string
+  total: number
+  done: number
+  correct: number
+  /** 未做过时为 null */
+  accuracy: number | null
+  progress: number
+}
+
+export interface PointMastery {
+  totalPoints: number
+  startedPoints: number
+  untouchedPoints: number
+  points: PointMasteryItem[]
+  /** 已做但正确率最低的知识点（最多 15 个） */
+  weakest: PointMasteryItem[]
+}
+
+export interface KnowledgeBlockView {
+  blockId: string
+  pointId: string
+  pointTitle: string | null
+  subpointId: string | null
+  subpointTitle: string | null
+  type: string
+  content: string
+}
+
+export interface KnowledgeBlockDetail {
+  block: KnowledgeBlockView
+  relatedQuestions: Array<{
+    id: string
+    number: number
+    year: string | null
+    subject: string
+    questionType: string
+    hasImage: boolean
+  }>
+}
+
+export interface AnswerResult {
+  questionId: string
+  correct: boolean
+  standardAnswer: string | null
+  explanation: string | null
+  firstAttempt: boolean
+  blocks: Array<{ blockId: string; total: number; done: number; correct: number }>
+  /** 游客作答时不返回（未登录没有可统计的数据） */
+  stats?: Dashboard
+  /** 游客结果标记：判分照常，但不写任何记录 */
+  guest?: boolean
+  /** 结果是否已保存到账号；游客为 false */
+  saved?: boolean
+}
+
+export interface AuthUser {
+  id: number
+  username: string
+  email: string | null
+  createdAt: string | null
+}
+
+export interface LoginResult {
+  token: string
+  expiresAt: number
+  expiresIn: number
+  user: AuthUser
+}
+/* ---------- 模拟考试 ---------- */
+
+/** 考试中的一道题。标准答案与解析只在交卷后才由服务端下发。 */
+export interface MockQuestion {
+  id: string
+  number: number
+  subject: string
+  chapterName: string | null
+  questionType: 'choice' | 'comprehensive' | string
+  score: number
+  stem: string
+  imagePaths: string[]
+  options: QuestionOption[]
+  subQuestions: SubQuestion[]
+  /** 我填的答案；未作答为 null */
+  myAnswer: string | null
+  /** 交卷后才有：选择题 1/0，综合题为 null */
+  correct: number | null
+  /** 综合题自评分 */
+  selfScore: number | null
+  /** 交卷后才有 */
+  standardAnswer?: string | null
+  explanation?: string | null
+}
+
+export interface MockState {
+  sessionId: number
+  examYear: number
+  status: 'ongoing' | 'submitted' | string
+  startedAt: string
+  durationMinutes: number
+  /** 剩余秒数；不限时为 -1，已交卷为 0 */
+  remainingSeconds: number
+  submittedAt: string | null
+  timedOut: boolean
+  /** 选择题自动得分（满分 80） */
+  autoScore: number
+  /** 综合题自评得分（满分 70） */
+  selfScore: number
+  choiceFullScore: number
+  items: MockQuestion[]
+}
+
+export interface MockHistoryItem {
+  sessionId: number
+  examYear: number
+  startedAt: string
+  submittedAt: string
+  durationMinutes: number
+  autoScore: number
+  selfScore: number
+  timedOut: number
+  correctCount: number
+  answeredChoice: number
+}
+
+/* ---------- AI 学习助手 ---------- */
+
+export interface AiStatus {
+  configured: boolean
+  model: string
+  guest: boolean
+  /** 仅游客：已用次数 */
+  guestUsed?: number
+  /** 仅游客：剩余次数 */
+  guestRemaining?: number
+}
+
+export interface AiConversationSummary {
+  id: number
+  title: string
+  updatedAt: string
+}
+
+export interface AiStoredMessage {
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: string
+}
+
+export interface AiConversationDetail {
+  id: number
+  title: string
+  messages: AiStoredMessage[]
+}
+
+/** 页面上的一条消息：比库里的多一个「正在输出」状态 */
+export interface AiChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  /** 正在流式输出中 */
+  streaming?: boolean
+  /** 模型开始推理但正文还没到 */
+  thinking?: boolean
+  /** 出错时的提示 */
+  error?: string
+  /** 该条回答对应的图解；只在用户点「生成图解」后才有 */
+  diagram?: AiDiagramResult['dsl']
+  /** 图解正在生成 */
+  diagramLoading?: boolean
+  /** 图解生成失败的原因 */
+  diagramError?: string
+  /** 该条回答对应的分步动画 */
+  animation?: AiAnimationResult['dsl']
+  animationLoading?: boolean
+  animationError?: string
+}
+
+export interface AiUsage {
+  promptTokens?: number
+  completionTokens?: number
+}
+
+/** AI 生成的图解。结构由服务端校验后返回，前端只负责画。 */
+export interface AiDiagramResult {
+  dsl: {
+    title: string
+    width: number
+    height: number
+    nodes: Array<{
+      id: string
+      label: string
+      shape: 'box' | 'circle' | 'diamond' | 'text'
+      x: number
+      y: number
+      color: 'default' | 'accent' | 'warn' | 'danger' | 'muted'
+    }>
+    edges: Array<{
+      from: string
+      to: string
+      label: string
+      style: 'solid' | 'dashed' | 'arrow'
+    }>
+    notes?: Array<{ text: string; x: number; y: number }>
+  }
+  /** true 表示命中缓存，未重新调用模型 */
+  cached: boolean
+}
+
+/** AI 生成的分步动画。结构由服务端校验后返回。 */
+export interface AiAnimationResult {
+  dsl: {
+    title: string
+    width: number
+    height: number
+    nodes: AiDiagramResult['dsl']['nodes']
+    edges: AiDiagramResult['dsl']['edges']
+    steps: Array<{
+      caption: string
+      highlight?: string[]
+      dim?: string[]
+      addEdges?: AiDiagramResult['dsl']['edges']
+      moveNodes?: Array<{ id: string; x: number; y: number }>
+    }>
+  }
+  cached: boolean
+}

@@ -1,0 +1,100 @@
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    encoding:
+      charset: UTF-8
+
+spring:
+  application:
+    name: kaoyan408-server
+  mvc:
+    # 未匹配到端点时抛 NoResourceFoundException，由 GlobalExceptionHandler 转成统一 404 文案
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+  datasource:
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/kaoyan_db?characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  mybatis-plus:
+    configuration:
+      map-underscore-to-field-name: true
+      map-underscore-to-method-name: true
+      cache-enabled: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline: true
+    baseline-on-migrate: true
+  # 邮件：用 Spring Boot 原生自动配置，配置项是标准的 spring.mail.*，
+  # 框架会据此注册一个 JavaMailSender，业务代码直接注入即可，无需自己拼 Properties。
+  # 常用填法（以 QQ 邮箱为例，其它服务商改 host/port）：
+  #   MAIL_MODE=smtp
+  #   SPRING_MAIL_HOST=smtp.qq.com
+  #   SPRING_MAIL_PORT=465
+  #   SPRING_MAIL_USERNAME=你的邮箱@qq.com
+  #   SPRING_MAIL_PASSWORD=授权码（不是登录密码）
+  # 不填 host 时自动配置不会生效，此时只能用 mock 模式。
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:465}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          # 465 是隐式 SSL；若换成 587，改为 starttls.enable=true 并关掉 ssl
+          ssl:
+            enable: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+
+# 内容种子（846 题等）由 scripts/import-content.mjs 生成到 resources/seed/content.sql，
+# 刻意不进 Flyway 版本链（内容会频繁重生成，作为迁移会导致 checksum 漂移）。
+# force=true 时每次启动都重灌，用于内容更新后刷新。
+  # AI 学习助手（Command Code Provider API，OpenAI 兼容格式）
+  # 未配置 api-key 时 /api/v1/ai/* 会返回「服务未配置」，页面仍可打开
+  ai:
+    base-url: ${KAOYAN_AI_BASE_URL:https://api.commandcode.ai/provider/v1}
+    api-key: ${KAOYAN_AI_API_KEY:}
+    model: ${KAOYAN_AI_MODEL:deepseek/deepseek-v4.1-flash}
+    # 该模型带推理，推理 token 与正文共用 max_tokens；
+    # 给 800 时推理会吃掉大半，正文被截断，所以给到 2000。
+    max-tokens: ${KAOYAN_AI_MAX_TOKENS:2000}
+    temperature: ${KAOYAN_AI_TEMPERATURE:0.3}
+kaoyan:
+  seed:
+    enabled: true
+    force: false
+  # 注册邮箱验证码的策略参数（限流、有效期）。
+  # 发信连接本身走下面的 spring.mail.*（Spring Boot 原生自动配置），不在这里重复配置。
+  mail:
+    mode: ${MAIL_MODE:mock}
+    code-expire-seconds: ${MAIL_CODE_EXPIRE_SECONDS:300}
+    cooldown-seconds: ${MAIL_COOLDOWN_SECONDS:60}
+    daily-limit-per-target: ${MAIL_DAILY_LIMIT:5}
+    hourly-limit-per-ip: ${MAIL_HOURLY_LIMIT_PER_IP:10}
+    # 发件人；留空则自动用 spring.mail.username
+    from: ${MAIL_FROM:}
+    # 收件人看到的发件人名称。只给裸地址时，邮箱客户端会显示
+    # 「你给这个地址起的备注」（QQ 里就显示成备注名），看起来像陌生人来信。
+    sender-name: ${MAIL_SENDER_NAME:题知链平台}
+    # 邮件页眉里品牌名下方的标语，留空则不显示该行
+    sender-slogan: ${MAIL_SENDER_SLOGAN:题知互链 · 数据驱动 · 学练测规划闭环}
+    subject: ${MAIL_SUBJECT:题知链平台 · 注册验证码}
+
+logging:
+  level:
+    com.kaoyan408: INFO
+
+jwt:
+  secret: ${JWT_SECRET:kaoyan408-local-dev-secret-change-before-launch}
+  expire-seconds: ${JWT_EXPIRE_SECONDS:7200}

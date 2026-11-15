@@ -1,0 +1,144 @@
+@import 'tailwindcss';
+
+/* 深色模式改为按 class 控制（由 theme store 根据时间写入 <html class="dark">） */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-ink-50: #f6f7f9;
+  --color-ink-100: #eceef2;
+  --color-ink-200: #d6dae2;
+  --color-ink-400: #8b93a3;
+  --color-ink-600: #4c5567;
+  --color-ink-800: #232a36;
+  --color-ink-900: #161b23;
+  --color-salt-400: #4f8ef7;
+  --color-salt-500: #2f6fe4;
+  --color-salt-600: #1f56bd;
+}
+
+/**
+ * 语义色板：日间 / 夜间两套值。
+ * 组件统一用这些变量而非硬编码色值，切换主题时整体变色。
+ */
+:root {
+  /* 底色带一丝青，与品牌青绿呼应，而不是中性灰 */
+  --k-bg: #f6f9fa;
+  --k-surface: #ffffff;
+  --k-surface-soft: #f4f8f8;
+  --k-border: #e0e8ea;
+  --k-border-strong: #d5e0e2;
+
+  /* 正文用比品牌深藏青更深的墨色，保证长文阅读对比度 */
+  --k-text: #16202e;
+  --k-text-muted: #5a6b74;
+  --k-text-faint: #94a3aa;
+  --k-heading: #2c3a44;
+
+  /* ---- 品牌主色：青绿 ----
+     品牌青绿 #00B5A8 直接铺按钮时，白字对比度只有 2.3:1，不达 WCAG AA。
+     因此交互色压暗到 #0B7C73（白字对比度约 4.9:1），
+     图形与装饰仍用 #00B5A8，两者同色系，观感一致。 */
+  --k-accent: #0b7c73;
+  --k-accent-hover: #096b63;
+  --k-accent-soft: #e4f5f3;
+  --k-accent-text: #0b7c73;
+  /* 品牌原色，用于不需要白字的强调块 */
+  --k-brand: #00b5a8;
+  /* 压在 --k-accent 上的文字色。亮色主题按钮底色已压暗，白字达标；
+     暗色主题按钮底色是亮青绿，必须配深字（见 .dark 里重新定义）。 */
+  --k-on-accent: #ffffff;
+
+  --k-chip: #eef3f4;
+  --k-track: #eef3f4;
+  --k-warn: #b8730a;
+  --k-warn-soft: #fff9ef;
+  --k-warn-border: #ffd9a0;
+  --k-danger: #c0392b;
+  --k-shadow: 30 74 78;
+  /* 深色区块底色（落地页「核心闭环」段与页脚）。浅色主题下也保持深色， */
+  /* 用来做视觉节奏，不随主题反色。 */
+  --k-ink: #161b23;
+}
+
+.dark {
+  --k-bg: #0d1117;
+  --k-surface: #161b22;
+  --k-surface-soft: #1c2229;
+  --k-border: #262d36;
+  --k-border-strong: #303842;
+  --k-text: #e6edf3;
+  --k-text-muted: #9aa7b8;
+  --k-text-faint: #6e7a8a;
+  --k-heading: #c3ccd8;
+  /* 深色底上青绿要提亮，否则压在深背景里发闷 */
+  --k-accent: #17b3a6;
+  --k-accent-hover: #22c4b6;
+  --k-accent-soft: #10322f;
+  --k-accent-text: #4dd6c8;
+  --k-brand: #00b5a8;
+  /* 暗色下按钮文字改用深色：亮青绿配白字只有 2.6:1，
+     换成深墨色后约 6.8:1，按钮上的字才真的看得清。 */
+  --k-on-accent: #08211f;
+  --k-chip: #222a33;
+  --k-track: #262d36;
+  --k-warn: #e0a458;
+  --k-warn-soft: #2a2216;
+  --k-warn-border: #4a3a20;
+  --k-danger: #f0776a;
+  --k-shadow: 0 0 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* 主题切换时平滑过渡 */
+  transition:
+    background-color 0.45s ease,
+    color 0.45s ease;
+}
+
+/* 主题切换的过渡：只对颜色生效，避免影响布局与动画性能 */
+.theme-transition,
+.theme-transition * {
+  transition:
+    background-color 0.45s ease,
+    border-color 0.45s ease,
+    color 0.45s ease !important;
+}
+
+/* 题目与知识正文里的代码块 */
+.prose-code pre {
+  background: var(--color-ink-900);
+  color: #e6e9ef;
+  padding: 0.85rem 1rem;
+  border-radius: 0.6rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+/* 深色下的滚动条 */
+.dark ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: var(--k-bg);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #303842;
+  border-radius: 5px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3d4753;
+}
