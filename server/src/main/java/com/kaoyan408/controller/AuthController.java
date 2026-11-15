@@ -1,5 +1,6 @@
 package com.kaoyan408.controller;
 
+import com.kaoyan408.core.AccountStateCache;
 import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.core.ClientIpResolver;
 import com.kaoyan408.core.JwtUtil;
@@ -29,11 +30,14 @@ public class AuthController {
     private final AuthService authService;
     private final MailCodeService mailCodeService;
     private final JwtUtil jwtUtil;
+    private final AccountStateCache accountStateCache;
 
-    public AuthController(AuthService authService, MailCodeService mailCodeService, JwtUtil jwtUtil) {
+    public AuthController(AuthService authService, MailCodeService mailCodeService, JwtUtil jwtUtil,
+                          AccountStateCache accountStateCache) {
         this.authService = authService;
         this.mailCodeService = mailCodeService;
         this.jwtUtil = jwtUtil;
+        this.accountStateCache = accountStateCache;
     }
 
     public record LoginRequest(@NotBlank(message = "不能为空") String username,
@@ -109,6 +113,9 @@ public class AuthController {
     }
 
     private Map<String, Object> tokenPayload(User user) {
+        // 先让账号状态缓存失效：否则这次签发的新 ver 会撞上缓存里的旧 ver，
+        // 用户刚登录就被判成「令牌已失效」，直到缓存过期（最多 60 秒）。
+        accountStateCache.evict(user.getUsername());
         int version = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
         String token = jwtUtil.sign(user.getUsername(), user.getEmail(), version);
         Map<String, Object> payload = new LinkedHashMap<>();
