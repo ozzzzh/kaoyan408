@@ -52,6 +52,12 @@ services:
       KAOYAN_AI_API_KEY: "${KAOYAN_AI_API_KEY:-}"
       KAOYAN_AI_MODEL: "${KAOYAN_AI_MODEL:-deepseek/deepseek-v4.1-flash}"
       KAOYAN_AI_MAX_TOKENS: "${KAOYAN_AI_MAX_TOKENS:-2000}"
+      # 内容种子。默认按「种子文件指纹」判断是否需要重灌（内容变了自动灌，没变跳过）。
+      # 强制重灌前请确认没有值得保留的作答记录：force 会 DELETE 题库并重新插入，
+      # question.id 重新自增，历史作答会变成孤儿记录，
+      # 所以第二个开关是「明确同意丢弃用户历史」的确认。
+      KAOYAN_SEED_FORCE: "${KAOYAN_SEED_FORCE:-false}"
+      KAOYAN_SEED_FORCE_WITH_USER_DATA: "${KAOYAN_SEED_FORCE_WITH_USER_DATA:-false}"
     depends_on:
       db:
         condition: service_healthy
