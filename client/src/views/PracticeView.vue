@@ -863,10 +863,10 @@ watch(
           <div v-if="question.subQuestions.length" class="mt-3 space-y-1.5">
             <p
               v-for="sub in question.subQuestions"
-              :key="sub.subNumber"
+              :key="sub.number"
               class="rounded-lg bg-[var(--k-surface-soft)] px-3 py-1.5 text-sm text-[var(--k-text-muted)]"
             >
-              <span class="font-semibold text-[var(--k-text)]">({{ sub.subNumber }})</span>
+              <span class="font-semibold text-[var(--k-text)]">({{ sub.number }})</span>
               <span class="ml-1.5">{{ sub.description }}</span>
               <span v-if="sub.score != null" class="ml-2 text-[11px] text-[var(--k-text-faint)]">
                 {{ sub.score }} 分

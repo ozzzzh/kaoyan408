@@ -156,7 +156,6 @@ function jumpTo(examRef: string) {
 }
 
 onMounted(async () => {
-  await userStore.loadMe?.()
   await load()
 })
 
@@ -334,10 +333,10 @@ onBeforeUnmount(stopTicker)
           <div v-if="q.subQuestions.length" class="mt-3 space-y-2">
             <div
               v-for="sub in q.subQuestions"
-              :key="sub.subNumber"
+              :key="sub.number"
               class="rounded-lg bg-[var(--k-surface-soft)] px-3 py-2 text-sm text-[var(--k-text-muted)]"
             >
-              <span class="font-semibold text-[var(--k-text)]">({{ sub.subNumber }})</span>
+              <span class="font-semibold text-[var(--k-text)]">({{ sub.number }})</span>
               <span class="ml-1.5">{{ sub.description }}</span>
               <span v-if="sub.score != null" class="ml-2 text-[11px] text-[var(--k-text-faint)]">
                 {{ sub.score }} 分

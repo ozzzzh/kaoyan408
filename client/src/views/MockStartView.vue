@@ -85,7 +85,6 @@ async function resume(sessionId: number) {
 }
 
 onMounted(async () => {
-  await userStore.loadMe?.()
   await load()
 })
 </script>

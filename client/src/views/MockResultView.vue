@@ -192,10 +192,10 @@ onMounted(load)
           <div v-if="q.subQuestions.length" class="mt-2 space-y-1">
             <p
               v-for="sub in q.subQuestions"
-              :key="sub.subNumber"
+              :key="sub.number"
               class="rounded-lg bg-[var(--k-surface-soft)] px-3 py-1.5 text-xs text-[var(--k-text-muted)]"
             >
-              <span class="font-semibold text-[var(--k-text)]">({{ sub.subNumber }})</span>
+              <span class="font-semibold text-[var(--k-text)]">({{ sub.number }})</span>
               <span class="ml-1.5">{{ sub.description }}</span>
             </p>
           </div>

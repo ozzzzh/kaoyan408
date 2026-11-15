@@ -436,7 +436,10 @@ public class MockExamService {
                 new QueryWrapper<QuestionSubQuestion>()
                         .eq("question_id", question.getId()).orderByAsc("sub_number"))) {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("subNumber", sub.getSubNumber());
+            // 字段名与 QuestionController 保持一致（都用 number）。
+            // 这里原来叫 subNumber，导致前端同一份 SubQuestion 类型里出现两种字段名，
+            // 练习页读 number 拿不到值、子问题编号渲染成空白。统一口径后两边共用一套类型。
+            item.put("number", sub.getSubNumber());
             item.put("score", sub.getScore());
             item.put("description", sub.getDescription());
             subs.add(item);
