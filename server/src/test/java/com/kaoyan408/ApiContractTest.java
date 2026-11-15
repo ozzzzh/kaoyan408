@@ -142,18 +142,35 @@ class ApiContractTest {
     @Test
     @DisplayName("JWT 密钥等于仓库默认值或过短时，构造即失败（不给出「能启动但可被伪造」的状态）")
     void weakJwtSecretIsRejected() {
-        assertThatThrownBy(() -> new JwtUtil("kaoyan408-local-dev-secret-change-before-launch", 3600))
+        assertThatThrownBy(() -> new JwtUtil("kaoyan408-local-dev-secret-change-before-launch", 3600, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("默认值");
-        assertThatThrownBy(() -> new JwtUtil("too-short", 3600))
+        assertThatThrownBy(() -> new JwtUtil("too-short", 3600, false))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("太短");
     }
 
     @Test
+    @DisplayName("应急开关放行默认/过短密钥，但要求显式开启（默认仍是拒绝）")
+    void insecureJwtSecretRequiresExplicitOptIn() {
+        // 显式开启后允许启动：运维在线上起不来时改一个环境变量即可恢复，不必改代码重新构建
+        JwtUtil loose = new JwtUtil("kaoyan408-local-dev-secret-change-before-launch", 3600, true);
+        String token = loose.sign("u", "u@example.com", 1);
+        assertThat(loose.subject(token)).isEqualTo("u");
+
+        // 过短密钥在放行模式下做 SHA-256 派生，至少能签发与校验
+        JwtUtil derived = new JwtUtil("short", 3600, true);
+        assertThat(derived.subject(derived.sign("v", "v@example.com", 1))).isEqualTo("v");
+
+        // 但默认行为不变：不开开关就拒绝
+        assertThatThrownBy(() -> new JwtUtil("kaoyan408-local-dev-secret-change-before-launch", 3600, false))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     @DisplayName("令牌版本参与校验：版本不一致的 token 解析后版本号也不同")
     void tokenVersionIsCarriedInToken() {
-        JwtUtil jwtUtil = new JwtUtil("test-only-secret-at-least-32-bytes-long-0123456789", 3600);
+        JwtUtil jwtUtil = new JwtUtil("test-only-secret-at-least-32-bytes-long-0123456789", 3600, false);
         String v1 = jwtUtil.sign("someone", "a@b.c", 1);
         String v2 = jwtUtil.sign("someone", "a@b.c", 2);
         assertThat(jwtUtil.tokenVersion(jwtUtil.parse(v1))).isEqualTo(1);

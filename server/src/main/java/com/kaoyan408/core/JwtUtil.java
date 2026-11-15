@@ -1,6 +1,7 @@
 package com.kaoyan408.core;
 
 import io.jsonwebtoken.Claims;
+import lombok.extern.slf4j.Slf4j;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,6 +9,8 @@ import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 
 /**
@@ -18,6 +21,7 @@ import java.util.Date;
  * 手里的旧 token 仍然能一直用到过期（默认 7 天）。有了版本号，
  * 服务端只要把用户行的 token_version 加一，旧 token 立刻失效。
  */
+@Slf4j
 @Component
 public class JwtUtil {
 
@@ -33,27 +37,59 @@ public class JwtUtil {
     private final SecretKey key;
     private final long expireSeconds;
 
+    /**
+     * @param secret          签名密钥
+     * @param expireSeconds   有效期
+     * @param allowInsecure   应急开关：为 true 时即使密钥是公开默认值/过短也只告警不拒启
+     *
+     * <p>为什么要这个开关：校验做成 fail-closed 能挡住「用公开默认密钥上线」，但代价是
+     * 一条配置不对就整个站点 502。折中做法是——默认仍然拒绝启动（安全优先），同时提供
+     * 一个显式环境变量作为应急通道：运维发现起不来时，改一个变量重启即可恢复服务，
+     * 不需要改代码或重新构建镜像。默认关闭，所以不会悄悄退化。
+     */
     public JwtUtil(@Value("${jwt.secret}") String secret,
-                   @Value("${jwt.expire-seconds:7200}") long expireSeconds) {
-        // 启动即失败，而不是等出事：漏配 JWT_SECRET 时应用能起来、页面也正常，
-        // 唯一的症状是「任何人可以伪造任何账号」——这种默认值必须挡在启动阶段。
+                   @Value("${jwt.expire-seconds:7200}") long expireSeconds,
+                   @Value("${kaoyan.auth.allow-insecure-jwt-secret:false}") boolean allowInsecure) {
         if (secret == null || secret.isBlank()) {
-            throw new IllegalStateException("JWT_SECRET 未配置，拒绝启动。");
-        }
-        if (DEV_DEFAULT_SECRET.equals(secret)) {
+            // 这一条不放开：连密钥都没有时，签发出来的 token 无法校验，等于放行所有人。
             throw new IllegalStateException(
-                    "JWT_SECRET 仍是仓库里的默认值，任何人都能伪造登录态。"
-                            + "请设置一个随机长字符串（至少 32 字节），例如："
-                            + "openssl rand -base64 48");
+                    "JWT_SECRET 未配置，拒绝启动。请在环境变量或 .env 中设置一个随机长字符串。");
         }
         String trimmed = secret.trim();
         int length = trimmed.getBytes(StandardCharsets.UTF_8).length;
-        if (length < MIN_SECRET_BYTES) {
-            throw new IllegalStateException(
-                    "JWT_SECRET 太短（" + length + " 字节），HS256 至少需要 " + MIN_SECRET_BYTES + " 字节。");
+        byte[] keyBytes = trimmed.getBytes(StandardCharsets.UTF_8);
+
+        if (DEV_DEFAULT_SECRET.equals(trimmed)) {
+            if (!allowInsecure) {
+                throw new IllegalStateException(
+                        "JWT_SECRET 仍是仓库里的默认值，任何人都能伪造登录态，因此拒绝启动。"
+                                + "请设置随机长字符串，例如：openssl rand -base64 48"
+                                + "；若你正在紧急恢复线上服务，可显式设置 "
+                                + "KAOYAN_AUTH_ALLOW_INSECURE_JWT_SECRET=true 先让它起来，之后再换掉密钥。");
+            }
+            log.warn("!!! JWT_SECRET 是仓库里的公开默认值，当前登录态可被任何人伪造。"
+                    + "你已通过 KAOYAN_AUTH_ALLOW_INSECURE_JWT_SECRET 显式放行，请尽快更换密钥。");
+        } else if (length < MIN_SECRET_BYTES) {
+            if (!allowInsecure) {
+                throw new IllegalStateException(
+                        "JWT_SECRET 太短（" + length + " 字节），HS256 至少需要 " + MIN_SECRET_BYTES + " 字节。"
+                                + "应急放行：KAOYAN_AUTH_ALLOW_INSECURE_JWT_SECRET=true（届时会对密钥做 SHA-256 派生）。");
+            }
+            // 短密钥无法直接用于 HS256，做一次派生让它至少满足长度要求（熵并没有增加）
+            keyBytes = sha256(keyBytes);
+            log.warn("!!! JWT_SECRET 过短（{} 字节），已按 SHA-256 派生为 32 字节继续启动。"
+                    + "熵没有增加，仍属弱密钥，请尽快更换。", length);
         }
-        this.key = Keys.hmacShaKeyFor(trimmed.getBytes(StandardCharsets.UTF_8));
+        this.key = Keys.hmacShaKeyFor(keyBytes);
         this.expireSeconds = expireSeconds;
+    }
+
+    private static byte[] sha256(byte[] input) {
+        try {
+            return MessageDigest.getInstance("SHA-256").digest(input);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("JVM 缺少 SHA-256 实现", e);
+        }
     }
 
     public String sign(String username, String email, int tokenVersion) {

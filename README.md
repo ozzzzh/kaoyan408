@@ -261,6 +261,20 @@ Migration checksum mismatch for migration version N
 
 这一节记录本轮加固后**会改变运维动作**的地方。改动本身在 git 历史里，这里只写「你需要知道什么」。
 
+### JWT 密钥校验与应急开关
+
+密钥等于仓库公开默认值、或短于 32 字节时，服务**默认拒绝启动**：公开密钥意味着任何人都能
+签出任意账号的 token，这时候站点「能用」比「停掉」更危险。
+
+但配置错误导致的停站也是事故，所以留了一个显式应急通道：
+
+```bash
+KAOYAN_AUTH_ALLOW_INSECURE_JWT_SECRET=true docker compose -p kaoyan408 up -d api
+```
+
+打开后改为告警并照常启动（过短密钥会做 SHA-256 派生以满足 HS256 的长度要求，熵不变、仍是弱密钥）。
+它是**临时恢复手段**：起来后请立刻换掉密钥并关掉开关。
+
 ### 升级后所有用户需要重新登录一次
 
 JWT 现在带 `ver` claim，与 `app_user.token_version` 比对。升级前签发的 token 没有该字段，
