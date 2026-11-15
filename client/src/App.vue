@@ -22,7 +22,8 @@ const bare = computed(() => route.meta.bare === true)
 onMounted(async () => {
   themeStore.start()
   // 登录态已在 main.ts 里恢复过（根路径分流要先用到），这里只补看板数据。
-  await userStore.loadDashboard()
+  // 不 await：看板数据后到即可，不阻塞界面渲染
+  void userStore.loadDashboard()
 })
 </script>
 

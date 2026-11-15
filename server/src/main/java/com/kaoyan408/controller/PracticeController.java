@@ -46,9 +46,12 @@ public class PracticeController {
             @RequestParam(defaultValue = "all") String scope,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) Boolean latest,
             Authentication authentication) {
         Long userId = userIdOf(authentication);
-        return Result.ok(practiceService.queue(userId, year, subject, blockId, pointId, scope, page, size));
+        // latest=true 且未指定 year 时，只加载最新一卷（47 题），而不是把 846 条全下发。
+        return Result.ok(practiceService.queue(userId, year, subject, blockId, pointId, scope,
+                page, size, Boolean.TRUE.equals(latest)));
     }
 
     /** 错题本概览：总错题数 + 分科目分布。 */

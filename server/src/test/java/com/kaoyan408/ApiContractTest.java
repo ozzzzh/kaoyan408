@@ -94,17 +94,29 @@ class ApiContractTest {
     }
 
     @Test
-    @DisplayName("队列：分页返回本页条数，total 是筛选后的总数，并带年份分组")
-    void queueSupportsPagination() throws Exception {
+    @DisplayName("队列：按年份加载 + 分页；total=全范围总数，yearTotal=本年份题数，years 覆盖全部年份")
+    void queueSupportsYearScopedPaging() throws Exception {
         mockMvc.perform(get("/api/v1/practice/queue")
                         .param("year", "2024")
                         .param("page", "2")
                         .param("size", "10"))
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.total").value(47))
+                // 选中年份的题量
+                .andExpect(jsonPath("$.data.yearTotal").value(47))
                 .andExpect(jsonPath("$.data.items.length()").value(10))
-                .andExpect(jsonPath("$.data.years.length()").value(1))
-                .andExpect(jsonPath("$.data.years[0].year").value(2024));
+                // 全范围总数（846）与年份汇总（18 卷）不受 year 过滤影响，供导航使用
+                .andExpect(jsonPath("$.data.total").value(846))
+                .andExpect(jsonPath("$.data.years.length()").value(18));
+    }
+
+    @Test
+    @DisplayName("队列：latest=true 只加载最新一卷（不再一次下发 846 条）")
+    void queueLatestLoadsSingleYear() throws Exception {
+        mockMvc.perform(get("/api/v1/practice/queue").param("latest", "true"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.year").value(2026))
+                .andExpect(jsonPath("$.data.yearTotal").value(47))
+                .andExpect(jsonPath("$.data.items.length()").value(47));
     }
 
     @Test

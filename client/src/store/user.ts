@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api, ApiError, getToken, setToken } from '@/api/client'
 import type { AuthUser, Dashboard } from '@/api/types'
 
@@ -37,12 +37,16 @@ export const useUserStore = defineStore('user', () => {
    *     仍失败就先按未知处理，绝不因为一次抖动就把人踢下线。
    */
   async function restore(): Promise<void> {
-    if (!token.value) return
+    if (!token.value) {
+      authReady.value = true
+      return
+    }
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         user.value = await api.currentUser()
         sessionExpired.value = false
+        authReady.value = true
         return
       } catch (e) {
         const code = e instanceof ApiError ? e.code : 0
@@ -53,6 +57,7 @@ export const useUserStore = defineStore('user', () => {
           token.value = null
           user.value = null
           sessionExpired.value = true
+          authReady.value = true
           return
         }
 
@@ -63,9 +68,32 @@ export const useUserStore = defineStore('user', () => {
         }
         // 保留 token 与本地状态：请求仍会带上 Authorization，
         // 写操作依然按登录用户处理，只是这次没拿到用户信息。
+        authReady.value = true
         return
       }
     }
+  }
+
+  /**
+   * 登录态是否已确定（含「没有 token 直接算确定」）。
+   *
+   * <p>为什么需要它：main.ts 原来 `await restore()` 才 mount，等于首屏要等一次
+   * /user/current 往返——慢链路上就是 0.4–1.8 秒的白屏。现在改为挂载不等它，
+   * 只有「根路径按登录态分流」这一处需要确定结果，那里 await 这个标记。
+   */
+  const authReady = ref(false)
+
+  /** 等待登录态确定；已确定时立即返回。 */
+  function whenAuthReady(): Promise<void> {
+    if (authReady.value) return Promise.resolve()
+    return new Promise((resolve) => {
+      const stop = watch(authReady, (ready) => {
+        if (ready) {
+          stop()
+          resolve()
+        }
+      })
+    })
   }
 
   function login(username: string, password: string): Promise<void> {
@@ -106,6 +134,8 @@ export const useUserStore = defineStore('user', () => {
   return {
     token,
     user,
+    authReady,
+    whenAuthReady,
     dashboard,
     loading,
     isLoggedIn,
