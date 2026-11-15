@@ -43,6 +43,10 @@ jobs:
         working-directory: client
         run: npm ci
 
+      - name: 前端单测（渲染安全不变式）
+        working-directory: client
+        run: npm test
+
       - name: 前端类型检查与构建
         working-directory: client
         run: npm run build
@@ -225,6 +229,18 @@ jobs:
             -H 'Content-Type: application/json' \
             -d "{\"username\":\"tester01\",\"email\":\"${EMAIL}\",\"password\":\"test123456\",\"code\":\"${CODE}\"}"
           echo
+
+      # 接口契约测试：MockMvc + 真实 MySQL，锁住几条不能被改坏的约束
+      # （匿名不下发答案、背题需登录、XFF 伪造换不到限流桶、登录锁定、JWT 密钥校验）。
+      # 与下面的 scripts/verify-*.mjs 分工：这里毫秒级、只看不变量；
+      # 那些脚本覆盖业务流程，耗时以分钟计。jacoco 门限也在 test 阶段执行。
+      - name: 后端接口契约测试（含 jacoco 门限）
+        working-directory: server
+        env:
+          DB_URL: 'jdbc:mysql://127.0.0.1:3306/kaoyan_db?characterEncoding=UTF-8&useUnicode=true&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai'
+          DB_USER: root
+          DB_PASSWORD: ci-root-password
+        run: mvn -B test
 
       - name: 搜索回归（中英文 / 题号 / 相关性 / 片段质量）
         run: node scripts/verify-search.mjs
