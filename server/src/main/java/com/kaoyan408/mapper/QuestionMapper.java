@@ -36,6 +36,21 @@ public interface QuestionMapper extends BaseMapper<Question> {
     List<Map<String, Object>> yearStats();
 
     /**
+     * 年份列表 + 每卷题量 + 每卷四科分布，一次查询出结果。
+     *
+     * <p>原来是「逐年份 selectList 把整卷题目（含 MEDIUMTEXT 的题干与解析）读进内存再数」，
+     * 18 卷 ≈ 18 次全字段查询。试卷列表只要三个数字，没必要把题干搬一遍。
+     */
+    @Select("""
+            SELECT e.year AS year, e.title AS title, q.subject AS subject, COUNT(q.id) AS total
+            FROM exam_year e
+            LEFT JOIN question q ON q.exam_id = e.id
+            GROUP BY e.year, e.title, q.subject
+            ORDER BY e.year
+            """)
+    List<Map<String, Object>> examYearStats();
+
+    /**
      * 各科掌握度分桶（对齐 408os 的「掌握 / 不熟 / 不会 / 未做」）。
      * 掌握：答对且未用提示；不熟：答对但用过提示；不会：答错；未做：无作答记录。
      */
@@ -150,6 +165,7 @@ public interface QuestionMapper extends BaseMapper<Question> {
             ORDER BY
               <if test="onlyPendingWrong">a.first_wrong_at ASC,</if>
               e.year DESC, q.exam_number ASC
+            <if test="limit != null">LIMIT #{limit} OFFSET #{offset}</if>
             </script>
             """)
     List<Map<String, Object>> queue(@Param("userId") Long userId,
@@ -160,8 +176,61 @@ public interface QuestionMapper extends BaseMapper<Question> {
                                     @Param("onlyWrong") boolean onlyWrong,
                                     @Param("onlyUntouched") boolean onlyUntouched,
                                     @Param("onlyPendingWrong") boolean onlyPendingWrong,
-                                    @Param("onlyMasteredWrong") boolean onlyMasteredWrong);
+                                    @Param("onlyMasteredWrong") boolean onlyMasteredWrong,
+                                    @Param("limit") Integer limit,
+                                    @Param("offset") Integer offset);
 
+    /**
+     * 队列按年份/科目的分组计数，供侧栏「年份导航」使用。
+     *
+     * <p>筛条件必须与上面的 {@link #queue} 保持一致（这里是唯一的重复点）：
+     * 前端拿它渲染年份分组并显示「每年多少题」，就不用把几百条队列项在浏览器里
+     * group by 一遍了。
+     */
+    @Select("""
+            <script>
+            SELECT e.year AS year, q.subject AS subject, COUNT(DISTINCT q.id) AS total
+            FROM question q
+            JOIN exam_year e ON e.id = q.exam_id
+            LEFT JOIN question_attempt a ON a.question_id = q.id AND a.user_id = #{userId}
+            <if test="blockId != null or pointId != null">
+              JOIN question_knowledge qk ON qk.question_id = q.id
+            </if>
+            <if test="pointId != null">
+              JOIN knowledge_block kb ON kb.block_id = qk.block_id AND kb.point_id = #{pointId}
+            </if>
+            <where>
+              <if test="year != null">AND e.year = #{year}</if>
+              <if test="subject != null and subject != ''">AND q.subject = #{subject}</if>
+              <if test="blockId != null and blockId != ''">AND qk.block_id = #{blockId}</if>
+              <if test="onlyWrong">AND a.wrong_count &gt; 0</if>
+              <if test="onlyUntouched">AND a.id IS NULL</if>
+              <if test="onlyPendingWrong">AND a.wrong_count &gt; 0 AND a.mastered_at IS NULL</if>
+              <if test="onlyMasteredWrong">AND a.wrong_count &gt; 0 AND a.mastered_at IS NOT NULL</if>
+            </where>
+            GROUP BY e.year, q.subject
+            ORDER BY e.year DESC
+            </script>
+            """)
+    List<Map<String, Object>> queueYearCounts(@Param("userId") Long userId,
+                                              @Param("year") Integer year,
+                                              @Param("subject") String subject,
+                                              @Param("blockId") String blockId,
+                                              @Param("pointId") String pointId,
+                                              @Param("onlyWrong") boolean onlyWrong,
+                                              @Param("onlyUntouched") boolean onlyUntouched,
+                                              @Param("onlyPendingWrong") boolean onlyPendingWrong,
+                                              @Param("onlyMasteredWrong") boolean onlyMasteredWrong);
+
+    /** 按科目统计已做题数（用于刷题入口卡片，避免把整行队列读出来数）。 */
+    @Select("""
+            SELECT q.subject AS subject, COUNT(*) AS done
+            FROM question_attempt a
+            JOIN question q ON q.id = a.question_id
+            WHERE a.user_id = #{userId}
+            GROUP BY q.subject
+            """)
+    List<Map<String, Object>> attemptedCountBySubject(@Param("userId") Long userId);
     /** 某个知识块的关联真题（轻量字段，用于正文页的「本节关联 N 道真题」）。 */
     @Select("""
             SELECT q.exam_ref AS examRef, q.exam_number AS number, e.year AS year,
