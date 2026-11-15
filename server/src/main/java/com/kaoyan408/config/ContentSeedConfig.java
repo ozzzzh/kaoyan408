@@ -100,8 +100,10 @@ public class ContentSeedConfig {
             } else if (applied == null) {
                 // 升级到「指纹」机制后的第一次启动：库里已有内容，先把当前指纹记下来，
                 // 不重灌。否则这次升级会白白让 846 题换一遍 id，把作答记录变成孤儿。
+                // 这里不需要显式 commit：刚建的表还没进过事务，连接仍是 autoCommit=true，
+                // 语句本身已经落库。之前在这里调 commit() 会抛「Can't call commit when
+                // autocommit=true」，被外层 catch 吞成一条 WARN —— 功能没坏，但日志会误导人。
                 metaPut(connection, CHECKSUM_KEY, checksum);
-                connection.commit();
                 log.info("首次记录内容种子指纹（{}…），题库已有 {} 题，跳过重灌", shortOf(checksum), questions);
                 return;
             } else if (applied.equals(checksum)) {
