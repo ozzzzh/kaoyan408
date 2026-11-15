@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/user'
 import { api } from '@/api/client'
@@ -7,6 +8,8 @@ import type { Dashboard, MemorySummary, WrongBook } from '@/api/types'
 import { subjectMeta } from '@/constants/subjects'
 import BrandLogo from '@/components/brand/BrandLogo.vue'
 
+const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 const { user, loading } = storeToRefs(userStore)
 
@@ -197,8 +200,26 @@ async function submit() {
     }
     password.value = ''
     code.value = ''
+    redirectAfterAuth()
   } catch (e) {
     error.value = e instanceof Error ? e.message : '操作失败'
+  }
+}
+
+/**
+ * 登录/注册成功后回到来源页。
+ *
+ * 典型来源是刷题页的「背题模式」：未登录时会拿到业务码 401，提示条上的按钮
+ * 带着 redirect=/practice?scope=... 过来，登录完直接回去继续刷，
+ * 而不是被丢到「我的」页面自己再找一遍。
+ *
+ * 只接受站内绝对路径：query 是用户可控的，必须挡住 //evil.com 这类协议相对地址，
+ * 否则就变成一个开放重定向。
+ */
+function redirectAfterAuth(): void {
+  const target = route.query.redirect
+  if (typeof target === 'string' && target.startsWith('/') && !target.startsWith('//')) {
+    router.replace(target)
   }
 }
 

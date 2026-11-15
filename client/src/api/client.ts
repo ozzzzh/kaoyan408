@@ -40,6 +40,15 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 是否是「未登录 / 登录失效」。
+ *
+ * 单独抽出来是因为判断散落在各页面里很容易写错：业务码 401 走的是 HTTP 200 的
+ * 统一响应体，若只看 HTTP 状态永远判断不出来；而按 message 文案匹配又会随文案改动失效。
+ */
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 401
+}
 export function getToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY)

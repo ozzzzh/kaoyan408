@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api } from '@/api/client'
+import { api, isUnauthorized } from '@/api/client'
 import StemMarkdown from '@/components/mock/StemMarkdown.vue'
 import type { PracticeQueue, QuestionView } from '@/api/types'
 import { useUserStore } from '@/store/user'
@@ -261,6 +261,8 @@ async function loadQueue() {
     await loadQuestion()
   } catch (e) {
     queue.value = null
+    // 未登录访问错题本 / 需登录的筛选时，给出「去登录」入口而不是一句红字
+    needLogin.value = isUnauthorized(e)
     message.value = e instanceof Error ? e.message : '加载队列失败'
   } finally {
     loadingQueue.value = false
@@ -282,6 +284,9 @@ async function loadQuestion() {
     question.value = await api.question(item.examRef, mode.value === 'memorize')
   } catch (e) {
     question.value = null
+    // 背题模式现在要求登录（未登录访问会拿到业务码 401）。这里不只是显示文案，
+    // 而是把提示条切成「需要登录」的样式并给出直达登录页的按钮。
+    needLogin.value = isUnauthorized(e)
     message.value = e instanceof Error ? e.message : '加载题目失败'
   } finally {
     loadingQuestion.value = false
@@ -524,7 +529,7 @@ watch(
       <span>{{ message }}</span>
       <RouterLink
         v-if="needLogin"
-        to="/me"
+        :to="{ path: '/me', query: { redirect: route.fullPath } }"
         class="shrink-0 rounded-lg bg-[var(--k-accent)] px-3 py-1 text-xs font-bold text-[var(--k-on-accent)] no-underline"
       >
         去登录
