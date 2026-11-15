@@ -335,6 +335,21 @@ cd server && mvn -B test            # 接口契约测试（10 个用例）+ jaco
 - jacoco 门限是 0.10（实测约 21%），它是护栏不是目标：防止覆盖率继续往下掉。
 - CI 已接入这两步（build job 跑前端单测，api job 在 MySQL 就绪后跑后端契约测试）。
 
+### 生产机构建前端的前提（重要）
+
+生产机（10.0.219.241）当前是 **Node v20.11.1**，而本项目依赖 **vite 8.3.5**，
+它要求 Node `^20.19.0 || >=22.12.0`。实测在该机上直接 `npx vite build` 会报：
+
+```
+SyntaxError: The requested module 'node:util' does not provide an export named 'styleText'
+```
+
+所以**不能在服务器上构建前端**。当前流程是：本地（Node 22/24）`npm run build` →
+把 `client/dist` 打包上传 → 解包到 `dist.new` → `mv dist dist.old.<ts> && mv dist.new dist`
+→ `docker compose -p kaoyan408 up -d --force-recreate web`。
+
+要把构建能力还给服务器，需要把 Node 升到 22 LTS（或 20.19+），否则每次发版都得在本地构建。
+
 ### 已知取舍
 
 - **刷题队列没有改成翻页**：接口已支持 `page/size` 并返回真实 `total` 与年份分组（`years`），
