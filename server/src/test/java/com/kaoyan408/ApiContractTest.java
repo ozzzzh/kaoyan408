@@ -1,14 +1,19 @@
 package com.kaoyan408;
 
 import com.kaoyan408.core.JwtUtil;
+import com.kaoyan408.entity.User;
+import com.kaoyan408.mapper.UserMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.MvcResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,6 +46,14 @@ class ApiContractTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserMapper userMapper;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
     @DisplayName("健康检查会真的探库，并带出题库条数")
@@ -165,6 +178,49 @@ class ApiContractTest {
         // 但默认行为不变：不开开关就拒绝
         assertThatThrownBy(() -> new JwtUtil("kaoyan408-local-dev-secret-change-before-launch", 3600, false))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("调高 token_version 后重新登录，新 token 必须立刻可用（防止账号状态缓存把新 ver 挡掉）")
+    void freshTokenWorksRightAfterVersionBump() throws Exception {
+        String username = "verprobe_" + System.currentTimeMillis();
+        User user = new User();
+        user.setUsername(username);
+        user.setEmail(username + "@example.com");
+        user.setPasswordHash(passwordEncoder.encode("test123456"));
+        user.setIsActive(1);
+        user.setIsAdmin(0);
+        user.setTokenVersion(1);
+        userMapper.insert(user);
+
+        try {
+            String token1 = loginAndGetToken(username);
+            // 模拟「管理员把某人踢下线 / 禁用后恢复」
+            userMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<User>()
+                    .eq("username", username).setSql("token_version = token_version + 1"));
+
+            // 紧接着重新登录：旧实现会因缓存里仍是 ver=1 而让新 token(ver=2) 被判无效
+            String token2 = loginAndGetToken(username);
+            mockMvc.perform(get("/api/v1/user/current").header("Authorization", "Bearer " + token2))
+                    .andExpect(jsonPath("$.code").value(0));
+
+            // 旧 token 理论上应失效；缓存可能在 60 秒内仍放行旧 ver，这里只断言新 token 可用，
+            // 不断言旧 token 立刻失效（那是缓存 TTL 的有意取舍）。
+            assertThat(token2).isNotEqualTo(token1);
+        } finally {
+            userMapper.deleteById(user.getId());
+        }
+    }
+
+    private String loginAndGetToken(String username) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + username + "\",\"password\":\"test123456\"}"))
+                .andReturn();
+        String body = result.getResponse().getContentAsString();
+        var node = JSON.readTree(body);
+        assertThat(node.path("code").asInt()).as("登录应成功: " + body).isEqualTo(0);
+        return node.path("data").path("token").asText();
     }
 
     @Test
