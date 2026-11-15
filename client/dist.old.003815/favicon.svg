@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="题知链 应用图标">
+  <!-- 应用图标：深藏青圆角方块（圆角 22%），标记占 62%，四周留白约 19% -->
+  <rect width="32" height="32" rx="7" ry="7" fill="#1F2440"/>
+  <defs>
+    <mask id="cutC" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect width="32" height="32" fill="#fff"/>
+      <circle cx="16" cy="16" r="5.184" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="none" stroke="#EDEFFA" stroke-width="2.536" mask="url(#cutC)">
+    <circle cx="20.74" cy="11.26" r="3.916"/>
+    <circle cx="11.26" cy="20.74" r="3.916"/>
+  </g>
+  <circle cx="16" cy="16" r="3.916" fill="none" stroke="#00B5A8" stroke-width="2.536"/>
+</svg>
