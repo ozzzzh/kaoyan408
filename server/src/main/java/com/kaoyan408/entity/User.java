@@ -26,6 +26,12 @@ public class User {
     /** 1 管理员。当前仅作标记，权限控制留待需要时启用。 */
     private Integer isAdmin;
 
+    /**
+     * 令牌版本，签发 JWT 时写进 ver claim，每次请求核对。
+     * 把它加一即可让该用户所有旧 token 立刻失效（禁用账号、改密码、踢下线）。
+     */
+    private Integer tokenVersion;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

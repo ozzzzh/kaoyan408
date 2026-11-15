@@ -279,7 +279,7 @@ async function loadQuestion() {
   result.value = null
   try {
     // 背题模式要直接看答案；做题模式保持「作答后才给答案」
-    question.value = await api.question(item.examRef, 0, mode.value === 'memorize')
+    question.value = await api.question(item.examRef, mode.value === 'memorize')
   } catch (e) {
     question.value = null
     message.value = e instanceof Error ? e.message : '加载题目失败'

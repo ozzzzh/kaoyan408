@@ -1,6 +1,7 @@
 package com.kaoyan408.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.core.Result;
 import com.kaoyan408.entity.ExamYear;
 import com.kaoyan408.entity.Question;
@@ -82,13 +83,20 @@ public class QuestionController {
      */
     @GetMapping("/{examRef}")
     public Result<Map<String, Object>> detail(@PathVariable String examRef,
-                                              @RequestParam(defaultValue = "0") int reveal,
                                               @RequestParam(defaultValue = "false") boolean memorize,
                                               Authentication authentication) {
         Question question = questionService.requireByRef(examRef);
         Long userId = userIdOf(authentication);
         boolean answered = userId != null && questionService.attemptOf(userId, question.getId()) != null;
-        boolean withExplanation = memorize || (answered && (reveal == 0 || reveal == 1));
+        if (memorize && userId == null) {
+            // 背题模式直接下发答案与解析，必须登录：
+            // 之前它对匿名开放，等于把 846 道真题的答案做成公开接口，
+            // 模拟考试「考试中不下发答案」的约束被这一个参数整体绕过。
+            throw new BusinessException(401, "背题模式需要登录后使用。");
+        }
+        // 原来写的是 memorize || (answered && (reveal == 0 || reveal == 1))：
+        // reveal 只能是 0 或 1，整个条件恒为真，该参数形同虚设。真正生效的只有 memorize。
+        boolean withExplanation = memorize || answered;
         return Result.ok(view(question, withExplanation, answered));
     }
 

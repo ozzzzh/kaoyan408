@@ -303,11 +303,14 @@ export const api = {
 
   /**
    * 单题详情。
-   * memorize=true 时后端直接返回答案与解析（背题模式用），否则只有作答后才返回。
+   *
+   * memorize=true 时后端直接返回答案与解析（背题模式用），该模式**要求登录**
+   * （未登录会返回 code=401），因为匿名下发答案等于把真题答案做成公开接口。
+   * 其它情况只有作答后才返回解析：没做过题的题拿到的是 locked 状态。
    */
-  question: (examRef: string, reveal = 0, memorize = false) =>
+  question: (examRef: string, memorize = false) =>
     request<QuestionView>(
-      `/api/v1/questions/${encodeURIComponent(examRef)}?reveal=${reveal}&memorize=${memorize}`,
+      `/api/v1/questions/${encodeURIComponent(examRef)}?memorize=${memorize}`,
     ),
 
   submitAnswer: (examRef: string, answer: string, durationMs?: number) =>

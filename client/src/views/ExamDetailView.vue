@@ -82,7 +82,7 @@ async function toggleReveal(question: QuestionView) {
 
   answerState.value = { ...answerState.value, [question.id]: 'loading' }
   try {
-    const detail = await api.question(question.id, 1)
+    const detail = await api.question(question.id)
     if (detail.answer || detail.explanation) {
       answerCache.value = {
         ...answerCache.value,
