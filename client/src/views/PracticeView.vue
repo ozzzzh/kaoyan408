@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api, isUnauthorized } from '@/api/client'
 import StemMarkdown from '@/components/mock/StemMarkdown.vue'
 import type { PracticeQueue, QuestionView } from '@/api/types'
 import { useUserStore } from '@/store/user'
 
 const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 
 const queue = ref<PracticeQueue | null>(null)
@@ -107,16 +108,19 @@ const isWrongScope = computed(() =>
 )
 
 const progressText = computed(() =>
-  queue.value ? `${index.value + 1} / ${queue.value.total}` : '—',
+  queue.value ? `${index.value + 1} / ${queue.value.yearTotal ?? queue.value.total}` : '—',
 )
 
-/** 顶部统计跟随当前范围，避免切到错题本仍显示「共 846 题」。 */
+/** 顶部统计跟随当前范围与当前年份，避免按年加载后仍显示「共 846 题」。 */
 const statsText = computed(() => {
   if (!queue.value) return '正在加载…'
-  const { total, answered, correct } = queue.value
+  const { total, yearTotal, answered, correct } = queue.value
+  const scopeTotal = yearTotal ?? total
   const accuracy = answered > 0 ? Math.round((correct / answered) * 100) : null
+  // 年份导航里能看到四科总量，这里只报本年；跨范围时才带上全量提示
+  const suffix = activeYear.value && total > scopeTotal ? `（全部 ${total} 题）` : ''
   return (
-    `${scopeLabel.value} · 共 ${total} 题 · 已答 ${answered}` +
+    `${scopeLabel.value} · 共 ${scopeTotal} 题${suffix} · 已答 ${answered}` +
     (accuracy === null ? '' : ` · 正确率 ${accuracy}%`)
   )
 })
@@ -134,10 +138,36 @@ const progressPercent = computed(() => {
  * 卷与卷之间没有任何分隔，同一数字还会重复出现（每年都从 1 开始），
  * 用户根本找不到自己在哪。这里改为按年份分组、可折叠。
  */
+/**
+ * 年份导航来自后端 years 汇总，而不是把队列项在浏览器里 group by。
+ *
+ * 队列改成「按年加载」之后，items 只有当前年份的 47 条；
+ * 其余年份仍要能点，所以分组计数必须来自后端（一次 GROUP BY，不受 year 过滤影响）。
+ */
 const navGroups = computed(() => {
   const items = queue.value?.items ?? []
+  const years = queue.value?.years ?? []
+  if (years.length) {
+    const loaded = queue.value?.year
+    return years.map((y) => {
+      const inYear = loaded === y.year
+        ? items.map((item, index) => ({ item, index }))
+        : []
+      return {
+        year: y.year,
+        total: y.total,
+        indexCount: inYear.length,
+        items: inYear,
+        answered: inYear.filter((x) => x.item.answered).length,
+        correct: inYear.filter((x) => x.item.correct).length,
+      }
+    })
+  }
+  // 兜底：后端未返回汇总时按队列项推
   const groups: Array<{
     year: number
+    total: number
+    indexCount: number
     items: Array<{ item: (typeof items)[number]; index: number }>
     answered: number
     correct: number
@@ -146,16 +176,42 @@ const navGroups = computed(() => {
   items.forEach((item, i) => {
     let group = byYear.get(item.year)
     if (!group) {
-      group = { year: item.year, items: [], answered: 0, correct: 0 }
+      group = { year: item.year, total: 0, indexCount: 0, items: [], answered: 0, correct: 0 }
       byYear.set(item.year, group)
       groups.push(group)
     }
     group.items.push({ item, index: i })
+    group.total += 1
+    group.indexCount += 1
     if (item.answered) group.answered += 1
     if (item.correct) group.correct += 1
   })
   return groups
 })
+
+/** 当前加载的年份；用于高亮与「跨年跳题」判断 */
+const activeYear = computed(() => queue.value?.year ?? queue.value?.items[0]?.year ?? null)
+
+/** 跨年跳题：先切年份，队列回来后由 loadQueue 定位到题号 */
+const pendingJump = ref<{ year: number; number: number } | null>(null)
+
+/**
+ * 切换年份。写进 URL 让 watch 触发重新加载——这样前进/后退、分享链接都还能用，
+ * 也不用维护第二套状态。
+ */
+function selectYear(year: number) {
+  if (year === activeYear.value) return
+  void router.replace({ query: { ...route.query, year: String(year) } })
+}
+
+/** 年份行点击：当前年份 → 折叠/展开；其它年份 → 切换过去 */
+function onYearClick(year: number, hasItems: boolean) {
+  if (hasItems) {
+    toggleYear(year)
+    return
+  }
+  selectYear(year)
+}
 
 /** 当前题所在的年份，用于自动展开。 */
 const currentYear = computed(() => current.value?.year ?? null)
@@ -213,6 +269,14 @@ function jumpToInput() {
       jumpInput.value = ''
       return
     }
+    // 目标不在当前年份的队列里：记住它，切到那一年后由 loadQueue 定位。
+    // 按年加载之后 items 只含本年 47 条，跨年跳题必须走这条路。
+    if (year !== activeYear.value) {
+      pendingJump.value = { year, number }
+      jumpInput.value = ''
+      selectYear(year)
+      return
+    }
   }
   // 否则当作队列序号（第 N 题）
   const ordinal = Number(raw)
@@ -242,7 +306,10 @@ async function loadQueue() {
       // 搜索直达单题：取所在年份的队列后定位到该题，
       // 这样仍可用上一题/下一题在同年份里继续刷。
       const detail = await api.question(examRefParam.value)
-      const yearQueue = await api.practiceQueue({ year: detail.year ?? undefined })
+      const yearQueue = await api.practiceQueue({
+        year: detail.year ?? undefined,
+        latest: !detail.year,
+      })
       const found = yearQueue.items.findIndex((i) => i.examRef === examRefParam.value)
       queue.value = yearQueue
       index.value = found >= 0 ? found : 0
@@ -252,12 +319,28 @@ async function loadQueue() {
 
     queue.value = await api.practiceQueue({
       year: yearParam.value,
+      // 没有指定年份时只加载最新一卷（47 题）；原来会把 846 条一次性拉下来，
+      // 在不支持 gzip 的链路上就是 198KB，首屏要等好几秒。
+      latest: !yearParam.value,
       subject: subjectParam.value,
       blockId: blockIdParam.value,
       pointId: pointIdParam.value,
       scope: scope.value as 'all' | 'wrong' | 'untouched' | 'wrong-pending' | 'wrong-mastered',
     })
     index.value = 0
+
+    // 跨年跳题：队列到位后再定位（切年是异步的，先记下来）
+    const jump = pendingJump.value
+    if (jump) {
+      if (jump.year !== activeYear.value) {
+        selectYear(jump.year)
+        return
+      }
+      pendingJump.value = null
+      const at = queue.value.items.findIndex((i) => i.year === jump.year && i.number === jump.number)
+      if (at >= 0) index.value = at
+    }
+
     await loadQuestion()
   } catch (e) {
     queue.value = null
@@ -576,7 +659,38 @@ watch(
       </span>
     </div>
 
-    <p v-if="loadingQueue" class="py-10 text-center text-sm text-[var(--k-text-faint)]">加载中…</p>
+    <!--
+      骨架屏：等队列/题干返回期间先把版面撑起来。
+      原来这里只有一行「加载中…」，在慢链路上（预览网关单请求 2 秒级）用户看到的
+      是一块空白，很难判断是在加载还是卡死。
+    -->
+    <div
+      v-if="loadingQueue"
+      class="grid animate-pulse items-start gap-5 lg:grid-cols-[minmax(0,1fr)_240px]"
+      aria-busy="true"
+      aria-label="正在加载题目"
+    >
+      <div class="space-y-4">
+        <div class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-6 py-6">
+          <div class="mb-5 flex flex-wrap gap-2">
+            <div class="h-4 w-16 rounded bg-[var(--k-surface-soft)]"></div>
+            <div class="h-4 w-20 rounded bg-[var(--k-surface-soft)]"></div>
+            <div class="h-4 w-14 rounded bg-[var(--k-surface-soft)]"></div>
+          </div>
+          <div class="space-y-3">
+            <div class="h-4 w-[92%] rounded bg-[var(--k-surface-soft)]"></div>
+            <div class="h-4 w-[76%] rounded bg-[var(--k-surface-soft)]"></div>
+            <div class="h-4 w-[84%] rounded bg-[var(--k-surface-soft)]"></div>
+          </div>
+          <div class="mt-6 space-y-2.5">
+            <div v-for="i in 4" :key="i" class="h-9 rounded-lg bg-[var(--k-surface-soft)]"></div>
+          </div>
+        </div>
+      </div>
+      <aside class="space-y-3">
+        <div class="h-64 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)]"></div>
+      </aside>
+    </div>
 
     <div
       v-else-if="!queue || queue.total === 0"
@@ -613,6 +727,26 @@ watch(
     <!-- 版面：题目限制行宽（中文阅读舒适区约 30–40 字），导航栏加宽以容纳分组 -->
     <div v-else class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_240px]">
       <div class="min-w-0 space-y-4">
+        <!-- 队列已到、题干还在路上的这一段也要骨架，否则中间会出现一块空白 -->
+        <div
+          v-if="loadingQuestion && !question"
+          class="animate-pulse rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-6 py-6"
+          aria-busy="true"
+          aria-label="正在加载题目内容"
+        >
+          <div class="mb-5 flex flex-wrap gap-2">
+            <div class="h-4 w-16 rounded bg-[var(--k-surface-soft)]"></div>
+            <div class="h-4 w-24 rounded bg-[var(--k-surface-soft)]"></div>
+          </div>
+          <div class="space-y-3">
+            <div class="h-4 w-[94%] rounded bg-[var(--k-surface-soft)]"></div>
+            <div class="h-4 w-[78%] rounded bg-[var(--k-surface-soft)]"></div>
+            <div class="h-4 w-[88%] rounded bg-[var(--k-surface-soft)]"></div>
+          </div>
+          <div class="mt-6 space-y-2.5">
+            <div v-for="i in 4" :key="i" class="h-9 rounded-lg bg-[var(--k-surface-soft)]"></div>
+          </div>
+        </div>
         <article
           v-if="question && mode === 'practice'"
           class="rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-6 py-6"
@@ -960,8 +1094,8 @@ watch(
             <div v-for="group in navGroups" :key="group.year" class="mb-1.5">
               <button
                 class="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition hover:bg-[var(--k-surface-soft)]"
-                :class="group.year === currentYear ? 'text-[var(--k-accent-text)]' : 'text-[var(--k-text-muted)]'"
-                @click="toggleYear(group.year)"
+                :class="group.year === activeYear ? 'text-[var(--k-accent-text)]' : 'text-[var(--k-text-muted)]'"
+                @click="onYearClick(group.year, group.indexCount > 0)"
               >
                 <svg
                   class="h-3 w-3 shrink-0 transition-transform"
@@ -975,14 +1109,18 @@ watch(
                   <path d="m6 9 6 6 6-6" />
                 </svg>
                 <span class="text-[11px] font-bold tabular-nums">{{ group.year }}</span>
-                <span class="text-[10px] text-[var(--k-text-faint)]">{{ group.items.length }} 题</span>
-                <span class="ml-auto text-[10px] tabular-nums text-[var(--k-text-faint)]">
-                  {{ group.answered }}/{{ group.items.length }}
+                <span class="text-[10px] text-[var(--k-text-faint)]">{{ group.total }} 题</span>
+                <span
+                  v-if="group.year === activeYear"
+                  class="ml-auto text-[10px] tabular-nums text-[var(--k-text-faint)]"
+                >
+                  {{ group.answered }}/{{ group.indexCount }}
                 </span>
+                <span v-else class="ml-auto text-[10px] text-[var(--k-text-faint)]">切换</span>
               </button>
 
               <div
-                v-if="!isCollapsed(group.year)"
+                v-if="group.indexCount > 0 && !isCollapsed(group.year)"
                 class="mt-1 grid grid-cols-8 gap-1 pl-1 lg:grid-cols-7"
               >
                 <button

@@ -17,15 +17,17 @@ const router = createRouter({
   routes: [
     {
       // 根路径：按登录态决定看哪个。
-      // 用户 store 在 main.ts 里已经 restore 过，这里能直接读到。
+      // 登录态在 main.ts 里后台恢复（不再阻塞挂载），所以这里要等一下结果再分流，
+      // 否则已登录用户会先落到落地页、再被弹回工作台，明显闪一下。
       path: '/',
       name: 'root',
       component: () => import('@/views/LandingView.vue'),
       meta: { bare: true },
       beforeEnter: () => {
         // 动态导入避免 router 与 store 的循环依赖
-        return import('@/store/user').then(({ useUserStore }) => {
+        return import('@/store/user').then(async ({ useUserStore }) => {
           const userStore = useUserStore()
+          await userStore.whenAuthReady()
           // 已登录：根路径直接给工作台，不套 bare 外壳
           return userStore.isLoggedIn ? { path: '/dashboard' } : true
         })

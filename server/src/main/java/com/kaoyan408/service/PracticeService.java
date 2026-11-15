@@ -44,7 +44,7 @@ public class PracticeService {
      */
     public Map<String, Object> queue(Long userId, Integer year, String subject,
                                      String blockId, String pointId, String scope,
-                                     Integer page, Integer size) {
+                                     Integer page, Integer size, boolean latest) {
         // wrong = 所有错过的题（含已订正）；wrong-pending = 待订正；wrong-mastered = 已订正
         boolean onlyWrong = SCOPE_WRONG.equalsIgnoreCase(scope);
         boolean onlyUntouched = SCOPE_UNTOUCHED.equalsIgnoreCase(scope);
@@ -57,9 +57,46 @@ public class PracticeService {
         // 游客看错题本没有意义，直接回空队列而不是回全量
         if ((onlyWrong || onlyPendingWrong || onlyMasteredWrong) && userId == null) {
             return payload(List.of(), year, subject, blockId, pointId, scope,
-                    List.of(), 0, page, size);
+                    List.of(), 0, 0, page, size);
         }
 
+        // 年份分组**不受 year 过滤**：前端要用它渲染年份导航，并据此决定「默认看哪一年」。
+        // 过滤条件里除 year 之外都生效，所以导航显示的是「当前范围下每年有多少题」。
+        List<Map<String, Object>> yearRows = questionMapper.queueYearCounts(
+                userId, null, subjectFilter, blockFilter, pointFilter,
+                onlyWrong, onlyUntouched, onlyPendingWrong, onlyMasteredWrong);
+        List<Map<String, Object>> years = new ArrayList<>();
+        long totalAll = 0;
+        Integer latestYear = null;
+        Map<Integer, Map<String, Object>> byYear = new LinkedHashMap<>();
+        for (Map<String, Object> row : yearRows) {
+            long count = toLong(row.get("total"));
+            totalAll += count;
+            Integer y = row.get("year") == null ? null : ((Number) row.get("year")).intValue();
+            if (y != null && (latestYear == null || y > latestYear)) {
+                latestYear = y;
+            }
+            Map<String, Object> bucket = byYear.get(y);
+            if (bucket == null) {
+                bucket = new LinkedHashMap<>();
+                bucket.put("year", y);
+                bucket.put("total", 0L);
+                bucket.put("subjects", new LinkedHashMap<String, Long>());
+                byYear.put(y, bucket);
+                years.add(bucket);
+            }
+            bucket.put("total", toLong(bucket.get("total")) + count);
+            @SuppressWarnings("unchecked")
+            Map<String, Long> subjects = (Map<String, Long>) bucket.get("subjects");
+            subjects.put(String.valueOf(row.get("subject")), count);
+        }
+
+        // 只加载某一年的题：year 显式给出就用它；latest=true 用最新一卷；
+        // 两者都没有（旧行为）才返回全量。
+        Integer effectiveYear = year;
+        if (effectiveYear == null && latest) {
+            effectiveYear = latestYear;
+        }
         Integer limit = null;
         Integer offset = 0;
         if (page != null && page > 0 && size != null && size > 0) {
@@ -68,7 +105,7 @@ public class PracticeService {
         }
 
         List<Map<String, Object>> rows = questionMapper.queue(
-                userId, year, subjectFilter, blockFilter, pointFilter,
+                userId, effectiveYear, subjectFilter, blockFilter, pointFilter,
                 onlyWrong, onlyUntouched, onlyPendingWrong, onlyMasteredWrong,
                 limit, offset);
 
@@ -93,34 +130,11 @@ public class PracticeService {
             items.add(item);
         }
 
-        // 年份分组原本由前端把几百条队列项 group by 一遍算出来；现在后端一次聚合给出，
-        // 分页时 total 也才是「符合条件的真实总数」而不是「本页条数」。
-        List<Map<String, Object>> yearRows = questionMapper.queueYearCounts(
-                userId, year, subjectFilter, blockFilter, pointFilter,
-                onlyWrong, onlyUntouched, onlyPendingWrong, onlyMasteredWrong);
-        List<Map<String, Object>> years = new ArrayList<>();
-        long total = 0;
-        Map<Integer, Map<String, Object>> byYear = new LinkedHashMap<>();
-        for (Map<String, Object> row : yearRows) {
-            long count = toLong(row.get("total"));
-            total += count;
-            Integer y = row.get("year") == null ? null : ((Number) row.get("year")).intValue();
-            Map<String, Object> bucket = byYear.get(y);
-            if (bucket == null) {
-                bucket = new LinkedHashMap<>();
-                bucket.put("year", y);
-                bucket.put("total", 0L);
-                bucket.put("subjects", new LinkedHashMap<String, Long>());
-                byYear.put(y, bucket);
-                years.add(bucket);
-            }
-            bucket.put("total", toLong(bucket.get("total")) + count);
-            @SuppressWarnings("unchecked")
-            Map<String, Long> subjects = (Map<String, Long>) bucket.get("subjects");
-            subjects.put(String.valueOf(row.get("subject")), count);
-        }
-
-        return payload(items, year, subject, blockId, pointId, scope, years, total, page, size);
+        long yearTotal = effectiveYear == null
+                ? items.size()
+                : toLong(byYear.getOrDefault(effectiveYear, Map.of("total", 0L)).get("total"));
+        return payload(items, effectiveYear, subject, blockId, pointId, scope,
+                years, totalAll, yearTotal, page, size);
     }
 
     /** 把「年份 × 科目」分组计数再按总数汇总。 */
@@ -134,7 +148,7 @@ public class PracticeService {
     private Map<String, Object> payload(List<Map<String, Object>> items, Integer year, String subject,
                                         String blockId, String pointId, String scope,
                                         List<Map<String, Object>> years, long total,
-                                        Integer page, Integer size) {
+                                        long yearTotal, Integer page, Integer size) {
         long answered = items.stream().filter(i -> Boolean.TRUE.equals(i.get("answered"))).count();
         long correct = items.stream().filter(i -> Boolean.TRUE.equals(i.get("correct"))).count();
 
@@ -144,8 +158,10 @@ public class PracticeService {
         payload.put("subject", subject);
         payload.put("blockId", blockId);
         payload.put("pointId", pointId);
-        // total 是筛选条件下的真实总数；未分页时与 items.size() 相等
+        // total = 当前筛选条件下「所有年份」的总数（与 years 汇总一致）
         payload.put("total", total);
+        // yearTotal = 本次实际加载的那一年的题数（前端据此显示「2026 年真题 · 共 47 题」）
+        payload.put("yearTotal", yearTotal);
         payload.put("answered", answered);
         payload.put("correct", correct);
         payload.put("page", page);

@@ -163,15 +163,28 @@ export interface PracticeQueueItem {
   mastered: boolean
 }
 
+/** 某一年的题量（含四科分布），用于年份导航。 */
+export interface PracticeQueueYear {
+  year: number
+  total: number
+  subjects: Record<string, number>
+}
+
 export interface PracticeQueue {
   scope: string
+  /** 本次实际加载的年份；为 null 表示未按年收窄（旧行为，全量） */
   year: number | null
   subject: string | null
   blockId: string | null
   pointId: string | null
+  /** 当前筛选条件下「所有年份」的题数总和 */
   total: number
+  /** 当前筛选条件下「本次加载的那一年」的题数 */
+  yearTotal: number
   answered: number
   correct: number
+  /** 按年份的分组计数（不受 year 过滤影响），前端据此渲染年份导航 */
+  years: PracticeQueueYear[]
   items: PracticeQueueItem[]
 }
 

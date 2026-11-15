@@ -356,6 +356,8 @@ export const api = {
   /** 刷题队列（按年 / 科目 / 知识点 / 错题 / 未做筛选）。 */
   practiceQueue: (params: {
     year?: number
+    /** 未指定 year 时加载最新一卷（47 题），避免一次下发 846 条 */
+    latest?: boolean
     subject?: string
     blockId?: string
     pointId?: string
@@ -363,6 +365,7 @@ export const api = {
   }) => {
     const query = new URLSearchParams()
     if (params.year != null) query.set('year', String(params.year))
+    if (params.latest) query.set('latest', 'true')
     if (params.subject) query.set('subject', params.subject)
     if (params.blockId) query.set('blockId', params.blockId)
     if (params.pointId) query.set('pointId', params.pointId)

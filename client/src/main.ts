@@ -7,25 +7,21 @@ import './styles/main.css'
 import 'katex/dist/katex.min.css'
 
 /**
- * 先恢复登录态，再挂载。
+ * 挂载不再等待登录态。
  *
- * 为什么不能只靠 App.vue 的 onMounted：根路径 `/` 要按登录态分流
- * （已登录 → 工作台，未登录 → 落地页），而路由守卫比 onMounted 先跑。
- * 等 onMounted 里再 restore 的话，守卫读到的是「未登录」，
- * 已登录用户会先看到落地页、再被弹回工作台，明显闪一下。
+ * 原来 `await restore()` 之后才 mount，等于首屏必须先等一次 /user/current 往返；
+ * 在只有几百毫秒 RTT 的链路上可接受，但线上入口要经过隧道（单请求 0.4–1.8 秒），
+ * 这段时间用户看到的是完全空白。
  *
- * 这里只等 token 校验（一次 /user/current 请求），失败按游客处理，不阻塞启动。
- * 看板等页面数据仍交给 App.vue 异步加载，不拖慢首屏。
+ * 现在先挂载（骨架屏立刻可见），登录态在后台恢复；唯一需要「确定结果」的地方是
+ * 「根路径按登录态分流」，那里会 await whenAuthReady()，所以不会出现
+ * 「已登录用户先看到落地页、再被弹回工作台」的闪烁。
  */
 const app = createApp(App)
 app.use(createPinia())
 
 const userStore = useUserStore()
-try {
-  await userStore.restore()
-} catch {
-  // 恢复失败按游客处理
-}
+void userStore.restore()
 
 app.use(router)
 app.mount('#app')
