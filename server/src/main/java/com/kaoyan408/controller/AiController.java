@@ -1,6 +1,7 @@
 package com.kaoyan408.controller;
 
 import com.kaoyan408.core.BusinessException;
+import com.kaoyan408.core.ClientIpResolver;
 import com.kaoyan408.core.Result;
 import com.kaoyan408.entity.User;
 import com.kaoyan408.service.AuthService;
@@ -224,17 +225,14 @@ public class AiController {
         return user == null ? null : user.getId();
     }
 
-    /** 取真实客户端 IP；经过 nginx 代理后 remoteAddr 是容器地址，必须看转发头。 */
+    /**
+     * 取真实客户端 IP。
+     *
+     * <p>原来这里自己实现了一份「优先 XFF 第一段」，与 AuthController 重复且都可被伪造：
+     * 请求里加一个 X-Forwarded-For 就能换一个游客额度桶，AI 调用有真实成本。
+     * 现在统一走 ClientIpResolver（只信 nginx 覆盖写的 X-Real-IP）。
+     */
     private static String clientIp(jakarta.servlet.http.HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            int comma = xff.indexOf(',');
-            return (comma > 0 ? xff.substring(0, comma) : xff).trim();
-        }
-        String real = request.getHeader("X-Real-IP");
-        if (real != null && !real.isBlank()) {
-            return real.trim();
-        }
-        return request.getRemoteAddr();
+        return ClientIpResolver.resolve(request);
     }
 }

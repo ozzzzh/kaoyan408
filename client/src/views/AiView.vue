@@ -272,7 +272,9 @@ function segmentsOf(content: string): Segment[] {
   if (last < content.length) {
     out.push({ kind: 'text', text: content.slice(last) })
   }
-  const result = out.length ? out : [{ kind: 'text', text: content }]
+  // 显式标注类型：否则三元表达式的兜底分支会被推断成 { kind: string }[]，
+  // 与 Segment[] 不兼容（接入 vue-tsc 后才暴露出来的既有写法问题）。
+  const result: Segment[] = out.length ? out : [{ kind: 'text', text: content }]
 
   // 只留最近若干条，避免整段会话把每条中间态都攒在内存里
   if (segmentCache.size > 40) segmentCache.clear()

@@ -1,4 +1,41 @@
-import type { Book } from '@/types'
+/**
+ * 知识树（四科大纲）的结构类型。
+ *
+ * 原先这里写的是 `import type { Book } from '@/types'`，但 `src/types` 并不存在——
+ * 它是早期静态内容架构留下的路径。因为当时没有任何类型检查（build 只跑 vite build，
+ * esbuild 直接剥类型），这个坏引用一直没被发现；接入 vue-tsc 后它会直接报错。
+ *
+ * 现在类型就地定义：知识树是本仓库唯一的数据源（`scripts/content-bundle-entry.ts`
+ * 也直接 import 它），没有第二处需要共享这份类型。
+ */
+export interface KnowledgePointOutline {
+  id: string
+  title: string
+  summary?: string
+  importance?: number
+}
+
+export interface KnowledgeSection {
+  id: string
+  title: string
+  points: KnowledgePointOutline[]
+}
+
+export interface KnowledgeChapter {
+  id: string
+  title: string
+  /** 层次标记（如 TOP / L1），部分章节没有 */
+  layer?: string
+  sections: KnowledgeSection[]
+}
+
+export interface Book {
+  id: string
+  title: string
+  subtitle?: string
+  subject: string
+  chapters: KnowledgeChapter[]
+}
 
 export const computerNetworkBook: Book = {
   id: 'computer-network',

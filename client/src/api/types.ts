@@ -71,6 +71,11 @@ export interface SubQuestion {
 export interface QuestionView {
   id: string
   number: number
+  /**
+   * 所属年份。刷题页「搜索直达单题」要靠它把队列收敛到同一年，
+   * 缺了它就会退化成拉全量 846 题队列（上一题/下一题跨年份乱跳）。
+   */
+  year: number
   subject: string
   chapterName: string | null
   questionType: 'choice' | 'comprehensive' | string

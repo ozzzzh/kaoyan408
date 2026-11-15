@@ -132,6 +132,10 @@ public class AuthService {
         user.setEmail(mail);
         user.setPasswordHash(passwordEncoder.encode(password));
         userMapper.insert(user);
+        // 必须显式回填：JWT 里要带 ver claim，而 insert 之后的实体不会自动回读数据库默认值。
+        // 漏了这一步，刚注册的用户拿到的 token 里 ver=0，与库里的默认值 1 不匹配，
+        // 下一个请求就会被判为「令牌已失效」——注册成功却立刻处于未登录状态。
+        user.setTokenVersion(1);
         return user;
     }
 

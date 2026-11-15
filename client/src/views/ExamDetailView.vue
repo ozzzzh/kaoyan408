@@ -51,7 +51,8 @@ const scoreAnomaly = computed(() => {
 })
 
 function subjectOf(code: string) {
-  return subjectMeta[code] ?? { name: code, bar: 'bg-[var(--k-text-faint)]', soft: 'bg-[var(--k-chip)]' }
+  // subjectMeta 是函数（未知科目会兜底到品牌主色），不能当 Record 索引。
+  return subjectMeta(code)
 }
 
 /**
@@ -81,7 +82,7 @@ async function toggleReveal(question: QuestionView) {
 
   answerState.value = { ...answerState.value, [question.id]: 'loading' }
   try {
-    const detail = await api.question(question.id, 1)
+    const detail = await api.question(question.id)
     if (detail.answer || detail.explanation) {
       answerCache.value = {
         ...answerCache.value,

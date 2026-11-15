@@ -61,8 +61,8 @@ onMounted(async () => {
             :key="subject"
             class="inline-flex items-center gap-1.5"
           >
-            <span class="h-1.5 w-1.5 rounded-full" :class="subjectMeta(subject).bar ?? 'bg-[var(--k-text-faint)]'" />
-            {{ subjectMeta[subject]?.name ?? subject }} {{ count }}
+            <span class="h-1.5 w-1.5 rounded-full" :class="subjectMeta(subject).bar" />
+            {{ subjectMeta(subject).name }} {{ count }}
           </span>
         </div>
         <p class="mt-3 text-xs font-semibold text-[var(--k-accent-text)]">查看整卷 →</p>

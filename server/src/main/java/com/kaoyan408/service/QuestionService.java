@@ -147,6 +147,79 @@ public class QuestionService {
         return result;
     }
 
+    /**
+     * 整卷场景：一次性把「题目 -> 知识块展示信息」全部查出来（避免逐题 3 条批量查询）。
+     *
+     * @param blockIdsByQuestion 题目 id -> 该题关联的 blockId 列表（顺序保留）
+     * @return 题目 id -> 与 blocksOf 相同结构的知识块视图列表
+     */
+    public Map<Long, List<Map<String, Object>>> blocksOfMany(Map<Long, List<String>> blockIdsByQuestion) {
+        Map<Long, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        if (blockIdsByQuestion == null || blockIdsByQuestion.isEmpty()) {
+            return result;
+        }
+        java.util.Set<String> allBlockIds = new java.util.LinkedHashSet<>();
+        blockIdsByQuestion.values().forEach(allBlockIds::addAll);
+        if (allBlockIds.isEmpty()) {
+            blockIdsByQuestion.forEach((questionId, ids) -> result.put(questionId, List.of()));
+            return result;
+        }
+
+        Map<String, KnowledgeBlock> byId = new LinkedHashMap<>();
+        for (KnowledgeBlock block : blockMapper.selectList(
+                new QueryWrapper<KnowledgeBlock>().in("block_id", allBlockIds))) {
+            byId.put(block.getBlockId(), block);
+        }
+        List<String> pointIds = byId.values().stream()
+                .map(KnowledgeBlock::getPointId).filter(Objects::nonNull).distinct().toList();
+        Map<String, String> pointTitles = new LinkedHashMap<>();
+        if (!pointIds.isEmpty()) {
+            for (KnowledgePoint point : pointMapper.selectList(
+                    new QueryWrapper<KnowledgePoint>().in("point_id", pointIds))) {
+                pointTitles.put(point.getPointId(), point.getTitle());
+            }
+        }
+
+        for (Map.Entry<Long, List<String>> entry : blockIdsByQuestion.entrySet()) {
+            List<Map<String, Object>> views = new ArrayList<>();
+            for (String blockId : entry.getValue()) {
+                views.add(blockView(blockId, byId.get(blockId), pointTitles));
+            }
+            result.put(entry.getKey(), views);
+        }
+        return result;
+    }
+
+    /** 单个知识块的展示视图；blocksOf 与 blocksOfMany 共用同一份格式。 */
+    private Map<String, Object> blockView(String blockId, KnowledgeBlock block, Map<String, String> pointTitles) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("blockId", blockId);
+        if (block == null) {
+            item.put("pointId", null);
+            item.put("pointTitle", null);
+            item.put("subpointTitle", null);
+            item.put("label", blockId);
+            return item;
+        }
+        String pointTitle = pointTitles.get(block.getPointId());
+        String subTitle = block.getSubpointTitle();
+        item.put("pointId", block.getPointId());
+        item.put("pointTitle", pointTitle);
+        item.put("subpointTitle", subTitle);
+        String label;
+        if (pointTitle != null && subTitle != null && !subTitle.equals(pointTitle)) {
+            label = pointTitle + " · " + subTitle;
+        } else if (pointTitle != null) {
+            label = pointTitle;
+        } else if (subTitle != null) {
+            label = subTitle;
+        } else {
+            label = blockId;
+        }
+        item.put("label", label);
+        return item;
+    }
+
     public List<Long> answeredQuestionIds(Long userId) {
         if (userId == null) {
             return new ArrayList<>();
@@ -227,10 +300,7 @@ public class QuestionService {
         }
 
         List<String> blockIds = blockIdsOf(question.getId());
-        List<Map<String, Object>> blocks = new ArrayList<>();
-        for (String blockId : blockIds) {
-            blocks.add(refreshBlockProgress(userId, blockId));
-        }
+        List<Map<String, Object>> blocks = refreshBlockProgressBatch(userId, blockIds);
         // 重做也算练习量：只统计首次会让「错题重做」不计入打卡与热力图
         refreshDailyStat(userId, correct);
 
@@ -267,7 +337,72 @@ public class QuestionService {
         return payload;
     }
 
-    /** 重算并返回某知识块的掌握度。 */
+    /**
+     * 一次作答后批量刷新该题关联的所有知识块掌握度。
+     *
+     * <p>原来是「每块调一次 {@link #refreshBlockProgress}」，而那个方法每次都要跑
+     * 一次全用户聚合（blockProgressOfUser）+ 一次计数 + 一次 selectOne + 一次写。
+     * 一道题挂 10 个块就是 30+ 条 SQL，其中 10 条还是全表聚合——这是最热的写路径，
+     * 也是单题提交体感最直接的瓶颈。
+     *
+     * <p>现在读取全部批量化（3 条 SQL），只有写入仍是按行 upsert（块数条）。
+     */
+    private List<Map<String, Object>> refreshBlockProgressBatch(Long userId, List<String> blockIds) {
+        if (blockIds == null || blockIds.isEmpty()) {
+            return List.of();
+        }
+
+        // 1) 每题关联题量，一条 GROUP BY 拿到全部块
+        Map<String, Integer> totals = new LinkedHashMap<>();
+        for (Map<String, Object> row : questionMapper.questionCountsOfBlocks(blockIds)) {
+            totals.put(String.valueOf(row.get("blockId")), toInt(row.get("total")));
+        }
+
+        // 2) 该用户在这些块上的作答聚合，一条 SQL（原来是每块一次全用户聚合）
+        Map<String, int[]> doneAndCorrect = new LinkedHashMap<>();
+        for (Map<String, Object> stat : questionMapper.blockProgressOfUser(userId)) {
+            String blockId = String.valueOf(stat.get("blockId"));
+            if (blockIds.contains(blockId)) {
+                doneAndCorrect.put(blockId, new int[]{toInt(stat.get("done")), toInt(stat.get("correct"))});
+            }
+        }
+
+        // 3) 已有的 block_progress 行，一条 IN 查询
+        Map<String, BlockProgress> existing = new LinkedHashMap<>();
+        for (BlockProgress row : blockProgressMapper.selectList(new QueryWrapper<BlockProgress>()
+                .eq("user_id", userId).in("block_id", blockIds))) {
+            existing.put(row.getBlockId(), row);
+        }
+
+        List<Map<String, Object>> views = new ArrayList<>();
+        for (String blockId : blockIds) {
+            int total = totals.getOrDefault(blockId, 0);
+            int[] stat = doneAndCorrect.getOrDefault(blockId, new int[]{0, 0});
+            BlockProgress row = existing.get(blockId);
+            BlockProgress progress = row == null ? new BlockProgress() : row;
+            progress.setUserId(userId);
+            progress.setBlockId(blockId);
+            progress.setQuestionsTotal(total);
+            progress.setQuestionsDone(stat[0]);
+            progress.setQuestionsCorrect(stat[1]);
+            if (row == null) {
+                blockProgressMapper.insert(progress);
+            } else {
+                blockProgressMapper.update(progress, new QueryWrapper<BlockProgress>()
+                        .eq("user_id", userId).eq("block_id", blockId));
+            }
+
+            Map<String, Object> view = new LinkedHashMap<>();
+            view.put("blockId", blockId);
+            view.put("total", total);
+            view.put("done", stat[0]);
+            view.put("correct", stat[1]);
+            views.add(view);
+        }
+        return views;
+    }
+
+    /** 重算并返回某知识块的掌握度（单块入口，保留给其他调用方）。 */
     public Map<String, Object> refreshBlockProgress(Long userId, String blockId) {
         int total = countBlockQuestions(blockId);
         int done = 0;
@@ -308,25 +443,37 @@ public class QuestionService {
         return count == null ? 0 : count.intValue();
     }
 
+    /**
+     * 当日打卡统计 +1。
+     *
+     * <p>原来是「先 select 出整行、在 Java 里 +1、再写回绝对值」。两个标签页同时交卷时，
+     * 后写到的那次会覆盖前一次的结果，表现为「做了两道题、打卡只 +1」——典型的丢更新，
+     * 而且悄无声息。现在改成 SQL 层的原子自增：questions = questions + 1。
+     */
     private void refreshDailyStat(Long userId, boolean correct) {
         LocalDate today = LocalDate.now();
-        DailyStat stat = dailyStatMapper.selectOne(new QueryWrapper<DailyStat>()
-                .eq("user_id", userId).eq("stat_date", today).last("LIMIT 1"));
-        if (stat == null) {
-            stat = new DailyStat();
-            stat.setUserId(userId);
-            stat.setStatDate(today);
-            stat.setQuestions(1);
-            stat.setCorrect(correct ? 1 : 0);
-            stat.setMinutes(0);
+        int correctInc = correct ? 1 : 0;
+
+        int updated = dailyStatMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<DailyStat>()
+                .eq("user_id", userId).eq("stat_date", today)
+                .setSql("questions = questions + 1, correct = correct + " + correctInc));
+        if (updated > 0) {
+            return;
+        }
+
+        DailyStat stat = new DailyStat();
+        stat.setUserId(userId);
+        stat.setStatDate(today);
+        stat.setQuestions(1);
+        stat.setCorrect(correctInc);
+        stat.setMinutes(0);
+        try {
             dailyStatMapper.insert(stat);
-        } else {
-            stat.setQuestions(stat.getQuestions() + 1);
-            stat.setCorrect(stat.getCorrect() + (correct ? 1 : 0));
-            // daily_stat 是复合主键(user_id, stat_date)，没有 @TableId，
-            // 因此不能用 updateById，必须用 QueryWrapper 指定条件。
-            dailyStatMapper.update(stat, new QueryWrapper<DailyStat>()
-                    .eq("user_id", userId).eq("stat_date", today));
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // 并发下另一请求刚插入了今天的行，退化为原子自增
+            dailyStatMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<DailyStat>()
+                    .eq("user_id", userId).eq("stat_date", today)
+                    .setSql("questions = questions + 1, correct = correct + " + correctInc));
         }
     }
 

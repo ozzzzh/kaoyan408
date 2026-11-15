@@ -101,6 +101,53 @@
                     <mainClass>com.kaoyan408.KaoyanApplication</mainClass>
                 </configuration>
             </plugin>
+            <!--
+              JaCoCo：只统计 controller/service 的实际执行，便于观察回归测试覆盖到哪。
+              check 门限刻意设得低（见 jacoco.line.minimum）：它是一个护栏，不是目标——
+              目标是"每次改动都别让覆盖率掉下去"。真实覆盖率靠 scripts/verify-*.mjs
+              的端到端回归 + src/test 里的不变量测试共同保证。
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.10</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

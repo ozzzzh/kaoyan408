@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import DOMPurify from 'dompurify'
-import katex from 'katex'
-import { marked } from 'marked'
+import { renderMarkdown } from '@/utils/html'
 
 /**
  * 题干渲染：Markdown + 行内公式。
@@ -10,69 +8,16 @@ import { marked } from 'marked'
  * 为什么需要单独一个组件：题干里的 ```代码块``` 和 `行内代码` 是考试内容的一部分
  * （比如让判断某段 C 代码的时间复杂度），原样显示反引号会让人无法读题。
  *
- * 与 KnowledgeMarkdown 的区别：这里保留 class，因为代码块与行内代码要靠 class
- * 上样式；同时禁掉 script/iframe 等危险标签，文本内容仍然经过 DOMPurify 清洗。
+ * 历史变更：这里原先「消毒 → 注入 KaTeX → 再消毒一次」，第二遍为了保住 KaTeX 的
+ * class/style，被迫放行 `ADD_ATTR: ['class','style']` 并开启 svg/mathMl profile——
+ * 等于把最宽的一份消毒配置用在了最不该放宽的位置。现在与知识正文共用
+ * @/utils/html：原始 Markdown 严格消毒，KaTeX 输在消毒之后注入，无需再洗第二遍。
  */
 const props = defineProps<{
   source: string
 }>()
 
-const html = computed(() => {
-  if (!props.source) return ''
-
-  const rendered = marked.parse(props.source, {
-    async: false,
-    breaks: true,
-    gfm: true,
-  })
-
-  // 第一步：清洗原始 Markdown 输出，只保留自己的代码样式类
-  const sanitized = DOMPurify.sanitize(rendered as string, {
-    FORBID_TAGS: ['button', 'embed', 'form', 'iframe', 'input', 'object', 'script', 'style'],
-    ADD_ATTR: ['class'],
-    USE_PROFILES: { html: true },
-  })
-
-  // 第二步：把 $...$ / $$...$$ 替换成 KaTeX HTML
-  const withMath = renderMath(sanitized as string)
-
-  // 第三步：再清洗一次。KaTeX 依赖 class 才能正确排版（分子分母、上下标等），
-  // 这里放行 class 与 style —— style 是 KaTeX 用来控制间距与位置的，去掉会错版。
-  // 数学内容本身来自题库，且已经过上面两步的标签白名单，风险限于样式而非脚本执行。
-  return DOMPurify.sanitize(withMath, {
-    FORBID_TAGS: ['button', 'embed', 'form', 'iframe', 'input', 'object', 'script'],
-    ADD_ATTR: ['class', 'style', 'aria-hidden', 'encoding'],
-    USE_PROFILES: { html: true, mathMl: true, svg: true },
-  }) as string
-})
-
-/** KaTeX 渲染。失败时保留原文，避免一道题渲染异常导致整页空白。 */
-function renderMath(source: string): string {
-  const mathPattern =
-    /\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\]|\$([^$\n]+?)\$|\\\(([\s\S]*?)\\\)/g
-
-  return source.replace(
-    mathPattern,
-    (
-      match: string,
-      displayDollar?: string,
-      displayBracket?: string,
-      inlineDollar?: string,
-      inlineBracket?: string,
-    ) => {
-      const formula = displayDollar ?? displayBracket ?? inlineDollar ?? inlineBracket ?? ''
-      const display = displayDollar != null || displayBracket != null
-      try {
-        return katex.renderToString(formula.trim(), {
-          displayMode: display,
-          throwOnError: false,
-        })
-      } catch {
-        return match
-      }
-    },
-  )
-}
+const html = computed(() => renderMarkdown(props.source))
 </script>
 
 <template>

@@ -1,40 +1,42 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import katex from 'katex'
 import KnowledgeMarkdown from './KnowledgeMarkdown.vue'
 import AnimationBlock from './AnimationBlock.vue'
 import { hasAnimation } from './animationLoader'
+import { renderFormulaBlock, renderTextWithMath, sanitizeHtmlBlock } from '@/utils/html'
 import type { KnowledgeArticleData } from './types'
 
 const props = defineProps<{
   article: KnowledgeArticleData
 }>()
 
+/**
+ * 公式块直接渲染（公式本身就是完整内容，不需要先解析 Markdown）。
+ * 公式里的尖括号等字符由 KaTeX 自己转义，配合 trust:false 没有再拼 HTML 的入口。
+ */
 function renderFormula(latex: string): string {
-  try {
-    return katex.renderToString(latex, { displayMode: true, throwOnError: false, trust: false })
-  } catch {
-    return `<code class="k-math-error">公式渲染错误</code>`
-  }
+  return renderFormulaBlock(latex)
 }
 
-/** callout 等纯文本块里的 $...$ 行内公式。 */
+/**
+ * callout 文本：**先转义再渲染公式**。
+ *
+ * 原来直接把 block.text 喂给公式渲染后 v-html，文本里的裸 `<` 会被当成标签吞掉
+ * （正文里确实有 `cwnd < ssthresh`、`low <= high` 这类写法）。这里是纯文本字段，
+ * 不做 Markdown 解析，所以转义是正确的处理方式，而不是去放宽消毒器。
+ */
 function renderInlineMath(text: string): string {
-  return text
-    .replace(/\$\$([^$]+)\$\$/g, (_, f: string) => {
-      try {
-        return katex.renderToString(f.trim(), { displayMode: true, throwOnError: false, trust: false })
-      } catch {
-        return `$$${f}$$`
-      }
-    })
-    .replace(/\$([^$]+)\$/g, (_, f: string) => {
-      try {
-        return katex.renderToString(f.trim(), { displayMode: false, throwOnError: false, trust: false })
-      } catch {
-        return `$${f}$`
-      }
-    })
+  return renderTextWithMath(text)
+}
+
+/**
+ * HTML 型知识块：渲染前过消毒器。
+ *
+ * 之前这里 `v-html="block.html"` 完全没消毒——当前内容是第一方种子所以没出事，
+ * 但只要这条路径将来接上 AI 生成或用户投稿，就是现成的存储型 XSS 入口。
+ */
+function renderHtmlBlock(html: string): string {
+  return sanitizeHtmlBlock(html)
 }
 
 const subpointCount = computed(() => props.article.subpoints.length)
@@ -73,7 +75,7 @@ const subpointCount = computed(() => props.article.subpoints.length)
           <div
             v-else-if="block.type === 'html'"
             class="k-html-block text-[16px] leading-[1.95] text-[var(--k-text-muted)]"
-            v-html="block.html"
+            v-html="renderHtmlBlock(block.html)"
           ></div>
 
           <figure

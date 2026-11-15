@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import type { MemoryCardItem, MemorySummary } from '@/api/types'
 import { useUserStore } from '@/store/user'
+import { escapeHtml } from '@/utils/html'
 
 const userStore = useUserStore()
 
@@ -92,7 +93,8 @@ function parseCard(card: MemoryCardItem): { title: string; body: string; hint: s
 
 /** 卡片背面里的 $...$ 行内公式与 **加粗** 做轻量处理（不引入完整 Markdown）。 */
 function renderBody(text: string): string {
-  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // 转义统一走 @/utils/html，避免各页面各写一份 escape（漏一处就是注入点）。
+  const escaped = escapeHtml(text)
   return escaped
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')

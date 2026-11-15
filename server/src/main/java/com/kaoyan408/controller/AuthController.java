@@ -1,6 +1,7 @@
 package com.kaoyan408.controller;
 
 import com.kaoyan408.core.BusinessException;
+import com.kaoyan408.core.ClientIpResolver;
 import com.kaoyan408.core.JwtUtil;
 import com.kaoyan408.core.Result;
 import com.kaoyan408.entity.User;
@@ -97,21 +98,19 @@ public class AuthController {
         return Result.ok(profile(user));
     }
 
-    /** 取真实客户端 IP：经 nginx 反代时 remoteAddr 是容器地址，必须读 X-Forwarded-For。 */
+    /**
+     * 取真实客户端 IP。
+     *
+     * <p>原来是「优先 X-Forwarded-For 第一段」——可被请求头伪造，发信限流形同虚设。
+     * 现在统一走 ClientIpResolver（只信 nginx 无条件覆盖的 X-Real-IP）。
+     */
     private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        String realIp = request.getHeader("X-Real-IP");
-        if (realIp != null && !realIp.isBlank()) {
-            return realIp.trim();
-        }
-        return request.getRemoteAddr();
+        return ClientIpResolver.resolve(request);
     }
 
     private Map<String, Object> tokenPayload(User user) {
-        String token = jwtUtil.sign(user.getUsername(), user.getEmail());
+        int version = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
+        String token = jwtUtil.sign(user.getUsername(), user.getEmail(), version);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("token", token);
         payload.put("expiresAt", jwtUtil.expiresAt(token));

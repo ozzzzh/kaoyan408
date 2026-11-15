@@ -33,6 +33,9 @@ public class PracticeController {
      * 取刷题队列。
      * 参数均可组合：year / subject / blockId / pointId / scope。
      * scope: all（默认）| wrong（错题本）| untouched（未做）。
+     *
+     * <p>page/size 可选：不传则返回全部（保持历史行为）。响应里始终带 years（按年份/科目的
+     * 分组计数）与真实 total——分页时 total 是符合条件的总数，不是本页条数。
      */
     @GetMapping("/queue")
     public Result<Map<String, Object>> queue(
@@ -41,9 +44,11 @@ public class PracticeController {
             @RequestParam(required = false) String blockId,
             @RequestParam(required = false) String pointId,
             @RequestParam(defaultValue = "all") String scope,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
             Authentication authentication) {
         Long userId = userIdOf(authentication);
-        return Result.ok(practiceService.queue(userId, year, subject, blockId, pointId, scope));
+        return Result.ok(practiceService.queue(userId, year, subject, blockId, pointId, scope, page, size));
     }
 
     /** 错题本概览：总错题数 + 分科目分布。 */

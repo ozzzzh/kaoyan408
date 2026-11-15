@@ -1,73 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import DOMPurify from 'dompurify'
-import katex from 'katex'
-import { marked } from 'marked'
+import { renderMarkdown } from '@/utils/html'
 
 /**
  * Markdown 渲染 + KaTeX 公式。
- * 沿用 simple408 的流程：marked 转 HTML → DOMPurify 清洗 → 替换公式为 KaTeX。
+ *
+ * 消毒与公式逻辑已收口到 @/utils/html：本组件只负责把结果放进模板。
+ * 知识正文、题干、背诵卡片从此共用同一条渲染链路，配置只有一个来源。
  */
 const props = defineProps<{
   source: string
 }>()
 
-const html = computed(() => {
-  const rendered = marked.parse(props.source, {
-    async: false,
-    breaks: true,
-    gfm: true,
-  })
-
-  const sanitized = DOMPurify.sanitize(rendered, {
-    FORBID_ATTR: ['class', 'id', 'style'],
-    FORBID_TAGS: ['button', 'embed', 'form', 'iframe', 'input', 'object', 'script', 'style'],
-    USE_PROFILES: { html: true },
-  })
-
-  return renderMath(sanitized as string)
-})
-
-function renderMath(source: string): string {
-  const mathPattern =
-    /\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\]|\$([^$\n]+?)\$|\\\(([\s\S]*?)\\\)/g
-
-  return source.replace(
-    mathPattern,
-    (
-      _match,
-      displayDollar: string | undefined,
-      displayBracket: string | undefined,
-      inlineDollar: string | undefined,
-      inlineParen: string | undefined,
-    ) => {
-      const raw = displayDollar ?? displayBracket ?? inlineDollar ?? inlineParen ?? ''
-      const displayMode = displayDollar !== undefined || displayBracket !== undefined
-      const formula = extractFormulaText(raw)
-      try {
-        return katex.renderToString(formula, { displayMode, throwOnError: false, trust: false })
-      } catch {
-        return `<code class="k-math-error">公式错误: ${escapeHtml(formula)}</code>`
-      }
-    },
-  )
-}
-
-function extractFormulaText(formulaHtml: string): string {
-  const normalized = formulaHtml.replace(/<br\s*\/?>/gi, '\n')
-  const container = document.createElement('div')
-  container.innerHTML = normalized
-  return (container.textContent ?? '').trim()
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
+const html = computed(() => renderMarkdown(props.source))
 </script>
 
 <template>

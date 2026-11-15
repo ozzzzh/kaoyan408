@@ -3,9 +3,12 @@ package com.kaoyan408.core;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -45,6 +48,23 @@ public class GlobalExceptionHandler {
         ex.getBindingResult().getFieldErrors()
                 .forEach(fe -> sb.append(fe.getField()).append(' ').append(fe.getDefaultMessage()).append("; "));
         return ResponseEntity.ok(Result.error(400, sb.toString().trim()));
+    }
+
+    /**
+     * 请求体不是合法 JSON（例如客户端漏转义引号）。
+     *
+     * <p>不单独捕获的话会落到下面的兜底，表现为「400 的错被当成 500 上报」，
+     * 日志里还多一条 ERROR 噪音，排查时容易误判成服务端故障。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Result<Void>> unreadableBody(HttpMessageNotReadableException ex) {
+        return ResponseEntity.ok(Result.error(400, "请求体格式错误，应为合法 JSON。"));
+    }
+
+    /** 缺少必填查询参数或参数类型不对（如 year=abc），同样属于客户端错误。 */
+    @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<Result<Void>> badParameter(Exception ex) {
+        return ResponseEntity.ok(Result.error(400, "请求参数不合法: " + ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

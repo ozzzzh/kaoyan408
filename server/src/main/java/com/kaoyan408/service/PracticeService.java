@@ -38,25 +38,39 @@ public class PracticeService {
     /**
      * 刷题队列。scope 决定取全部 / 仅错题 / 仅未做；
      * wrong 与 untouched 需要登录（游客没有作答记录，按未做处理）。
+     *
+     * @param page 页码，从 1 开始；null 或 0 表示不分页（保持历史行为）
+     * @param size 每页条数，仅 page 有效时生效，上限 500
      */
     public Map<String, Object> queue(Long userId, Integer year, String subject,
-                                     String blockId, String pointId, String scope) {
+                                     String blockId, String pointId, String scope,
+                                     Integer page, Integer size) {
         // wrong = 所有错过的题（含已订正）；wrong-pending = 待订正；wrong-mastered = 已订正
         boolean onlyWrong = SCOPE_WRONG.equalsIgnoreCase(scope);
         boolean onlyUntouched = SCOPE_UNTOUCHED.equalsIgnoreCase(scope);
         boolean onlyPendingWrong = SCOPE_WRONG_PENDING.equalsIgnoreCase(scope);
         boolean onlyMasteredWrong = SCOPE_WRONG_MASTERED.equalsIgnoreCase(scope);
+        String subjectFilter = isEmpty(subject) ? null : subject;
+        String blockFilter = isEmpty(blockId) ? null : blockId;
+        String pointFilter = isEmpty(pointId) ? null : pointId;
 
         // 游客看错题本没有意义，直接回空队列而不是回全量
         if ((onlyWrong || onlyPendingWrong || onlyMasteredWrong) && userId == null) {
-            return payload(List.of(), year, subject, blockId, pointId, scope);
+            return payload(List.of(), year, subject, blockId, pointId, scope,
+                    List.of(), 0, page, size);
+        }
+
+        Integer limit = null;
+        Integer offset = 0;
+        if (page != null && page > 0 && size != null && size > 0) {
+            limit = Math.min(size, 500);
+            offset = (page - 1) * limit;
         }
 
         List<Map<String, Object>> rows = questionMapper.queue(
-                userId, year, isEmpty(subject) ? null : subject,
-                isEmpty(blockId) ? null : blockId,
-                isEmpty(pointId) ? null : pointId,
-                onlyWrong, onlyUntouched, onlyPendingWrong, onlyMasteredWrong);
+                userId, year, subjectFilter, blockFilter, pointFilter,
+                onlyWrong, onlyUntouched, onlyPendingWrong, onlyMasteredWrong,
+                limit, offset);
 
         List<Map<String, Object>> items = new ArrayList<>();
         for (Map<String, Object> row : rows) {
@@ -78,11 +92,49 @@ public class PracticeService {
             item.put("mastered", row.get("masteredAt") != null);
             items.add(item);
         }
-        return payload(items, year, subject, blockId, pointId, scope);
+
+        // 年份分组原本由前端把几百条队列项 group by 一遍算出来；现在后端一次聚合给出，
+        // 分页时 total 也才是「符合条件的真实总数」而不是「本页条数」。
+        List<Map<String, Object>> yearRows = questionMapper.queueYearCounts(
+                userId, year, subjectFilter, blockFilter, pointFilter,
+                onlyWrong, onlyUntouched, onlyPendingWrong, onlyMasteredWrong);
+        List<Map<String, Object>> years = new ArrayList<>();
+        long total = 0;
+        Map<Integer, Map<String, Object>> byYear = new LinkedHashMap<>();
+        for (Map<String, Object> row : yearRows) {
+            long count = toLong(row.get("total"));
+            total += count;
+            Integer y = row.get("year") == null ? null : ((Number) row.get("year")).intValue();
+            Map<String, Object> bucket = byYear.get(y);
+            if (bucket == null) {
+                bucket = new LinkedHashMap<>();
+                bucket.put("year", y);
+                bucket.put("total", 0L);
+                bucket.put("subjects", new LinkedHashMap<String, Long>());
+                byYear.put(y, bucket);
+                years.add(bucket);
+            }
+            bucket.put("total", toLong(bucket.get("total")) + count);
+            @SuppressWarnings("unchecked")
+            Map<String, Long> subjects = (Map<String, Long>) bucket.get("subjects");
+            subjects.put(String.valueOf(row.get("subject")), count);
+        }
+
+        return payload(items, year, subject, blockId, pointId, scope, years, total, page, size);
     }
 
+    /** 把「年份 × 科目」分组计数再按总数汇总。 */
+    private long sumQueueCounts(List<Map<String, Object>> rows) {
+        long total = 0;
+        for (Map<String, Object> row : rows) {
+            total += toLong(row.get("total"));
+        }
+        return total;
+    }
     private Map<String, Object> payload(List<Map<String, Object>> items, Integer year, String subject,
-                                        String blockId, String pointId, String scope) {
+                                        String blockId, String pointId, String scope,
+                                        List<Map<String, Object>> years, long total,
+                                        Integer page, Integer size) {
         long answered = items.stream().filter(i -> Boolean.TRUE.equals(i.get("answered"))).count();
         long correct = items.stream().filter(i -> Boolean.TRUE.equals(i.get("correct"))).count();
 
@@ -92,9 +144,13 @@ public class PracticeService {
         payload.put("subject", subject);
         payload.put("blockId", blockId);
         payload.put("pointId", pointId);
-        payload.put("total", items.size());
+        // total 是筛选条件下的真实总数；未分页时与 items.size() 相等
+        payload.put("total", total);
         payload.put("answered", answered);
         payload.put("correct", correct);
+        payload.put("page", page);
+        payload.put("size", size);
+        payload.put("years", years);
         payload.put("items", items);
         return payload;
     }
@@ -104,20 +160,21 @@ public class PracticeService {
      * 待订正 = 曾答错且尚未在重做中答对；已订正 = 重做已答对。
      */
     public Map<String, Object> wrongBook(Long userId) {
+        // 只需要「按科目的错题数」，不需要把整行队列读出来再数：用聚合查询各回一条 SQL。
         List<Map<String, Object>> pending = userId == null
                 ? List.of()
-                : questionMapper.queue(userId, null, null, null, null, false, false, true, false);
+                : questionMapper.queueYearCounts(userId, null, null, null, null, false, false, true, false);
         List<Map<String, Object>> mastered = userId == null
                 ? List.of()
-                : questionMapper.queue(userId, null, null, null, null, false, false, false, true);
+                : questionMapper.queueYearCounts(userId, null, null, null, null, false, false, false, true);
 
         Map<String, Long> pendingBySubject = new LinkedHashMap<>();
         Map<String, Long> masteredBySubject = new LinkedHashMap<>();
         for (Map<String, Object> row : pending) {
-            pendingBySubject.merge(String.valueOf(row.get("subject")), 1L, Long::sum);
+            pendingBySubject.merge(String.valueOf(row.get("subject")), toLong(row.get("total")), Long::sum);
         }
         for (Map<String, Object> row : mastered) {
-            masteredBySubject.merge(String.valueOf(row.get("subject")), 1L, Long::sum);
+            masteredBySubject.merge(String.valueOf(row.get("subject")), toLong(row.get("total")), Long::sum);
         }
 
         List<Map<String, Object>> subjects = new ArrayList<>();
@@ -138,18 +195,41 @@ public class PracticeService {
         return payload;
     }
 
-    /** 刷题入口汇总：按年 / 按科目 / 未做 / 错题 各自的题量。 */
+    /**
+     * 刷题入口汇总：按年 / 按科目 / 未做 / 错题 各自的题量。
+     *
+     * <p>原来每个科目都跑一次完整队列查询、再把整行读出来数（4 科 + 未做 + 两类错题 = 7 次全量扫描）。
+     * 这里改成全部走聚合查询：入口卡片只要数字，不需要把题目行搬出来。
+     */
     public Map<String, Object> entrances(Long userId) {
+        // 一次分组查询拿到「科目 × 年份」的题量，再按科目汇总
+        Map<String, Long> totalBySubject = new LinkedHashMap<>();
+        long totalAll = 0;
+        for (Map<String, Object> row : questionMapper.queueYearCounts(
+                userId, null, null, null, null, false, false, false, false)) {
+            long count = toLong(row.get("total"));
+            totalAll += count;
+            totalBySubject.merge(String.valueOf(row.get("subject")), count, Long::sum);
+        }
+
+        // 已做题数按科目一条聚合即可；null userId（游客）时没有作答记录
+        Map<String, Long> doneBySubject = new LinkedHashMap<>();
+        long doneAll = 0;
+        if (userId != null) {
+            for (Map<String, Object> row : questionMapper.attemptedCountBySubject(userId)) {
+                long done = toLong(row.get("done"));
+                doneAll += done;
+                doneBySubject.put(String.valueOf(row.get("subject")), done);
+            }
+        }
+
         List<Map<String, Object>> subjects = new ArrayList<>();
         for (String subject : SUBJECTS) {
-            List<Map<String, Object>> rows = questionMapper.queue(
-                    userId, null, subject, null, null, false, false, false, false);
-            long done = rows.stream().filter(r -> r.get("result") != null).count();
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("subject", subject);
             item.put("name", SUBJECT_NAMES.getOrDefault(subject, subject));
-            item.put("total", rows.size());
-            item.put("done", done);
+            item.put("total", totalBySubject.getOrDefault(subject, 0L));
+            item.put("done", doneBySubject.getOrDefault(subject, 0L));
             subjects.add(item);
         }
 
@@ -161,13 +241,11 @@ public class PracticeService {
             years.add(item);
         }
 
-        long untouched = questionMapper.queue(userId, null, null, null, null, false, true, false, false).size();
-        long wrongPending = userId == null
-                ? 0
-                : questionMapper.queue(userId, null, null, null, null, false, false, true, false).size();
-        long wrongMastered = userId == null
-                ? 0
-                : questionMapper.queue(userId, null, null, null, null, false, false, false, true).size();
+        long untouched = Math.max(0, totalAll - doneAll);
+        long wrongPending = userId == null ? 0 : sumQueueCounts(
+                questionMapper.queueYearCounts(userId, null, null, null, null, false, false, true, false));
+        long wrongMastered = userId == null ? 0 : sumQueueCounts(
+                questionMapper.queueYearCounts(userId, null, null, null, null, false, false, false, true));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("subjects", subjects);

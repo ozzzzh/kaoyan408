@@ -40,6 +40,15 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 是否是「未登录 / 登录失效」。
+ *
+ * 单独抽出来是因为判断散落在各页面里很容易写错：业务码 401 走的是 HTTP 200 的
+ * 统一响应体，若只看 HTTP 状态永远判断不出来；而按 message 文案匹配又会随文案改动失效。
+ */
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 401
+}
 export function getToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY)
@@ -303,11 +312,14 @@ export const api = {
 
   /**
    * 单题详情。
-   * memorize=true 时后端直接返回答案与解析（背题模式用），否则只有作答后才返回。
+   *
+   * memorize=true 时后端直接返回答案与解析（背题模式用），该模式**要求登录**
+   * （未登录会返回 code=401），因为匿名下发答案等于把真题答案做成公开接口。
+   * 其它情况只有作答后才返回解析：没做过题的题拿到的是 locked 状态。
    */
-  question: (examRef: string, reveal = 0, memorize = false) =>
+  question: (examRef: string, memorize = false) =>
     request<QuestionView>(
-      `/api/v1/questions/${encodeURIComponent(examRef)}?reveal=${reveal}&memorize=${memorize}`,
+      `/api/v1/questions/${encodeURIComponent(examRef)}?memorize=${memorize}`,
     ),
 
   submitAnswer: (examRef: string, answer: string, durationMs?: number) =>

@@ -21,10 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 真题试卷读取。真题内容以 408os 为准（题面/选项/答案/解析同源）。
@@ -51,24 +51,44 @@ public class ExamController {
         this.questionService = questionService;
     }
 
-    /** 年份列表 + 每卷题量 + 每卷四科分布。 */
+    /**
+     * 年份列表 + 每卷题量 + 每卷四科分布。
+     *
+     * <p>原来逐年份 selectList 把整卷题目（含 MEDIUMTEXT 的题干与解析）读进内存再数，
+     * 18 卷就是 18 次全字段查询。这里一条聚合 SQL 就够。
+     */
     @GetMapping
     public Result<List<Map<String, Object>>> list() {
-        List<ExamYear> years = examYearMapper.selectList(new QueryWrapper<ExamYear>().orderByAsc("year"));
-        List<Map<String, Object>> payload = new ArrayList<>();
-        for (ExamYear year : years) {
-            List<Question> questions = questionsOf(year.getId());
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("year", year.getYear());
-            item.put("title", year.getTitle());
-            item.put("questionCount", questions.size());
-            item.put("subjects", subjectDistribution(questions));
-            payload.add(item);
+        Map<Integer, Map<String, Object>> byYear = new LinkedHashMap<>();
+        for (Map<String, Object> row : questionMapper.examYearStats()) {
+            Integer year = row.get("year") == null ? null : ((Number) row.get("year")).intValue();
+            Map<String, Object> item = byYear.get(year);
+            if (item == null) {
+                item = new LinkedHashMap<>();
+                item.put("year", year);
+                item.put("title", row.get("title"));
+                item.put("questionCount", 0L);
+                item.put("subjects", new LinkedHashMap<String, Long>());
+                byYear.put(year, item);
+            }
+            long count = row.get("total") == null ? 0 : ((Number) row.get("total")).longValue();
+            item.put("questionCount", (Long) item.get("questionCount") + count);
+            @SuppressWarnings("unchecked")
+            Map<String, Long> subjects = (Map<String, Long>) item.get("subjects");
+            Object subject = row.get("subject");
+            if (subject != null) {
+                subjects.put(String.valueOf(subject), count);
+            }
         }
-        return Result.ok(payload);
+        return Result.ok(new ArrayList<>(byYear.values()));
     }
 
-    /** 某一年整卷（不含答案与解析，答案通过做题接口校验）。 */
+    /**
+     * 某一年整卷（不含答案与解析，答案通过做题接口校验）。
+     *
+     * <p>逐题查选项/知识块会造成 150 条以上的查询（47 题 × 3~4 条）。这里一次性
+     * 把整卷的选项、知识点关联、知识块名称批量取回再按题分组。
+     */
     @GetMapping("/{year}")
     public Result<Map<String, Object>> detail(@PathVariable Integer year) {
         ExamYear exam = examYearMapper.selectOne(new QueryWrapper<ExamYear>().eq("year", year).last("LIMIT 1"));
@@ -76,12 +96,51 @@ public class ExamController {
             throw new BusinessException(404, "未找到该年份的试卷：" + year);
         }
         List<Question> questions = questionsOf(exam.getId());
+        List<Long> questionIds = questions.stream().map(Question::getId).toList();
+
+        Map<Long, List<Map<String, Object>>> optionsByQuestion = optionsOf(questionIds);
+        Map<Long, List<String>> blockIdsByQuestion = blockIdsOf(questionIds);
+        Map<Long, List<Map<String, Object>>> blocksByQuestion =
+                questionService.blocksOfMany(blockIdsByQuestion);
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("year", exam.getYear());
         payload.put("title", exam.getTitle());
         payload.put("questionCount", questions.size());
-        payload.put("questions", questions.stream().map(this::toQuestionView).toList());
+        payload.put("questions", questions.stream()
+                .map(q -> toQuestionView(q,
+                        optionsByQuestion.getOrDefault(q.getId(), Collections.emptyList()),
+                        blockIdsByQuestion.getOrDefault(q.getId(), Collections.emptyList()),
+                        blocksByQuestion.getOrDefault(q.getId(), Collections.emptyList())))
+                .toList());
         return Result.ok(payload);
+    }
+
+    /** 整卷选项：一条 IN 查询后按题目分组。 */
+    private Map<Long, List<Map<String, Object>>> optionsOf(List<Long> questionIds) {
+        Map<Long, List<Map<String, Object>>> result = new HashMap<>();
+        if (questionIds.isEmpty()) {
+            return result;
+        }
+        for (QuestionOption option : optionMapper.selectList(new QueryWrapper<QuestionOption>()
+                .in("question_id", questionIds).orderByAsc("option_key"))) {
+            result.computeIfAbsent(option.getQuestionId(), k -> new ArrayList<>())
+                    .add(Map.of("key", option.getOptionKey(), "text", option.getOptionText()));
+        }
+        return result;
+    }
+
+    /** 整卷的题目↔知识块关联：一条 IN 查询后按题目分组。 */
+    private Map<Long, List<String>> blockIdsOf(List<Long> questionIds) {
+        Map<Long, List<String>> result = new HashMap<>();
+        if (questionIds.isEmpty()) {
+            return result;
+        }
+        for (QuestionKnowledge link : questionKnowledgeMapper.selectList(new QueryWrapper<QuestionKnowledge>()
+                .in("question_id", questionIds))) {
+            result.computeIfAbsent(link.getQuestionId(), k -> new ArrayList<>()).add(link.getBlockId());
+        }
+        return result;
     }
 
     private List<Question> questionsOf(Long examId) {
@@ -90,12 +149,11 @@ public class ExamController {
                 .orderByAsc("exam_number"));
     }
 
-    private Map<String, Long> subjectDistribution(List<Question> questions) {
-        return questions.stream().collect(Collectors.groupingBy(
-                Question::getSubject, LinkedHashMap::new, Collectors.counting()));
-    }
 
-    private Map<String, Object> toQuestionView(Question question) {
+    private Map<String, Object> toQuestionView(Question question,
+                                               List<Map<String, Object>> options,
+                                               List<String> knowledgeBlockIds,
+                                               List<Map<String, Object>> knowledgeBlocks) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", question.getExamRef());
         view.put("number", question.getExamNumber());
@@ -107,25 +165,10 @@ public class ExamController {
         view.put("difficulty", question.getDifficulty());
         view.put("tags", readJsonList(question.getTagsJson()));
         view.put("imagePaths", readJsonList(question.getImagePathsJson()));
-        view.put("knowledgeBlockIds", knowledgeBlockIdsOf(question.getId()));
-        view.put("knowledgeBlocks", questionService.blocksOf(question.getId()));
-        if ("choice".equals(question.getQuestionType())) {
-            view.put("options", optionMapper.selectList(new QueryWrapper<QuestionOption>()
-                            .eq("question_id", question.getId())
-                            .orderByAsc("option_key")).stream()
-                    .map(option -> Map.of("key", option.getOptionKey(), "text", option.getOptionText()))
-                    .toList());
-        } else {
-            view.put("options", Collections.emptyList());
-        }
+        view.put("knowledgeBlockIds", knowledgeBlockIds);
+        view.put("knowledgeBlocks", knowledgeBlocks);
+        view.put("options", "choice".equals(question.getQuestionType()) ? options : Collections.emptyList());
         return view;
-    }
-
-    private List<String> knowledgeBlockIdsOf(Long questionId) {
-        return questionKnowledgeMapper.selectList(new QueryWrapper<QuestionKnowledge>()
-                        .eq("question_id", questionId)).stream()
-                .map(QuestionKnowledge::getBlockId)
-                .toList();
     }
 
     private List<String> readJsonList(String raw) {

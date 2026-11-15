@@ -1,12 +1,15 @@
 package com.kaoyan408.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.core.Result;
+import com.kaoyan408.entity.ExamYear;
 import com.kaoyan408.entity.Question;
 import com.kaoyan408.entity.QuestionOption;
 import com.kaoyan408.entity.QuestionSubQuestion;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kaoyan408.mapper.ExamYearMapper;
 import com.kaoyan408.mapper.QuestionOptionMapper;
 import com.kaoyan408.mapper.QuestionSubQuestionMapper;
 import com.kaoyan408.service.AuthService;
@@ -27,6 +30,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 单题读取与作答。解析默认不下发，作答后（或已作答 + reveal=1）才返回。
@@ -40,16 +44,25 @@ public class QuestionController {
     private final QuestionService questionService;
     private final QuestionOptionMapper optionMapper;
     private final QuestionSubQuestionMapper subQuestionMapper;
+    private final ExamYearMapper examYearMapper;
     private final AuthService authService;
     private final StatsService statsService;
     private final VideoGuideService videoGuideService;
 
+    /**
+     * examId -> year。只有 18 卷，首次访问每题所属年份后即常驻，
+     * 避免「每题一次 selectById」把单题接口打成 N+1。
+     */
+    private final Map<Long, Integer> yearByExamId = new ConcurrentHashMap<>();
+
     public QuestionController(QuestionService questionService, QuestionOptionMapper optionMapper,
-                              QuestionSubQuestionMapper subQuestionMapper, AuthService authService,
+                              QuestionSubQuestionMapper subQuestionMapper, ExamYearMapper examYearMapper,
+                              AuthService authService,
                               StatsService statsService, VideoGuideService videoGuideService) {
         this.questionService = questionService;
         this.optionMapper = optionMapper;
         this.subQuestionMapper = subQuestionMapper;
+        this.examYearMapper = examYearMapper;
         this.authService = authService;
         this.statsService = statsService;
         this.videoGuideService = videoGuideService;
@@ -70,13 +83,20 @@ public class QuestionController {
      */
     @GetMapping("/{examRef}")
     public Result<Map<String, Object>> detail(@PathVariable String examRef,
-                                              @RequestParam(defaultValue = "0") int reveal,
                                               @RequestParam(defaultValue = "false") boolean memorize,
                                               Authentication authentication) {
         Question question = questionService.requireByRef(examRef);
         Long userId = userIdOf(authentication);
         boolean answered = userId != null && questionService.attemptOf(userId, question.getId()) != null;
-        boolean withExplanation = memorize || (answered && (reveal == 0 || reveal == 1));
+        if (memorize && userId == null) {
+            // 背题模式直接下发答案与解析，必须登录：
+            // 之前它对匿名开放，等于把 846 道真题的答案做成公开接口，
+            // 模拟考试「考试中不下发答案」的约束被这一个参数整体绕过。
+            throw new BusinessException(401, "背题模式需要登录后使用。");
+        }
+        // 原来写的是 memorize || (answered && (reveal == 0 || reveal == 1))：
+        // reveal 只能是 0 或 1，整个条件恒为真，该参数形同虚设。真正生效的只有 memorize。
+        boolean withExplanation = memorize || answered;
         return Result.ok(view(question, withExplanation, answered));
     }
 
@@ -119,6 +139,8 @@ public class QuestionController {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", question.getExamRef());
         view.put("number", question.getExamNumber());
+        // 前端「搜索直达单题」要用年份把队列收敛到同一年；缺这个字段会退化成全量队列。
+        view.put("year", yearOf(question));
         view.put("subject", question.getSubject());
         view.put("chapterName", question.getChapterName());
         view.put("questionType", question.getQuestionType());
@@ -178,6 +200,21 @@ public class QuestionController {
         } catch (Exception ignored) {
             return Collections.emptyList();
         }
+    }
+
+    /** 题目所属年份；examId 缺失或查不到时返回 null，前端会退回不带年份的队列。 */
+    private Integer yearOf(Question question) {
+        Long examId = question.getExamId();
+        if (examId == null) {
+            return null;
+        }
+        Integer cached = yearByExamId.get(examId);
+        if (cached == null) {
+            ExamYear row = examYearMapper.selectById(examId);
+            cached = row == null || row.getYear() == null ? -1 : row.getYear();
+            yearByExamId.put(examId, cached);
+        }
+        return cached > 0 ? cached : null;
     }
 
     private Long userIdOf(Authentication authentication) {

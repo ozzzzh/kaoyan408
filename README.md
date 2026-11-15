@@ -257,6 +257,93 @@ Migration checksum mismatch for migration version N
 - 迁移失败会在 `flyway_schema_history` 留下 `success=0` 的记录，需先删除该行
   （确认表结构未被部分改动）后再重试。
 
+## 运维与升级要点（2026-11 加固）
+
+这一节记录本轮加固后**会改变运维动作**的地方。改动本身在 git 历史里，这里只写「你需要知道什么」。
+
+### JWT 密钥校验与应急开关
+
+密钥等于仓库公开默认值、或短于 32 字节时，服务**默认拒绝启动**：公开密钥意味着任何人都能
+签出任意账号的 token，这时候站点「能用」比「停掉」更危险。
+
+但配置错误导致的停站也是事故，所以留了一个显式应急通道：
+
+```bash
+KAOYAN_AUTH_ALLOW_INSECURE_JWT_SECRET=true docker compose -p kaoyan408 up -d api
+```
+
+打开后改为告警并照常启动（过短密钥会做 SHA-256 派生以满足 HS256 的长度要求，熵不变、仍是弱密钥）。
+它是**临时恢复手段**：起来后请立刻换掉密钥并关掉开关。
+
+### 升级后所有用户需要重新登录一次
+
+JWT 现在带 `ver` claim，与 `app_user.token_version` 比对。升级前签发的 token 没有该字段，
+会被判为失效 —— 这是一次性代价，换来的是「禁用账号 / 改密码 / 踢下线」能立即生效
+（把 `token_version` 加一即可，60 秒内生效）。
+
+### 背题模式需要登录
+
+`GET /api/v1/questions/{ref}?memorize=true` 现在未登录返回 401。之前它对匿名开放，
+等于把 846 道真题的答案做成公开接口，模拟考「考试中不下发答案」的约束被一个参数绕过。
+普通做题路径不变：游客照样能作答、判分、看解析，只是不落库。
+
+`reveal` 参数已移除（原条件 `answered && (reveal == 0 || reveal == 1)` 恒为真，从未生效）。
+
+### 内容更新的正确流程
+
+```bash
+npm run import:content                          # 改完 client 侧 TS 内容后重新生成 seed
+docker compose -p kaoyan408 up -d --build api   # 重启后按种子指纹自动判断是否重灌
+```
+
+种子加载现在有四个保护：事务、`GET_LOCK` 互斥、SHA-256 指纹、用户数据守卫。
+
+- **指纹一致** → 跳过（不再每次启动写 3MB）。
+- **指纹变化且无作答数据** → 自动重灌（实测 7 秒左右）。
+- **指纹变化但已有作答数据** → **拒绝重灌**并打印指引。因为重灌会 DELETE 题库、
+  `question.id` 重新自增，历史作答会变成孤儿记录。确认要丢弃历史时才设置：
+  `KAOYAN_SEED_FORCE=true`（强制重灌）+ `KAOYAN_SEED_FORCE_WITH_USER_DATA=true`（确认丢弃历史）。
+- 首次部署（题库为空）不需要任何开关。
+
+### 后端取值前提：api 端口不要对外映射
+
+限流用的客户端 IP 来自 nginx **无条件覆盖**写的 `X-Real-IP`（`X-Forwarded-For` 可被请求头伪造，
+已不再采信）。这个前提成立的条件是 api 容器只有 `expose`、所有流量经 nginx。
+若为了本地开发把 `ports: - "8080:8080"` 加到 api 上，直连流量可以伪造 `X-Real-IP`，
+届时必须改成「按受信代理网段取 XFF 最后一跳」。
+
+### 传输与安全头
+
+- nginx 已开 gzip：`/practice/queue` 从 197KB 降到 8.8KB（4.4%），知识树 13KB→3.3KB。
+- 下发 CSP、`X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`。
+  这些头在 `web/snippets/security-headers.conf`，**每个带 `add_header` 的 location 都要 include**：
+  nginx 的 `add_header` 是就近覆盖语义，只写在 server 级会被那些 location 静默丢掉。
+- 首帧主题预设在 `client/public/theme-init.js`，在 `<head>` 里同步加载（否则暗色用户先闪白）。
+  它是外链而不是内联脚本，就是为了让 CSP 保持 `script-src 'self'`。
+- HSTS 没有在源站下发：线上入口是网关终止 TLS，写死在源站会在用 `IP:端口` 直连时把用户锁死。
+
+### 测试与门禁
+
+```bash
+npm --prefix client run typecheck   # vue-tsc；build 已内置这一步，类型错不再能进构建
+npm --prefix client test            # 渲染安全不变式（12 个用例，vitest + jsdom）
+cd server && mvn -B test            # 接口契约测试（10 个用例）+ jacoco 行覆盖门限
+```
+
+- 后端测试需要可用的 MySQL：`DB_URL / DB_USER / DB_PASSWORD` 环境变量；
+  Flyway 自动迁移，题库已存在时不重复灌种子。
+- jacoco 门限是 0.10（实测约 21%），它是护栏不是目标：防止覆盖率继续往下掉。
+- CI 已接入这两步（build job 跑前端单测，api job 在 MySQL 就绪后跑后端契约测试）。
+
+### 已知取舍
+
+- **刷题队列没有改成翻页**：接口已支持 `page/size` 并返回真实 `total` 与年份分组（`years`），
+  但前端仍一次取全量。理由是 gzip 已把该响应压到 8.8KB，而翻页会破坏
+  「搜索直达单题后还能在同年份继续上一题/下一题」的交互，收益递减。
+- **CSP 放行 `style-src 'unsafe-inline'`**：KaTeX 与 Tailwind 任意值类会产生内联 style 属性，
+  收紧会导致公式错版。脚本侧仍是严格 `script-src 'self'`。
+
+---
 ## 接口约定
 
 所有接口返回 **HTTP 200** + 统一响应体，业务语义由 `code` 表达：
