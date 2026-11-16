@@ -41,6 +41,15 @@ public class MailCodeService {
     private static final Logger log = LoggerFactory.getLogger(MailCodeService.class);
 
     private static final String CHANNEL = "email";
+
+    /** 验证码用途。校验时必须与签发时一致，否则注册码可以拿来改密码。 */
+    public static final String PURPOSE_REGISTER = "register";
+    public static final String PURPOSE_RESET_PASSWORD = "reset-password";
+
+    /** 只允许已知用途，未知值一律按注册处理（避免脏数据写进唯一键）。 */
+    public static String safePurpose(String purpose) {
+        return PURPOSE_RESET_PASSWORD.equals(purpose) ? PURPOSE_RESET_PASSWORD : PURPOSE_REGISTER;
+    }
     private static final DateTimeFormatter HOUR_FMT = DateTimeFormatter.ofPattern("yyyyMMddHH");
     private static final DateTimeFormatter DAY_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter LOG_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -109,14 +118,15 @@ public class MailCodeService {
      * @return 冷却秒数，供前端倒计时
      */
     @Transactional
-    public int send(String email, String clientIp) {
+    public int send(String email, String purpose, String clientIp) {
         String normalized = normalize(email);
+        String usePurpose = safePurpose(purpose);
         LocalDateTime now = LocalDateTime.now();
 
         // 1) 冷却：距上次发送不足冷却时间就拒绝。
         //    用 created_at 判断，避免为一个「60 秒」再建一张表。
         VerifyCode existing = codeMapper.selectOne(new QueryWrapper<VerifyCode>()
-                .eq("target", normalized).eq("channel", CHANNEL).last("LIMIT 1"));
+                .eq("target", normalized).eq("channel", CHANNEL).eq("purpose", usePurpose).last("LIMIT 1"));
         if (existing != null && existing.getCreatedAt() != null) {
             long elapsed = Duration.between(existing.getCreatedAt(), now).getSeconds();
             if (elapsed < cooldownSeconds) {
@@ -141,7 +151,7 @@ public class MailCodeService {
         }
 
         String code = String.format("%06d", random.nextInt(1_000_000));
-        codeMapper.upsert(normalized, CHANNEL, code, now.plusSeconds(codeExpireSeconds));
+        codeMapper.upsert(normalized, CHANNEL, usePurpose, code, now.plusSeconds(codeExpireSeconds));
 
         deliver(normalized, code);
         return cooldownSeconds;
@@ -153,10 +163,12 @@ public class MailCodeService {
      * @throws BusinessException 校验失败，消息可直接展示给用户
      */
     @Transactional
-    public void verify(String email, String inputCode) {
+    public void verify(String email, String purpose, String inputCode) {
         String normalized = normalize(email);
+        String usePurpose = safePurpose(purpose);
+        // 用途必须一起匹配：注册码不能拿来通过改密码校验
         VerifyCode record = codeMapper.selectOne(new QueryWrapper<VerifyCode>()
-                .eq("target", normalized).eq("channel", CHANNEL).last("LIMIT 1"));
+                .eq("target", normalized).eq("channel", CHANNEL).eq("purpose", usePurpose).last("LIMIT 1"));
 
         if (record == null) {
             throw new BusinessException(400, "验证码已失效，请重新获取。");

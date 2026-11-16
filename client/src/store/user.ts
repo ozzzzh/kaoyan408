@@ -123,6 +123,22 @@ export const useUserStore = defineStore('user', () => {
     await doAuth(() => api.register(username, email, password, code))
   }
 
+  /**
+   * 用服务端返回的最新 profile 覆盖本地用户（改昵称 / 头像后用）。
+   * 只合并，不整体替换，避免丢掉 token 相关的状态。
+   */
+  function applyUser(next: Partial<AuthUser>): void {
+    if (!user.value) return
+    user.value = { ...user.value, ...next }
+  }
+
+  /** 换 token（改密码后服务端会作废旧 token 并下发新的）。 */
+  function applyToken(next: string): void {
+    setToken(next)
+    token.value = next
+    sessionExpired.value = false
+  }
+
   function logout(): void {
     setToken(null)
     token.value = null
@@ -145,5 +161,7 @@ export const useUserStore = defineStore('user', () => {
     login,
     register,
     logout,
+    applyUser,
+    applyToken,
   }
 })

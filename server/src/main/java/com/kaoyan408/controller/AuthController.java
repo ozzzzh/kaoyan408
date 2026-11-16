@@ -16,9 +16,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
@@ -67,18 +69,49 @@ public class AuthController {
                                   @Size(min = 6, max = 6, message = "验证码为 6 位数字") String code) {
     }
 
-    /** 发送邮箱验证码。 */
+    /**
+     * 发送邮箱验证码。
+     *
+     * <p>purpose 参数区分用途（默认 register）：
+     * <ul>
+     *   <li>register：匿名可调，发给请求里填的邮箱；</li>
+     *   <li>reset-password：必须已登录，且**只用当前账号自己的邮箱**——
+     *       否则这个接口就成了给任意地址发信的通道。</li>
+     * </ul>
+     * 演示账号不允许改密码，所以也不会给它发这类验证码。
+     */
     @PostMapping("/auth/send-mail-code")
     public Result<Map<String, Object>> sendMailCode(@Valid @RequestBody SendMailCodeRequest request,
+                                                    @RequestParam(required = false) String purpose,
+                                                    Authentication authentication,
                                                     HttpServletRequest httpRequest) {
         String ip = clientIp(httpRequest);
-        int cooldown = mailCodeService.send(request.email(), ip);
+        String usePurpose = MailCodeService.safePurpose(purpose);
+        String target = request.email();
+        if (MailCodeService.PURPOSE_RESET_PASSWORD.equals(usePurpose)) {
+            if (authentication == null) {
+                throw new BusinessException(401, "请先登录后再获取验证码。");
+            }
+            User current = authService.findByUsername(authentication.getName());
+            if (current == null) {
+                throw new BusinessException(401, "认证失败，无法访问系统资源。");
+            }
+            if (isDemoAccount(current.getUsername())) {
+                throw new BusinessException(403, DEMO_PASSWORD_DENIED);
+            }
+            if (current.getEmail() == null || current.getEmail().isBlank()) {
+                throw new BusinessException(400, "该账号未绑定邮箱，无法通过验证码修改密码，请联系管理员重置。");
+            }
+            target = current.getEmail();
+        }
+        int cooldown = mailCodeService.send(target, usePurpose, ip);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("cooldownSeconds", cooldown);
         // 让前端能如实提示：mock 模式下不真的发信，验证码在服务端日志里。
         // 演示与答辩时这一点必须说清楚，否则用户会一直等一封不会来的邮件。
         payload.put("mock", mailCodeService.isMockMode());
+        payload.put("purpose", usePurpose);
         payload.put("message", mailCodeService.isMockMode()
                 ? "验证码已生成（当前为演示模式，验证码打印在服务端日志）"
                 : "验证码已发送，请查收邮件");
@@ -146,12 +179,69 @@ public class AuthController {
         return Result.ok(profile(user));
     }
 
+    /** 演示账号（demo / demo-admin）不允许改密码：它们是公开账号。 */
+    private static final String DEMO_PASSWORD_DENIED =
+            "演示账号不允许修改密码：它是公开展示账号，改了之后所有人都登不进去。"
+                    + "想拥有自己的账号请注册一个（或让管理员重置）。";
+
+    /** 当前用户名是否是公开的演示账号。 */
+    private boolean isDemoAccount(String username) {
+        if (username == null) {
+            return false;
+        }
+        AccountProperties.Demo demo = accountProperties.getDemo();
+        AccountProperties.DemoAdmin demoAdmin = accountProperties.getDemoAdmin();
+        return (demo.isEnabled() && username.equals(demo.getUsername()))
+                || (demoAdmin.isEnabled() && username.equals(demoAdmin.getUsername()));
+    }
+
     /**
      * 取真实客户端 IP。
      *
      * <p>原来是「优先 X-Forwarded-For 第一段」——可被请求头伪造，发信限流形同虚设。
      * 现在统一走 ClientIpResolver（只信 nginx 无条件覆盖的 X-Real-IP）。
      */
+    public record ProfileRequest(String displayName, String avatar) {
+    }
+
+    public record PasswordChangeRequest(String currentPassword, String newPassword, String code) {
+    }
+
+    /** 修改资料（昵称 / 头像）。演示账号不允许改。 */
+    @PatchMapping("/user/profile")
+    public Result<Map<String, Object>> updateProfile(@RequestBody ProfileRequest request,
+                                                    Authentication authentication) {
+        if (authentication == null) {
+            throw new BusinessException(401, "登录状态已失效，请重新登录。");
+        }
+        if (isDemoAccount(authentication.getName())) {
+            throw new BusinessException(403, "演示账号的资料已锁定（它是公开展示账号），请注册自己的账号再修改。");
+        }
+        User updated = authService.updateProfile(
+                authentication.getName(), request.displayName(), request.avatar());
+        return Result.ok(profile(updated));
+    }
+
+    /**
+     * 修改密码。
+     *
+     * <p>成功后旧 token 全部失效（token_version + 1），响应里返回**新 token**，
+     * 让当前这个会话可以无缝继续用，不至于改完密码就被踢出去。
+     */
+    @PostMapping("/user/password")
+    public Result<Map<String, Object>> changePassword(@RequestBody PasswordChangeRequest request,
+                                                      Authentication authentication) {
+        if (authentication == null) {
+            throw new BusinessException(401, "登录状态已失效，请重新登录。");
+        }
+        if (isDemoAccount(authentication.getName())) {
+            throw new BusinessException(403, DEMO_PASSWORD_DENIED);
+        }
+        User updated = authService.changePassword(
+                authentication.getName(), request.currentPassword(), request.newPassword(), request.code());
+        return Result.ok(tokenPayload(updated));
+    }
+
     private String clientIp(HttpServletRequest request) {
         return ClientIpResolver.resolve(request);
     }
@@ -176,6 +266,13 @@ public class AuthController {
         profile.put("username", user.getUsername());
         profile.put("email", user.getEmail());
         profile.put("isAdmin", user.getIsAdmin() != null && user.getIsAdmin() == 1);
+        // 展示名：没设昵称时退回 username，前端不用再判空
+        profile.put("displayName",
+                user.getDisplayName() == null || user.getDisplayName().isBlank()
+                        ? user.getUsername() : user.getDisplayName());
+        profile.put("avatar", user.getAvatar() == null ? "auto" : user.getAvatar());
+        profile.put("demo", isDemoAccount(user.getUsername()));
+        profile.put("hasEmail", user.getEmail() != null && !user.getEmail().isBlank());
         profile.put("createdAt", user.getCreatedAt());
         return profile;
     }

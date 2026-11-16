@@ -327,10 +327,28 @@ export const api = {
   register: (username: string, email: string, password: string, code: string) =>
     post<LoginResult>('/api/v1/auth/register', { username, email, password, code }),
 
+  /** 修改资料（昵称 / 头像）。演示账号会被服务端拒绝（403）。 */
+  updateProfile: (payload: { displayName?: string; avatar?: string }) =>
+    request<AuthUser>('/api/v1/user/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  /**
+   * 修改密码。需要邮箱验证码（用途 reset-password）。
+   * 成功后会返回新 token：旧 token 因 token_version 自增已全部失效。
+   */
+  changePassword: (payload: { currentPassword: string; newPassword: string; code: string }) =>
+    post<{ token: string; expiresAt: number; expiresIn: number; user: AuthUser }>(
+      '/api/v1/user/password',
+      payload,
+    ),
+
   /** 发送邮箱注册验证码。mock 模式下不真发信，验证码在服务端日志里。 */
-  sendMailCode: (email: string) =>
-    post<{ cooldownSeconds: number; mock: boolean; message: string }>(
-      '/api/v1/auth/send-mail-code',
+  sendMailCode: (email: string, purpose: 'register' | 'reset-password' = 'register') =>
+    post<{ cooldownSeconds: number; mock: boolean; purpose: string; message: string }>(
+      `/api/v1/auth/send-mail-code${purpose === 'register' ? '' : `?purpose=${purpose}`}`,
       { email },
     ),
 

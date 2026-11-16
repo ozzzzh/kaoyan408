@@ -26,6 +26,9 @@ public class VerifyCode {
     /** email / sms */
     private String channel;
 
+    /** 验证码用途：register（注册）/ reset-password（修改密码）。校验必须带同样的用途。 */
+    private String purpose;
+
     private String code;
 
     /** 已校验失败次数，达到上限即作废。 */

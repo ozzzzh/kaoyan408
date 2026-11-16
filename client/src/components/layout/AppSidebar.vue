@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import BrandLogo from '@/components/brand/BrandLogo.vue'
+import UserAvatar from '@/components/user/UserAvatar.vue'
 import ThemeToggle from './ThemeToggle.vue'
 
 const route = useRoute()
@@ -232,13 +233,20 @@ const isAdmin = computed(() => Boolean(user.value?.isAdmin))
       <ThemeToggle />
 
       <div class="mt-2 flex items-center gap-2.5 rounded-xl bg-[var(--k-surface-soft)] px-3 py-2.5">
+        <!-- 与「我的」页保持同一套头像：昵称优先，没有昵称时回退用户名 -->
+        <UserAvatar
+          v-if="user"
+          :name="user.displayName || user.username"
+          :avatar="user.avatar"
+          :size="32"
+        />
         <span
+          v-else
           class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--k-accent)] text-xs font-bold text-[var(--k-on-accent)]"
-          >{{ user ? user.username.slice(0, 1).toUpperCase() : '游' }}</span
-        >
+        >游</span>
         <span class="min-w-0 flex-1">
           <span class="block truncate text-xs font-semibold text-[var(--k-text)]">{{
-            user ? user.username : '游客模式'
+            user ? user.displayName || user.username : '游客模式'
           }}</span>
           <!--
             三种状态必须能分清，否则用户会以为「做题记录丢了」：
