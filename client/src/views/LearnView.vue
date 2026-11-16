@@ -62,11 +62,33 @@ const toc = computed(() =>
   })),
 )
 
+/**
+ * 侧栏列表的取数代次。快速连点科目时，先发的请求可能后返回，
+ * 用代次丢弃过期结果，避免列表被上一个科目覆盖。
+ */
+let pointsRequestSeq = 0
+
 async function loadPoints(forSubject: string) {
+  const seq = ++pointsRequestSeq
   try {
-    points.value = await api.knowledgePoints(forSubject || undefined)
+    const result = await api.knowledgePoints(forSubject || undefined)
+    if (seq !== pointsRequestSeq) return
+    points.value = result
   } catch {
+    if (seq !== pointsRequestSeq) return
     points.value = []
+  }
+}
+
+/**
+ * 跳转到某个知识点时始终带上当前科目，
+ * 否则 URL 丢掉 ?subject=xx，侧栏会退回全部 147 条、科目高亮也会消失。
+ */
+function pointLink(pointId: string) {
+  const subject = currentSubject.value
+  return {
+    path: `/learn/${pointId}`,
+    query: subject ? { subject } : {},
   }
 }
 
@@ -91,15 +113,28 @@ async function loadArticle(pointId: string) {
   }
 }
 
+/**
+ * 定位到当前科目的第一个知识点。
+ * 切科目后正文必须跟着换，否则会出现「列表换成数据结构、正文还是进程与 PCB」。
+ */
+async function goToFirstPoint(subject: string) {
+  if (!points.value.length) {
+    loading.value = false
+    return
+  }
+  await router.replace({
+    path: `/learn/${points.value[0].pointId}`,
+    query: subject ? { subject } : {},
+  })
+}
+
 /** 无 pointId 时自动跳到第一个知识点，避免空白页。 */
 async function bootstrap() {
   await loadPoints(currentSubject.value)
   if (currentPointId.value) {
     await loadArticle(currentPointId.value)
-  } else if (points.value.length) {
-    router.replace({ path: `/learn/${points.value[0].pointId}` })
   } else {
-    loading.value = false
+    await goToFirstPoint(currentSubject.value)
   }
 }
 
@@ -115,11 +150,18 @@ onMounted(bootstrap)
 
 watch(
   () => [route.params.pointId, route.query.subject],
-  ([pointId, forSubject], [oldPointId, oldSubject]) => {
+  async ([pointId, forSubject], [oldPointId, oldSubject]) => {
+    const subject = typeof forSubject === 'string' ? forSubject : ''
     if (forSubject !== oldSubject) {
       // 切换科目时清空筛选，否则会带着上一个科目的关键词、看起来像「没有知识点」
       filter.value = ''
-      void loadPoints(typeof forSubject === 'string' ? forSubject : '')
+      await loadPoints(subject)
+      // 切科目后没有具体知识点（selectSubject 会跳到不带 pointId 的 /learn），
+      // 等列表加载完再定位到该科第一篇，正文才会跟着换。
+      if (typeof pointId !== 'string' || !pointId) {
+        await goToFirstPoint(subject)
+        return
+      }
     }
     if (pointId !== oldPointId && typeof pointId === 'string') {
       void loadArticle(pointId)
@@ -211,7 +253,7 @@ watch(
           <RouterLink
             v-for="point in filteredPoints"
             :key="point.pointId"
-            :to="`/learn/${point.pointId}`"
+            :to="pointLink(point.pointId)"
             class="mb-0.5 block rounded-lg px-3 py-2 no-underline transition"
             :class="
               point.pointId === currentPointId
@@ -286,7 +328,7 @@ watch(
         <div v-if="prevPoint || nextPoint" class="flex items-stretch gap-3">
           <RouterLink
             v-if="prevPoint"
-            :to="`/learn/${prevPoint.pointId}`"
+            :to="pointLink(prevPoint.pointId)"
             class="flex flex-1 items-center gap-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 no-underline transition hover:border-[var(--k-accent)]"
           >
             <span class="text-[var(--k-text-faint)]">←</span>
@@ -299,7 +341,7 @@ watch(
           </RouterLink>
           <RouterLink
             v-if="nextPoint"
-            :to="`/learn/${nextPoint.pointId}`"
+            :to="pointLink(nextPoint.pointId)"
             class="flex flex-1 items-center justify-end gap-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] px-4 py-3 text-right no-underline transition hover:border-[var(--k-accent)]"
           >
             <span class="min-w-0">
