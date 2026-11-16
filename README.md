@@ -350,6 +350,44 @@ SyntaxError: The requested module 'node:util' does not provide an export named '
 
 要把构建能力还给服务器，需要把 Node 升到 22 LTS（或 20.19+），否则每次发版都得在本地构建。
 
+### 让回访更快：Cloudflare 缓存规则（面板操作，不在仓库里）
+
+现状：nginx 已经对入口 HTML 下发 `public, max-age=0, s-maxage=60, stale-while-revalidate=300`，
+但 **Cloudflare 默认不缓存 HTML**——实测两次请求都是 `cf-cache-status: DYNAMIC`，
+意味着每次访问都要跨境回源一次（实测 TTFB 中位 1.5s）。
+
+在 Cloudflare 面板里加一条 Cache Rule 即可（一次性操作）：
+
+| 项 | 值 |
+| --- | --- |
+| 规则名 | `cache-html-60s` |
+| 匹配条件 | `URI Path equals /` **或** `URI Path ends with index.html` |
+| Cache eligibility | Eligible for cache |
+| Edge TTL | Override origin → **60 seconds** |
+| Browser TTL | Respect origin（浏览器端仍 `max-age=0`，不会拿到旧入口） |
+
+验证：`curl -sI https://<域名>/ | grep -i cf-cache-status`，期望 `HIT`。
+
+注意：发版后最多 60 秒全量生效（资源都是带哈希的 chunk，不会出现「入口旧、chunk 新」的白屏）；
+需要立刻生效就在 Cloudflare 后台 Purge 一次。
+
+顺带确认 Brotli 已开（Speed → Optimization → Brotli：On）：实测队列接口 `br` 后 991 字节。
+
+### 前端性能结构（改动后长这样）
+
+- **首屏不再加载 marked / KaTeX**：`utils/` 拆成 `htmlEscape`（无依赖）、`htmlSanitize`（DOMPurify）、
+  `htmlMath`（KaTeX）、`html`（marked 编排）与 `stem`（题干轻量渲染）。
+  刷题页只依赖 `stem` + `htmlEscape`；题干里真的出现 `$...$` 时才动态 `import('@/utils/htmlMath')`。
+  改前刷题页会拉一个 328KB 的 chunk（marked + DOMPurify + KaTeX），现在首屏只有 30KB 的视图代码。
+- **Service Worker**（`public/sw.js`）：`/assets/**` cache-first（文件名带哈希，不可变）、
+  导航 network-first（3 秒超时回退缓存）、其它静态资源 SWR；`/api/**` 完全不缓存。
+  只在生产构建注册。改名 `CACHE` 常量即可整体失效。
+- **队列内联首题**：`/practice/queue` 在首页且非错题范围时会带 `firstQuestion`，
+  刷题首屏因此只有 2 个请求（`stats/dash` + `queue`），不再单独打 `/questions/{ref}`。
+- **知识点图片外置**：正文里内联的图片（含内联 SVG）改由
+  `/api/v1/knowledge/asset/{blockId}?v=<指纹>` 提供，长缓存 + CSP `sandbox`。
+  最重的一篇正文从 357KB 降到 23KB（gzip 6KB）。
+
 ### 已知取舍
 
 - **刷题队列没有改成翻页**：接口已支持 `page/size` 并返回真实 `total` 与年份分组（`years`），

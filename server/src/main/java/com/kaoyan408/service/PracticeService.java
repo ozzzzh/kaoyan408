@@ -30,9 +30,11 @@ public class PracticeService {
             "cn", "计算机网络");
 
     private final QuestionMapper questionMapper;
+    private final QuestionService questionService;
 
-    public PracticeService(QuestionMapper questionMapper) {
+    public PracticeService(QuestionMapper questionMapper, QuestionService questionService) {
         this.questionMapper = questionMapper;
+        this.questionService = questionService;
     }
 
     /**
@@ -133,8 +135,22 @@ public class PracticeService {
         long yearTotal = effectiveYear == null
                 ? items.size()
                 : toLong(byYear.getOrDefault(effectiveYear, Map.of("total", 0L)).get("total"));
-        return payload(items, effectiveYear, subject, blockId, pointId, scope,
+        Map<String, Object> payload = payload(items, effectiveYear, subject, blockId, pointId, scope,
                 years, totalAll, yearTotal, page, size);
+
+        // 把「首题」一起带回去：刷题页原本要等队列返回、再发一次 /questions/{examRef}，
+        // 慢链路上这是两次串行往返（各 0.9–2.7 秒）。首页（或不分页）时首题是确定的，
+        // 直接内联可以让首屏少一跳；翻页时仍然按需单题取。
+        boolean firstPage = page == null || page <= 1;
+        if (firstPage && !items.isEmpty() && !(onlyWrong || onlyPendingWrong || onlyMasteredWrong)) {
+            String firstRef = String.valueOf(items.get(0).get("examRef"));
+            try {
+                payload.put("firstQuestion", questionService.detailOf(firstRef, userId, false));
+            } catch (Exception ignored) {
+                // 首题取不到就退回前端单独请求，不影响队列本身
+            }
+        }
+        return payload;
     }
 
     /** 把「年份 × 科目」分组计数再按总数汇总。 */

@@ -1,27 +1,50 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { renderMarkdown } from '@/utils/html'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { containsMath, renderStemCore } from '@/utils/stem'
 
 /**
- * 题干渲染：Markdown + 行内公式。
+ * 题干渲染：轻量 Markdown（代码块 / 行内代码 / 加粗 / 换行）+ 按需公式。
  *
- * 为什么需要单独一个组件：题干里的 ```代码块``` 和 `行内代码` 是考试内容的一部分
- * （比如让判断某段 C 代码的时间复杂度），原样显示反引号会让人无法读题。
- *
- * 历史变更：这里原先「消毒 → 注入 KaTeX → 再消毒一次」，第二遍为了保住 KaTeX 的
- * class/style，被迫放行 `ADD_ATTR: ['class','style']` 并开启 svg/mathMl profile——
- * 等于把最宽的一份消毒配置用在了最不该放宽的位置。现在与知识正文共用
- * @/utils/html：原始 Markdown 严格消毒，KaTeX 输在消毒之后注入，无需再洗第二遍。
+ * 历史变更：这里原本走完整的 marked 链路（marked + DOMPurify + KaTeX 一起打进
+ * 一个 328KB 的 chunk），而题干根本用不到完整 GFM。现在：
+ *   - 基础渲染由 utils/stem.ts 完成（纯转义 + 固定标签，无第三方依赖）；
+ *   - 只有题干里真的出现 $...$ / \(...\) 时，才动态加载 KaTeX（utils/htmlMath.ts）。
+ * 绝大多数题目的刷题页因此不再下载那 328KB。
  */
 const props = defineProps<{
   source: string
 }>()
 
-const html = computed(() => renderMarkdown(props.source))
+const html = ref('')
+/** 公式模块加载中；此期间先显示基础渲染结果，避免空白 */
+let seq = 0
+
+watch(
+  () => props.source,
+  async (source) => {
+    const current = ++seq
+    const core = renderStemCore(source)
+    html.value = core
+    if (!containsMath(source)) return
+    try {
+      const { renderMathInHtml } = await import('@/utils/htmlMath')
+      if (current === seq) html.value = renderMathInHtml(core)
+    } catch {
+      // 公式模块加载失败就保留基础渲染，不影响读题
+    }
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  seq++
+})
+
+const rendered = computed(() => html.value)
 </script>
 
 <template>
-  <div class="stem-md text-sm leading-relaxed text-[var(--k-text)]" v-html="html" />
+  <div class="stem-md text-sm leading-relaxed text-[var(--k-text)]" v-html="rendered" />
 </template>
 
 <style scoped>

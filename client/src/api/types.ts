@@ -186,6 +186,11 @@ export interface PracticeQueue {
   /** 按年份的分组计数（不受 year 过滤影响），前端据此渲染年份导航 */
   years: PracticeQueueYear[]
   items: PracticeQueueItem[]
+  /**
+   * 首题详情（后端内联，省一次 /questions 往返）。
+   * 仅首页、且非错题范围时下发；翻页与切题仍按需请求。
+   */
+  firstQuestion?: QuestionView
 }
 
 export interface WrongBook {

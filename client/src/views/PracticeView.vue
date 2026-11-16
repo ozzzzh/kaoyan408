@@ -341,6 +341,18 @@ async function loadQueue() {
       if (at >= 0) index.value = at
     }
 
+    // 队列已经把首题一起带回来了（后端内联 firstQuestion）：
+    // 首屏省掉一次 /questions 往返，在慢链路上就是省 0.9–2.7 秒。
+    const inlined = queue.value.firstQuestion
+    const target = current.value
+    if (inlined && target && inlined.id === target.examRef && mode.value !== 'memorize') {
+      question.value = inlined
+      selected.value = ''
+      result.value = null
+      loadingQuestion.value = false
+      return
+    }
+
     await loadQuestion()
   } catch (e) {
     queue.value = null
@@ -791,18 +803,20 @@ watch(
           <div class="max-w-[68ch] space-y-3">
             <template v-for="(line, i) in stemLines" :key="i">
               <!-- 罗马数字选项行：紧凑、左侧带缩进，与题干正文区分 -->
-              <p
+              <!--
+                题干每一行都交给 StemMarkdown：它现在只做轻量 Markdown，
+                并仅在文本里出现 $...$ 时才动态加载 KaTeX。
+                原来这里用纯文本插值，题干里的公式（如 $n=9$）根本不会渲染；
+                换成组件后公式能显示，而不含公式的题仍然不会多下载一个字节。
+              -->
+              <div
                 v-if="line.kind === 'option'"
                 class="flex gap-2 text-[15px] leading-relaxed text-[var(--k-text)]"
               >
                 <span class="shrink-0 font-semibold text-[var(--k-text-muted)]">{{ line.mark }}</span>
-                <span>{{ line.text }}</span>
-              </p>
-              <pre
-                v-else
-                class="whitespace-pre-wrap font-sans text-[15px] leading-[1.75] text-[var(--k-text)]"
-                >{{ line.text }}</pre
-              >
+                <StemMarkdown class="min-w-0 flex-1" :source="line.text" />
+              </div>
+              <StemMarkdown v-else :source="line.text" />
             </template>
           </div>
 

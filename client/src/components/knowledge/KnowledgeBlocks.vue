@@ -3,7 +3,9 @@ import { computed } from 'vue'
 import KnowledgeMarkdown from './KnowledgeMarkdown.vue'
 import AnimationBlock from './AnimationBlock.vue'
 import { hasAnimation } from './animationLoader'
-import { renderFormulaBlock, renderTextWithMath, sanitizeHtmlBlock } from '@/utils/html'
+// 只引公式与消毒，不引 marked：知识正文里的公式块/callout 不需要完整 Markdown 解析。
+import { renderFormulaBlock, renderTextWithMath } from '@/utils/htmlMath'
+import { sanitizeHtmlBlock } from '@/utils/htmlSanitize'
 import type { KnowledgeArticleData } from './types'
 
 const props = defineProps<{

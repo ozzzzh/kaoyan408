@@ -15,7 +15,13 @@ import com.kaoyan408.mapper.KnowledgeBlockMapper;
 import com.kaoyan408.mapper.KnowledgePointMapper;
 import com.kaoyan408.mapper.QuestionAttemptMapper;
 import com.kaoyan408.mapper.QuestionKnowledgeMapper;
+import com.kaoyan408.entity.ExamYear;
+import com.kaoyan408.entity.QuestionOption;
+import com.kaoyan408.entity.QuestionSubQuestion;
+import com.kaoyan408.mapper.ExamYearMapper;
 import com.kaoyan408.mapper.QuestionMapper;
+import com.kaoyan408.mapper.QuestionOptionMapper;
+import com.kaoyan408.mapper.QuestionSubQuestionMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,11 +47,16 @@ public class QuestionService {
     private final StatsService statsService;
     private final KnowledgeBlockMapper blockMapper;
     private final KnowledgePointMapper pointMapper;
+    private final QuestionOptionMapper optionMapper;
+    private final QuestionSubQuestionMapper subQuestionMapper;
+    private final ExamYearMapper examYearMapper;
 
     public QuestionService(QuestionMapper questionMapper, QuestionKnowledgeMapper questionKnowledgeMapper,
                            QuestionAttemptMapper attemptMapper, BlockProgressMapper blockProgressMapper,
                            DailyStatMapper dailyStatMapper, StatsService statsService,
-                           KnowledgeBlockMapper blockMapper, KnowledgePointMapper pointMapper) {
+                           KnowledgeBlockMapper blockMapper, KnowledgePointMapper pointMapper,
+                           QuestionOptionMapper optionMapper, QuestionSubQuestionMapper subQuestionMapper,
+                           ExamYearMapper examYearMapper) {
         this.questionMapper = questionMapper;
         this.questionKnowledgeMapper = questionKnowledgeMapper;
         this.attemptMapper = attemptMapper;
@@ -54,8 +65,115 @@ public class QuestionService {
         this.statsService = statsService;
         this.blockMapper = blockMapper;
         this.pointMapper = pointMapper;
+        this.optionMapper = optionMapper;
+        this.subQuestionMapper = subQuestionMapper;
+        this.examYearMapper = examYearMapper;
     }
 
+    /** examId -> year，只有 18 卷，缓存后不必逐题查库 */
+    private final Map<Long, Integer> yearByExamId = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /**
+     * 单题详情（渲染所需的完整视图）。
+     *
+     * <p>从 QuestionController 搬到 service，是为了让刷题队列能顺带把「首题」一起返回：
+     * 慢链路上每多一次往返就是 0.9–2.7 秒，首题与队列合成一次响应能直接省掉一跳。
+     */
+    public Map<String, Object> detailOf(String examRef, Long userId, boolean memorize) {
+        Question question = requireByRef(examRef);
+        boolean answered = userId != null && attemptOf(userId, question.getId()) != null;
+        if (memorize && userId == null) {
+            // 背题模式会直接下发答案与解析，必须登录
+            throw new BusinessException(401, "背题模式需要登录后使用。");
+        }
+        boolean withExplanation = memorize || answered;
+        return view(question, withExplanation, answered);
+    }
+
+    private Map<String, Object> view(Question question, boolean withExplanation, boolean answered) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("id", question.getExamRef());
+        view.put("number", question.getExamNumber());
+        view.put("year", yearOf(question));
+        view.put("subject", question.getSubject());
+        view.put("chapterName", question.getChapterName());
+        view.put("questionType", question.getQuestionType());
+        view.put("score", question.getScore());
+        view.put("stem", question.getStem());
+        view.put("difficulty", question.getDifficulty());
+        view.put("tags", readJsonList(question.getTagsJson()));
+        view.put("imagePaths", readJsonList(question.getImagePathsJson()));
+        view.put("knowledgeBlockIds", blockIdsOf(question.getId()));
+        view.put("knowledgeBlocks", blocksOf(question.getId()));
+        view.put("answered", answered);
+        view.put("options", optionViews(question));
+        view.put("subQuestions", subQuestionViews(question));
+        if (withExplanation) {
+            view.put("answer", question.getAnswer());
+            view.put("explanation", question.getExplanation());
+        }
+        return view;
+    }
+
+    private List<Map<String, Object>> optionViews(Question question) {
+        if (!"choice".equals(question.getQuestionType())) {
+            return List.of();
+        }
+        return optionMapper.selectList(new QueryWrapper<QuestionOption>()
+                        .eq("question_id", question.getId()).orderByAsc("option_key")).stream()
+                .map(option -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("key", option.getOptionKey());
+                    item.put("text", option.getOptionText());
+                    return item;
+                })
+                .toList();
+    }
+
+    private List<Map<String, Object>> subQuestionViews(Question question) {
+        if (!"comprehensive".equals(question.getQuestionType())) {
+            return List.of();
+        }
+        return subQuestionMapper.selectList(new QueryWrapper<QuestionSubQuestion>()
+                        .eq("question_id", question.getId()).orderByAsc("sub_number")).stream()
+                .map(sub -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("number", sub.getSubNumber());
+                    item.put("score", sub.getScore());
+                    item.put("description", sub.getDescription());
+                    return item;
+                })
+                .toList();
+    }
+
+    private Integer yearOf(Question question) {
+        Long examId = question.getExamId();
+        if (examId == null) {
+            return null;
+        }
+        Integer cached = yearByExamId.get(examId);
+        if (cached == null) {
+            ExamYear row = examYearMapper.selectById(examId);
+            cached = row == null || row.getYear() == null ? -1 : row.getYear();
+            yearByExamId.put(examId, cached);
+        }
+        return cached > 0 ? cached : null;
+    }
+
+    private List<String> readJsonList(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        try {
+            return JSON.readValue(raw, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {
+            });
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
     public Question requireByRef(String examRef) {
         Question question = questionMapper.selectOne(new QueryWrapper<Question>()
                 .eq("exam_ref", examRef).last("LIMIT 1"));
