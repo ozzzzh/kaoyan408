@@ -31,3 +31,5 @@ coverage/
 
 # 编辑器/本地改配色时的临时备份
 *.bak-*
+# 部署备份目录不入库（dist.old.* / dist.prev.* / dist.replaced-*）
+client/dist.*
