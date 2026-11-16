@@ -64,3 +64,61 @@ M2 模拟考试功能，已确认的设计：
 - 范围：只做整卷模拟
 
 **状态**：方案已确认，尚未开始编码。
+
+---
+
+## 五、多会话并行作业约定（2026-11 新增）
+
+背景：曾经有两个会话在**同一个工作目录**里并行工作，各自执行 `git add -A`，
+结果 A 未提交的改动被卷进 B 的提交里（`AdminView.vue`、`AdminService.java` 都发生过），
+提交信息与实际内容完全对不上；更糟的是两边都能对同一台生产机发版，
+一次交错就没人说得清线上到底是哪一版。
+
+### 5.1 一个会话一个工作目录（首选）
+
+```bash
+# 主工作区（保持 main 分支）
+D:\kaoyan\kaoyan408-main        branch: main
+
+# 第二个会话（独立目录，独立分支，共用同一个 .git）
+git worktree add D:\kaoyan\kaoyan408-ai2 -b ai2
+D:\kaoyan\kaoyan408-ai2         branch: ai2
+```
+
+- 两边各写各的目录，`git add -A` 再也卷不走对方文件；
+- 提交进同一份历史但各在分支上，最后 `git merge ai2` 收口；
+- 新建的 worktree **没有 node_modules / dist**，第一次用先 `npm --prefix client install`；
+- 用完清理：`git worktree remove D:\kaoyan\kaoyan408-ai2`（分支保留）。
+
+### 5.2 禁止 `git add -A` / `git add .` / `git commit -a`
+
+即使是单目录作业，也只 add 自己这次改的**具体文件路径**。提交前必须跑：
+
+```bash
+git status --short      # 看到不是自己改的文件 -> 不要提交
+```
+
+### 5.3 部署锁（同一台机器只能一个人发版）
+
+```bash
+python scripts/deploy-lock.py status      # 谁在发、多久了
+python scripts/deploy-lock.py acquire --owner <会话名> --ttl 900
+python scripts/deploy-lock.py release     # 发版结束（无论成败）都要释放
+```
+
+- `acquire` 返回非零 + `LOCKED` 说明别人正在发版：**等它结束，不要抢**；
+- 锁 15 分钟自动过期，避免某个会话崩了把部署永久锁死；
+- 锁文件在服务器 `/mnt/workspace/kaoyan408/.deploy.lock`。
+
+### 5.4 「整树同步」发版有排他性
+
+当两边 git 历史对不上时，发版会用 `git archive HEAD` + 覆盖服务器工作树。
+**谁后同步，线上就是谁的内容**，所以必须在锁保护下做，且：
+发版前先 `git status` 确认自己这边是最新、`git log -1` 记录版本号，
+发版后把 commit 短哈希写进交付说明（线上到底哪一版必须能回答）。
+
+### 5.5 共享资源需要先声明
+
+服务器 `.env`（含 `JWT_SECRET`、管理员密码）、`docker-compose.yml`、
+`server/src/main/resources/db/migration/*`、内容种子 `seed/content.sql`
+属于共享资源：改之前先在对话里说清楚，不要"顺手改一下"。
