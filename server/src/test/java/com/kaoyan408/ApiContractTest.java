@@ -1,6 +1,7 @@
 package com.kaoyan408;
 
 import com.kaoyan408.core.JwtUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.kaoyan408.entity.User;
 import com.kaoyan408.mapper.UserMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -18,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
@@ -234,6 +236,115 @@ class ApiContractTest {
         assertThat(node.path("code").asInt()).as("登录应成功: " + body).isEqualTo(0);
         return node.path("data").path("token").asText();
     }
+
+    // ---------- 管理员模式 ----------
+
+    @Test
+    @DisplayName("演示账号提示接口匿名可读，且不泄露密码")
+    void demoInfoIsPublic() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/demo-info"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.username").exists())
+                // 演示账号是公开展示账号，密码随接口返回（运维改了配置登录页才不会显示旧口令）；
+                // 管理员密码永远不会经过任何接口。
+                .andExpect(jsonPath("$.data.password").exists());
+    }
+
+    @Test
+    @DisplayName("管理员接口：匿名 401、普通用户 403、管理员 200")
+    void adminEndpointsRequireAdminRole() throws Exception {
+        // 匿名
+        mockMvc.perform(get("/api/v1/admin/overview"))
+                .andExpect(jsonPath("$.code").value(401));
+
+        // 普通用户
+        String plain = tokenOf(createUser("plain", false).getUsername());
+        mockMvc.perform(get("/api/v1/admin/overview").header("Authorization", "Bearer " + plain))
+                .andExpect(jsonPath("$.code").value(403));
+
+        // 管理员
+        String admin = tokenOf(createUser("boss", true).getUsername());
+        mockMvc.perform(get("/api/v1/admin/overview").header("Authorization", "Bearer " + admin))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.users").isNumber())
+                .andExpect(jsonPath("$.data.questions").isNumber());
+        mockMvc.perform(get("/api/v1/admin/users").header("Authorization", "Bearer " + admin))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.items").isArray());
+    }
+
+    @Test
+    @DisplayName("管理员不能禁用自己，也不能撤销自己的管理员权限")
+    void adminCannotLockHimselfOut() throws Exception {
+        User me = createUser("selflock", true);
+        String token = tokenOf(me.getUsername());
+        Long id = me.getId();
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + id + "/active")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false}"))
+                .andExpect(jsonPath("$.code").value(400));
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + id + "/admin")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"admin\":false}"))
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    @DisplayName("管理员禁用账号后，对方的旧 token 立刻失效")
+    void disabledUserTokenStopsWorking() throws Exception {
+        User adminUser = createUser("kicker", true);
+        User victim = createUser("victim", false);
+        String adminToken = tokenOf(adminUser.getUsername());
+        String victimToken = tokenOf(victim.getUsername());
+        Long victimId = victim.getId();
+
+        // 禁用前可用
+        mockMvc.perform(get("/api/v1/user/current").header("Authorization", "Bearer " + victimToken))
+                .andExpect(jsonPath("$.code").value(0));
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + victimId + "/active")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false}"))
+                .andExpect(jsonPath("$.code").value(0));
+
+        // 禁用后同一 token 应被拒（禁用时 token_version 自增 + 缓存失效）
+        mockMvc.perform(get("/api/v1/user/current").header("Authorization", "Bearer " + victimToken))
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    /** 建一个已知密码的账号；返回带 id 的实体，token 用 tokenOf 另取。 */
+    private User createUser(String prefix, boolean admin) {
+        String username = prefix + "_" + System.nanoTime();
+        User user = new User();
+        user.setUsername(username);
+        user.setEmail(username + "@example.com");
+        user.setPasswordHash(passwordEncoder.encode("test123456"));
+        user.setIsActive(1);
+        user.setIsAdmin(admin ? 1 : 0);
+        user.setTokenVersion(1);
+        userMapper.insert(user);
+        createdUserIds.add(user.getId());
+        return user;
+    }
+
+    private String tokenOf(String username) throws Exception {
+        return loginAndGetToken(username);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void cleanCreatedUsers() {
+        for (Long id : createdUserIds) {
+            userMapper.deleteById(id);
+        }
+        createdUserIds.clear();
+    }
+
+    private final java.util.List<Long> createdUserIds = new java.util.ArrayList<>();
 
     @Test
     @DisplayName("令牌版本参与校验：版本不一致的 token 解析后版本号也不同")

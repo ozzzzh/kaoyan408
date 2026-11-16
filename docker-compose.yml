@@ -60,7 +60,15 @@ services:
       # 等于任何人都能伪造登录态。但线上起不来同样是事故，所以留一个应急开关：
       # 设为 true 时改为告警并照常启动（过短密钥会做 SHA-256 派生）。
       # 只在恢复服务时临时打开，随后务必换成真正的随机密钥。
-      KAOYAN_AUTH_ALLOW_INSECURE_JWT_SECRET: "${KAOYAN_AUTH_ALLOW_INSECURE_JWT_SECRET:-false}"
+      # 内置账号。演示账号是公开可登录的展示账号；管理员密码只从 .env 来，
+      # 留空则不创建管理员（仓库里不存在默认管理员口令）。
+      KAOYAN_DEMO_ENABLED: "${KAOYAN_DEMO_ENABLED:-true}"
+      KAOYAN_DEMO_USERNAME: "${KAOYAN_DEMO_USERNAME:-demo}"
+      KAOYAN_DEMO_PASSWORD: "${KAOYAN_DEMO_PASSWORD:-demo123456}"
+      KAOYAN_DEMO_SEED_DATA: "${KAOYAN_DEMO_SEED_DATA:-true}"
+      KAOYAN_ADMIN_USERNAME: "${KAOYAN_ADMIN_USERNAME:-}"
+      KAOYAN_ADMIN_PASSWORD: "${KAOYAN_ADMIN_PASSWORD:-}"
+      KAOYAN_ADMIN_RESET_PASSWORD: "${KAOYAN_ADMIN_RESET_PASSWORD:-false}"
       KAOYAN_SEED_FORCE: "${KAOYAN_SEED_FORCE:-false}"
       KAOYAN_SEED_FORCE_WITH_USER_DATA: "${KAOYAN_SEED_FORCE_WITH_USER_DATA:-false}"
     depends_on:

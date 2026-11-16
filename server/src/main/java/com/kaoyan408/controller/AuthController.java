@@ -1,5 +1,6 @@
 package com.kaoyan408.controller;
 
+import com.kaoyan408.config.AccountProperties;
 import com.kaoyan408.core.AccountStateCache;
 import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.core.ClientIpResolver;
@@ -31,13 +32,15 @@ public class AuthController {
     private final MailCodeService mailCodeService;
     private final JwtUtil jwtUtil;
     private final AccountStateCache accountStateCache;
+    private final AccountProperties accountProperties;
 
     public AuthController(AuthService authService, MailCodeService mailCodeService, JwtUtil jwtUtil,
-                          AccountStateCache accountStateCache) {
+                          AccountStateCache accountStateCache, AccountProperties accountProperties) {
         this.authService = authService;
         this.mailCodeService = mailCodeService;
         this.jwtUtil = jwtUtil;
         this.accountStateCache = accountStateCache;
+        this.accountProperties = accountProperties;
     }
 
     public record LoginRequest(@NotBlank(message = "不能为空") String username,
@@ -78,6 +81,26 @@ public class AuthController {
                 ? "验证码已生成（当前为演示模式，验证码打印在服务端日志）"
                 : "验证码已发送，请查收邮件");
         return Result.ok(payload);
+    }
+
+    /**
+     * 演示账号提示（匿名可读）。
+     *
+     * <p>这里**刻意连密码一起返回**：演示账号是公开的展示账号，密码本来就写在部署
+     * 配置里、也本来就要展示在登录页上；让接口返回而不是前端写死，是为了运维改了
+     * KAOYAN_DEMO_PASSWORD 之后登录页不会继续显示旧口令。
+     *
+     * <p>边界很清楚：只有这一个账号、只在 demo.enabled=true 时返回。
+     * 管理员密码永远不经过任何接口取回。
+     */
+    @GetMapping("/auth/demo-info")
+    public Result<Map<String, Object>> demoInfo() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        boolean enabled = accountProperties.getDemo().isEnabled();
+        data.put("enabled", enabled);
+        data.put("username", enabled ? accountProperties.getDemo().getUsername() : null);
+        data.put("password", enabled ? accountProperties.getDemo().getPassword() : null);
+        return Result.ok(data);
     }
 
     @PostMapping("/auth/login")

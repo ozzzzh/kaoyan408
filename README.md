@@ -358,10 +358,13 @@ SyntaxError: The requested module 'node:util' does not provide an export named '
 
 在 Cloudflare 面板里加一条 Cache Rule 即可（一次性操作）：
 
+> 注意 zone 名：本站域名本身就是 zone 的 apex，所以 zone 是 **`tizhilian408.de5.net`**，
+> 不是 `de5.net`（按 `de5.net` 查会查不到）。
+
 | 项 | 值 |
 | --- | --- |
 | 规则名 | `cache-html-60s` |
-| 匹配条件 | `URI Path equals /` **或** `URI Path ends with index.html` |
+| 匹配条件 | 表达式填 `(http.request.uri.path eq "/") or (http.request.uri.path eq "/index.html")` |
 | Cache eligibility | Eligible for cache |
 | Edge TTL | Override origin → **60 seconds** |
 | Browser TTL | Respect origin（浏览器端仍 `max-age=0`，不会拿到旧入口） |
@@ -425,6 +428,24 @@ npm run build      # 依赖已装好，现在可以直接在服务器构建
 
 日常发版仍推荐本地构建（`npm run deploy`）；服务器侧构建作为应急手段保留。
 
+### 已完成：入口 HTML 已被边缘缓存
+
+2026-11-16 用 `npm run cf:cache-rule` 在 zone `tizhilian408.de5.net` 上创建了
+`cache-html-60s (kaoyan408 entry)` 规则（`/` 与 `/index.html`，Edge TTL 60s，Browser TTL 跟随源站）。
+实测 `npm run check:edge`：
+
+```
+第1次 838ms MISS（回源并填充边缘） → 第2、3次 245ms / 248ms HIT
+对比：一次未缓存的 /api/v1/health 往返 1654ms
+```
+
+也就是说入口 HTML 的往返从「每次 1.6 秒」降到「边缘 0.25 秒」。发版后最多 60 秒生效
+（SWR 让过期后的第一个访客也不阻塞）；要立刻生效就在 Cloudflare 后台 Purge 一次。
+
+**下一个可选优化**：`/api/v1/knowledge/**` 与 `/api/v1/exams/**` 是匿名且与用户无关的内容接口，
+nginx 已经给了 `max-age=300`，但 Cloudflare 默认不缓存 JSON。再加一条针对这两个前缀的
+Cache Rule（Edge TTL 300s）就能把阅读页/真题页的往返也压到 0.25 秒级；
+`/practice/queue` 这类带用户进度的接口不能缓存，保持现状。
 ### 用 API 建 Cache Rule（`npm run cf:cache-rule`）
 
 不想点面板就用脚本，效果一样：
@@ -432,7 +453,7 @@ npm run build      # 依赖已装好，现在可以直接在服务器构建
 ```bash
 # 1. Cloudflare → My Profile → API Tokens → Create Token（自定义）
 #    权限：Zone → Cache Rules → Edit、Zone → Zone → Read（想自动清缓存再加 Cache Purge → Purge）
-#    Zone Resources 限定到 de5.net，不要给 All zones
+#    Zone Resources 限定到 tizhilian408.de5.net，不要给 All zones
 # 2. 本机设置（只在本机，不进仓库）
 setx CF_API_TOKEN "<token>"          # Windows；之后新开的终端生效
 # 3. 执行（会先查 zone、合并已有规则、清理入口缓存，再验证）
@@ -451,6 +472,45 @@ npm run check:edge -- https://其他域名
 
 连续取三次首页，打印 `cf-cache-status` / `cache-control` / 编码 / 耗时，并给出结论。
 当前应当是 `DYNAMIC`（说明 Cloudflare 的 Cache Rule 还没加），加上之后会变成 `HIT`。
+### 演示账号与管理员
+
+**演示账号**（公开可登录，用于让访客直接看到"有数据的样子"）：
+
+- 默认 `demo / demo123456`，可通过 `KAOYAN_DEMO_USERNAME` / `KAOYAN_DEMO_PASSWORD` 覆盖；
+  `KAOYAN_DEMO_ENABLED=false` 可完全关闭。
+- 首次创建时会预置一点历史数据（18 条作答、3 天打卡、6 张背诵卡），
+  这样工作台、热力图、错题本都不是空的。只在"该账号完全没有作答记录"时执行，
+  重启不会越积越多。
+- 登录页会显示这张卡片并支持"一键填入"，密码来自 `GET /api/v1/auth/demo-info`
+  （匿名可读）—— 这样运维改了口令，登录页不会继续显示旧密码。
+  接口只回显这一个公开账号，管理员密码永远不经过任何接口取回。
+
+**管理员账号**：
+
+```bash
+# 首次部署时在 .env 里设置，密码只从这里来（仓库里没有默认管理员口令）
+KAOYAN_ADMIN_USERNAME=admin
+KAOYAN_ADMIN_PASSWORD=<你的强密码>
+# 忘记密码时置 true 重启一次即可重置（会顺手踢掉旧登录态）
+KAOYAN_ADMIN_RESET_PASSWORD=false
+```
+
+启动时会自动创建或对齐该账号（设为管理员、恢复启用）。用户名留空则什么都不做。
+
+管理员入口：工作台左侧「管理」（仅管理员可见），页面在 `/#/admin`，提供：
+
+| 能力 | 说明 |
+| --- | --- |
+| 站点概览 | 账号数/启用数/管理员数、近 7 天新增、累计与今日作答、题库规模、背诵卡片、模拟考、AI 对话 |
+| 账号列表 | 分页 + 按用户名/邮箱搜索，显示作答数、卡片数、最近活跃 |
+| 禁用/启用 | 禁用会立刻踢掉该用户的登录态 |
+| 授予/撤销管理员 | 权限位走缓存（60 秒内生效，操作时主动失效） |
+| 重置密码 | 不填则生成 10 位随机密码并在响应里回显一次，同时让旧登录态失效 |
+| 清空练习数据 | 只删作答/掌握度/打卡/背诵/模拟考记录，不删账号 |
+
+三条安全约束：不能禁用或降权自己；不能撤销最后一个管理员；禁用/改密必然使旧 token 失效。
+权限实现在服务端（`/api/v1/admin/**` 要求 `ROLE_ADMIN`），前端隐藏入口只是体验层面。
+
 ### 已知取舍
 
 - **刷题队列没有改成翻页**：接口已支持 `page/size` 并返回真实 `total` 与年份分组（`years`），

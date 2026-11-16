@@ -10,17 +10,17 @@
  *   - Zone → Cache Rules → Edit
  *   - Zone → Zone         → Read      （用来按域名查 zone id）
  *   - Zone → Cache Purge  → Purge     （可选，建完规则清一次缓存）
- *   Zone Resources 限定到具体域名（如 de5.net），不要给 All zones。
+ *   Zone Resources 限定到具体域名（即 tizhilian408.de5.net），不要给 All zones。
  *
  * 用法：
  *   CF_API_TOKEN=xxx node scripts/cf-cache-rule.mjs                 # 建规则 + 清理 + 验证
  *   CF_API_TOKEN=xxx node scripts/cf-cache-rule.mjs --dry-run       # 只打印将要提交的内容
- *   CF_API_TOKEN=xxx CF_ZONE_NAME=de5.net node scripts/cf-cache-rule.mjs
+ *   CF_API_TOKEN=xxx CF_ZONE_NAME=tizhilian408.de5.net node scripts/cf-cache-rule.mjs
  *
  * 规则内容：/ 与 index.html 可缓存，Edge TTL 60s，Browser TTL 跟随源站（max-age=0）。
  */
 const TOKEN = process.env.CF_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN
-const ZONE_NAME = process.env.CF_ZONE_NAME || 'de5.net'
+const ZONE_NAME = process.env.CF_ZONE_NAME || 'tizhilian408.de5.net'
 const SITE = process.env.CF_SITE || 'https://tizhilian408.de5.net'
 const RULE_DESCRIPTION = 'cache-html-60s (kaoyan408 entry)'
 const DRY_RUN = process.argv.includes('--dry-run')
@@ -47,7 +47,9 @@ async function call(path, init = {}) {
 
 const RULE = {
   description: RULE_DESCRIPTION,
-  expression: '(http.request.uri.path eq "/") or (http.request.uri.path.ends_with "/index.html")',
+  // Cloudflare 的过滤表达式没有 ends_with，只有 eq / ne / contains / matches / in。
+  // 用两条 eq 最直观，也避免正则写错。
+  expression: '(http.request.uri.path eq "/") or (http.request.uri.path eq "/index.html")',
   action: 'set_cache_settings',
   action_parameters: {
     cache: true,
@@ -76,7 +78,9 @@ async function main() {
   const kept = existing.filter((rule) => rule.description !== RULE_DESCRIPTION)
   console.log(`现有规则 ${existing.length} 条，保留 ${kept.length} 条，新增/替换 1 条（${RULE_DESCRIPTION}）`)
 
-  const payload = { name: 'kaoyan408 cache settings', kind: 'zone', phase: 'http_request_cache_settings', rules: [...kept, RULE] }
+  // 注意：phase entrypoint 的 PUT 只接受 { rules }。
+  // 带上 kind/phase/name 会被拒（实测报 invalid JSON: unknown field "kind"）。
+  const payload = { rules: [...kept, RULE] }
 
   if (DRY_RUN) {
     console.log('--- dry-run，将要提交 ---')

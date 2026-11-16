@@ -1,6 +1,5 @@
 package com.kaoyan408.controller;
 
-import com.kaoyan408.config.AccountProperties;
 import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.core.Result;
 import com.kaoyan408.entity.User;
@@ -16,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -88,20 +86,6 @@ public class AdminController {
         return Result.ok(adminService.clearUserData(id));
     }
 
-    /**
-     * 演示账号提示：只回显用户名与「是否已配置」。
-     *
-     * <p>刻意**不返回密码**：演示账号的密码本来就写在部署配置里，需要展示给访客时
-     * 由前端固定文案说明，后台接口不承担「把口令吐给任何人」的职责。
-     * 这个接口匿名可访问，所以更不能带密码。
-     */
-    @GetMapping("/demo-info")
-    public Result<Map<String, Object>> demoInfo(AccountProperties properties) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("enabled", properties.getDemo().isEnabled());
-        data.put("username", properties.getDemo().isEnabled() ? properties.getDemo().getUsername() : null);
-        return Result.ok(data);
-    }
 
     private Long operatorId(Authentication authentication) {
         if (authentication == null) {
