@@ -344,11 +344,11 @@ cd server && mvn -B test            # 接口契约测试（10 个用例）+ jaco
 SyntaxError: The requested module 'node:util' does not provide an export named 'styleText'
 ```
 
-所以**不能在服务器上构建前端**。当前流程是：本地（Node 22/24）`npm run build` →
-把 `client/dist` 打包上传 → 解包到 `dist.new` → `mv dist dist.old.<ts> && mv dist.new dist`
-→ `docker compose -p kaoyan408 up -d --force-recreate web`。
+所以**不能直接用系统 node 在服务器上构建前端**。日常流程是本地构建后上传，已封成一条命令
+（见下面「一键发版」）。
 
-要把构建能力还给服务器，需要把 Node 升到 22 LTS（或 20.19+），否则每次发版都得在本地构建。
+要把构建能力还给服务器，需要 Node 22 LTS（或 20.19+）。已经装在 `/opt/node22`
+（不动系统 node，避免影响同机其它项目），用法见「服务器上的 Node 22」。
 
 ### 让回访更快：Cloudflare 缓存规则（面板操作，不在仓库里）
 
@@ -388,6 +388,52 @@ SyntaxError: The requested module 'node:util' does not provide an export named '
   `/api/v1/knowledge/asset/{blockId}?v=<指纹>` 提供，长缓存 + CSP `sandbox`。
   最重的一篇正文从 357KB 降到 23KB（gzip 6KB）。
 
+### 一键发版（`npm run deploy`）
+
+手动发版容易漏步骤（尤其 `--force-recreate web`：bind mount 持有旧 inode，不强制重建页面就还是旧的）。
+现在封成一条命令：
+
+```bash
+npm run deploy          # 本地构建 → 上传 dist → 切换 → 重建 web → 健康检查
+npm run deploy:api      # 顺带重建后端镜像（改了 Java / 新增迁移时）
+```
+
+前置：本机装了 Python 3 + `paramiko`（`pip install paramiko`），并且
+`~/.ssh/config_metadata.json` 里有 `ipeagent-server` 的连接信息
+（也可用 `DEPLOY_HOST / DEPLOY_PORT / DEPLOY_USER / DEPLOY_PASSWORD` 覆盖；
+脚本优先取 `~/.ssh/config` 里的端口——metadata 里那个端口曾经是过期的 22，照它连会认证失败）。
+
+脚本做的事：`npm run build`（含类型检查）→ 打包 `client/dist` → SFTP 上传 →
+服务器上解包到 `dist.new`、旧 `dist` 改名 `dist.prev.<时间戳>`（保留最近两版用于回滚）→
+`up -d --force-recreate web` → 探 `/api/v1/health` 与公网首页。
+
+改完后端要一起发时用 `--api`：它会重建 api 镜像并执行 Flyway 迁移。
+若服务器代码还没同步，可以带 `--patch <补丁文件>`：脚本会先 `git apply` 并提交到服务器仓库。
+
+### 服务器上的 Node 22（恢复服务器侧构建）
+
+生产机系统 Node 是 v20.11.1，而 vite 8 要求 `^20.19 || >=22.12`，直接在服务器
+`vite build` 会报 `node:util does not provide an export named 'styleText'`。
+
+已把 Node 22 独立装在 **/opt/node22**（不动系统 `/usr/local/bin/node`，避免影响同机其它项目）：
+
+```bash
+cd /mnt/workspace/kaoyan408/client
+export PATH=/opt/node22/bin:$PATH
+npm run build      # 依赖已装好，现在可以直接在服务器构建
+```
+
+日常发版仍推荐本地构建（`npm run deploy`）；服务器侧构建作为应急手段保留。
+
+### 边缘缓存自检（`npm run check:edge`）
+
+```bash
+npm run check:edge                        # 默认查 tizhilian408.de5.net
+npm run check:edge -- https://其他域名
+```
+
+连续取三次首页，打印 `cf-cache-status` / `cache-control` / 编码 / 耗时，并给出结论。
+当前应当是 `DYNAMIC`（说明 Cloudflare 的 Cache Rule 还没加），加上之后会变成 `HIT`。
 ### 已知取舍
 
 - **刷题队列没有改成翻页**：接口已支持 `page/size` 并返回真实 `total` 与年份分组（`years`），
