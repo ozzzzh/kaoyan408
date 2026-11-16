@@ -111,9 +111,7 @@ public class AuthService {
         if (!USERNAME_PATTERN.matcher(name).matches()) {
             throw new BusinessException(400, "用户名需为 2-50 位的字母、数字、下划线或中文。");
         }
-        if (password == null || password.length() < PASSWORD_MIN || password.length() > PASSWORD_MAX) {
-            throw new BusinessException(400, "密码长度需在 " + PASSWORD_MIN + "-" + PASSWORD_MAX + " 位之间。");
-        }
+        validatePassword(password);
         if (!EMAIL_PATTERN.matcher(mail).matches()) {
             throw new BusinessException(400, "邮箱格式不正确。");
         }
@@ -125,7 +123,7 @@ public class AuthService {
         }
 
         // 验证码放在格式与查重之后校验：格式不对就没必要消耗掉一个有效验证码
-        mailCodeService.verify(mail, code);
+        mailCodeService.verify(mail, MailCodeService.PURPOSE_REGISTER, code);
 
         User user = new User();
         user.setUsername(name);
@@ -139,6 +137,82 @@ public class AuthService {
         return user;
     }
 
+    /**
+     * 修改资料：昵称 + 头像。
+     *
+     * <p>只允许改「展示层」字段。username 是登录名，被 JWT subject、限流键、
+     * 越权校验引用，改名牵连太广，所以不开放。
+     */
+    public User updateProfile(String username, String displayName, String avatar) {
+        User user = requireByUsername(username);
+        if (displayName != null) {
+            String name = displayName.trim();
+            if (name.isEmpty()) {
+                throw new BusinessException(400, "昵称不能为空。");
+            }
+            if (name.codePointCount(0, name.length()) > 20) {
+                throw new BusinessException(400, "昵称最多 20 个字符。");
+            }
+            // 控制字符会破坏列表渲染，直接拒绝
+            if (name.chars().anyMatch(Character::isISOControl)) {
+                throw new BusinessException(400, "昵称包含不支持的字符。");
+            }
+            user.setDisplayName(name);
+        }
+        if (avatar != null) {
+            user.setAvatar(normalizeAvatar(avatar));
+        }
+        userMapper.updateById(user);
+        return user;
+    }
+
+    /**
+     * 修改密码。
+     *
+     * <p>三道校验：当前密码、新密码强度、邮箱验证码（用途必须是 reset-password）。
+     * 成功后 token_version + 1：**其它设备全部掉线**，调用方用返回的新 token 继续用。
+     *
+     * <p>不在这里判断"是否演示账号"——那属于账号策略，放在 Controller 层更清楚。
+     */
+    @Transactional
+    public User changePassword(String username, String currentPassword, String newPassword, String code) {
+        User user = requireByUsername(username);
+
+        if (currentPassword == null || !passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new BusinessException(400, "当前密码不正确。");
+        }
+        validatePassword(newPassword);
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new BusinessException(400, "新密码不能与当前密码相同。");
+        }
+        if (user.getEmail() == null || user.getEmail().isBlank()) {
+            throw new BusinessException(400, "该账号未绑定邮箱，无法通过验证码修改密码，请联系管理员重置。");
+        }
+        mailCodeService.verify(user.getEmail(), MailCodeService.PURPOSE_RESET_PASSWORD, code);
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        // 改密即踢掉所有旧会话
+        user.setTokenVersion((user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1);
+        userMapper.updateById(user);
+        return user;
+    }
+
+    /** 头像只接受 'auto' 或 'emoji:<一个字符>'，拒绝任意字符串（避免前端渲染出意料外的东西）。 */
+    private String normalizeAvatar(String avatar) {
+        String value = avatar.trim();
+        if (value.isEmpty() || "auto".equals(value)) {
+            return "auto";
+        }
+        if (value.startsWith("emoji:")) {
+            String emoji = value.substring("emoji:".length()).trim();
+            int points = emoji.codePointCount(0, emoji.length());
+            if (points >= 1 && points <= 2 && emoji.codePointAt(0) > 0x2000) {
+                return "emoji:" + emoji;
+            }
+        }
+        throw new BusinessException(400, "头像标识不合法。");
+    }
+
     public User requireByUsername(String username) {
         User user = findByUsername(username);
         if (user == null) {
@@ -149,6 +223,16 @@ public class AuthService {
     }
 
     /** 被禁用的账号不允许登录，也不允许继续使用已有 token。 */
+    /** 密码规则：长度 8–128，且不能是纯数字（弱口令最常见的一类）。 */
+    private void validatePassword(String password) {
+        if (password == null || password.length() < PASSWORD_MIN || password.length() > PASSWORD_MAX) {
+            throw new BusinessException(400, "密码长度需在 " + PASSWORD_MIN + "-" + PASSWORD_MAX + " 位之间。");
+        }
+        if (password.chars().allMatch(Character::isDigit)) {
+            throw new BusinessException(400, "密码不能是纯数字，请混合字母或符号。");
+        }
+    }
+
     private void requireActive(User user) {
         if (user.getIsActive() != null && user.getIsActive() == 0) {
             throw new BusinessException(403, "该账号已被禁用，请联系管理员。");

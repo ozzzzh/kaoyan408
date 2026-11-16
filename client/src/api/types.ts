@@ -372,6 +372,14 @@ export interface AuthUser {
    * 接入类型检查后立刻暴露（侧栏与路由守卫都用它决定是否显示管理入口）。
    */
   isAdmin: boolean
+  /** 展示名（没设昵称时服务端回退成 username） */
+  displayName: string
+  /** 'auto' 或 'emoji:🦊' */
+  avatar: string
+  /** 是否是公开的演示账号（demo / demo-admin）：资料与密码都不可改 */
+  demo: boolean
+  /** 是否绑定了可用于收验证码的邮箱 */
+  hasEmail: boolean
 }
 
 export interface LoginResult {

@@ -16,8 +16,8 @@ public interface VerifyCodeMapper extends BaseMapper<VerifyCode> {
      * 先查再改会都判定为不存在、都走 insert，最终撞唯一键报错。
      */
     @Insert("""
-            INSERT INTO verify_code (target, channel, code, attempts, expires_at, created_at)
-            VALUES (#{target}, #{channel}, #{code}, 0, #{expiresAt}, NOW())
+            INSERT INTO verify_code (target, channel, purpose, code, attempts, expires_at, created_at)
+            VALUES (#{target}, #{channel}, #{purpose}, #{code}, 0, #{expiresAt}, NOW())
             ON DUPLICATE KEY UPDATE
                 code = VALUES(code),
                 attempts = 0,
@@ -26,6 +26,7 @@ public interface VerifyCodeMapper extends BaseMapper<VerifyCode> {
             """)
     int upsert(@Param("target") String target,
                @Param("channel") String channel,
+               @Param("purpose") String purpose,
                @Param("code") String code,
                @Param("expiresAt") java.time.LocalDateTime expiresAt);
-}
+}

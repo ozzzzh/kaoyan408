@@ -55,6 +55,9 @@ class ApiContractTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
@@ -359,6 +362,96 @@ class ApiContractTest {
         } catch (Exception e) {
             return -999;
         }
+    }
+
+    @Test
+    @DisplayName("资料：昵称与 emoji 头像可改，非法头像被拒")
+    void profileCanBeUpdated() throws Exception {
+        User me = createUser("profile", false);
+        String token = tokenOf(me.getUsername());
+
+        mockMvc.perform(patch("/api/v1/user/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"阿三\",\"avatar\":\"emoji:🦊\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.displayName").value("阿三"))
+                .andExpect(jsonPath("$.data.avatar").value("emoji:🦊"));
+
+        // 头像只允许 auto / emoji:<字符>，别的都拒绝（防止前端渲染出意料外的东西）
+        mockMvc.perform(patch("/api/v1/user/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"avatar\":\"emoji:<script>\"}"))
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    @DisplayName("演示账号：资料与密码都被锁定，并给出可读原因")
+    void demoAccountIsLocked() throws Exception {
+        // 默认配置 demo-admin / demo-admin123456
+        String token = tokenOf2("demo-admin", "demo-admin123456");
+
+        mockMvc.perform(patch("/api/v1/user/profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"被改掉\"}"))
+                .andExpect(jsonPath("$.code").value(403));
+
+        mockMvc.perform(post("/api/v1/user/password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"demo-admin123456\",\"newPassword\":\"newpass1234\",\"code\":\"000000\"}"))
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value(org.hamcrest.Matchers.containsString("演示账号")));
+    }
+
+    @Test
+    @DisplayName("改密码：验证码按用途隔离，注册码不能拿来改密码")
+    void passwordChangeRequiresResetPurposeCode() throws Exception {
+        User me = createUser("pwd", false);
+        // 测试账号需要可收信的邮箱：createUser 已写入 xxx@example.com
+        String token = tokenOf(me.getUsername());
+        String email = me.getEmail();
+
+        // 1) 注册用途的码：不能用于改密码
+        mockMvc.perform(post("/api/v1/auth/send-mail-code")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"" + email + "\"}"));
+        String registerCode = jdbcTemplate.queryForObject(
+                "SELECT code FROM verify_code WHERE target = ? AND purpose = 'register' LIMIT 1",
+                String.class, email);
+        mockMvc.perform(post("/api/v1/user/password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"test123456\",\"newPassword\":\"newpass1234\",\"code\":\"" + registerCode + "\"}"))
+                .andExpect(jsonPath("$.code").value(400));
+
+        // 2) reset-password 用途的码：可以改，且旧 token 立刻失效
+        mockMvc.perform(post("/api/v1/auth/send-mail-code")
+                        .param("purpose", "reset-password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"attacker@example.com\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.purpose").value("reset-password"));
+        String resetCode = jdbcTemplate.queryForObject(
+                "SELECT code FROM verify_code WHERE target = ? AND purpose = 'reset-password' LIMIT 1",
+                String.class, email);
+
+        MvcResult changed = mockMvc.perform(post("/api/v1/user/password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"test123456\",\"newPassword\":\"newpass1234\",\"code\":\"" + resetCode + "\"}"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn();
+        String newToken = JSON.readTree(changed.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+
+        mockMvc.perform(get("/api/v1/user/current").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(401));
+        mockMvc.perform(get("/api/v1/user/current").header("Authorization", "Bearer " + newToken))
+                .andExpect(jsonPath("$.code").value(0));
     }
 
     /** 建一个已知密码的账号；返回带 id 的实体，token 用 tokenOf 另取。 */

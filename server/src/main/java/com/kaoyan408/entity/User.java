@@ -16,6 +16,18 @@ public class User {
 
     private String username;
 
+    /**
+     * 展示用昵称。username 是登录名、且被 JWT subject 引用，因此不允许修改；
+     * 用户想改的「名字」落在这里。
+     */
+    private String displayName;
+
+    /**
+     * 头像标识：'auto'（按 username 生成首字母 + 配色）或 'emoji:<单个 emoji>'。
+     * 刻意不存图片地址 —— 见 V12 迁移里的说明。
+     */
+    private String avatar;
+
     private String email;
 
     private String passwordHash;

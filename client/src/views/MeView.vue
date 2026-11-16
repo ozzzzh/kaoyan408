@@ -7,6 +7,8 @@ import { api } from '@/api/client'
 import type { Dashboard, MemorySummary, WrongBook } from '@/api/types'
 import { subjectMeta } from '@/constants/subjects'
 import BrandLogo from '@/components/brand/BrandLogo.vue'
+import UserAvatar from '@/components/user/UserAvatar.vue'
+import ProfileSettings from '@/components/user/ProfileSettings.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -312,18 +314,25 @@ watch(user, (next) => {
 
     <!-- 已登录：账号卡 + 个人数据 -->
     <template v-if="user">
-      <!-- 账号 -->
+      <!-- 个人头部：头像 + 昵称 + 角色徽标 + 退出 -->
       <section
-        class="flex items-center gap-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
+        class="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
       >
-        <span
-          class="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[var(--k-accent)] text-lg font-bold text-[var(--k-on-accent)]"
-          >{{ user.username.slice(0, 1).toUpperCase() }}</span
-        >
+        <UserAvatar :name="user.displayName || user.username" :avatar="user.avatar" :size="56" />
         <div class="min-w-0 flex-1">
-          <p class="text-lg font-semibold text-[var(--k-text)]">{{ user.username }}</p>
+          <p class="flex flex-wrap items-center gap-2 text-lg font-semibold text-[var(--k-text)]">
+            <span class="truncate">{{ user.displayName || user.username }}</span>
+            <span
+              v-if="user.isAdmin"
+              class="rounded bg-[var(--k-accent-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--k-accent-text)]"
+            >管理员</span>
+            <span
+              v-if="user.demo"
+              class="rounded bg-[var(--k-warn-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--k-warn)]"
+            >演示账号</span>
+          </p>
           <p class="truncate text-xs text-[var(--k-text-faint)]">
-            {{ user.email || '未绑定邮箱' }}
+            {{ user.username }} · {{ user.email || '未绑定邮箱' }}
           </p>
         </div>
         <button
@@ -333,6 +342,9 @@ watch(user, (next) => {
           退出登录
         </button>
       </section>
+
+      <!-- 设置中心：账号与资料 / 安全 -->
+      <ProfileSettings />
 
       <!-- A. 学习概况 -->
       <section v-if="dashboard" class="space-y-3">
