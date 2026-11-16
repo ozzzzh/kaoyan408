@@ -30,6 +30,8 @@ import java.util.Map;
 @RequestMapping("/api/v1/knowledge")
 public class KnowledgeController {
 
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+
     private final KnowledgePointMapper pointMapper;
     private final KnowledgeBlockMapper blockMapper;
     private final QuestionKnowledgeMapper questionKnowledgeMapper;
@@ -82,7 +84,7 @@ public class KnowledgeController {
         blockView.put("subpointId", block.getSubpointId());
         blockView.put("subpointTitle", block.getSubpointTitle());
         blockView.put("type", block.getType());
-        blockView.put("content", block.getContentJson());
+        blockView.put("content", externalizeInlineImages(block));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("block", blockView);
@@ -121,7 +123,7 @@ public class KnowledgeController {
             view.put("subpointTitle", block.getSubpointTitle());
             view.put("order", block.getBlockOrder());
             view.put("type", block.getType());
-            view.put("content", block.getContentJson());
+            view.put("content", externalizeInlineImages(block));
             view.put("questionCount", linkCounts.getOrDefault(block.getBlockId(), 0L));
             return view;
         }).toList());
@@ -131,6 +133,106 @@ public class KnowledgeController {
         //（实测 co-vm-impl 求和 468 / 去重 61）。
         payload.put("questionCount", questionMapper.distinctQuestionsOfPoint(pointId));
         return Result.ok(payload);
+    }
+
+    /**
+     * 知识块里的内联图片资源。
+     *
+     * <p>正文图片原来以 base64 内联在 content_json 里，单个块可达 324KB：
+     * /knowledge/point 一次要下发全部块，于是最重的知识点响应 340KB，
+     * 而其中 324KB 是一张图——它既不能单独缓存，也不能渐进显示。
+     *
+     * <p>现在响应里把它改写成带内容指纹的 URL，图片由这个端点单独提供：
+     * JSON 只剩几百字节，图片走浏览器/边缘缓存（immutable），后续访问零成本。
+     */
+    @GetMapping("/asset/{blockId}")
+    public org.springframework.http.ResponseEntity<byte[]> asset(@PathVariable String blockId) {
+        KnowledgeBlock block = blockMapper.selectOne(new QueryWrapper<KnowledgeBlock>()
+                .eq("block_id", blockId).last("LIMIT 1"));
+        if (block == null) {
+            throw new BusinessException(404, "未找到该资源：" + blockId);
+        }
+        String src = readJsonField(block.getContentJson(), "src");
+        if (src == null) {
+            throw new BusinessException(404, "该块没有内联资源：" + blockId);
+        }
+        byte[] bytes;
+        String mime;
+        if (src.startsWith("data:")) {
+            int comma = src.indexOf(',');
+            if (comma < 0) {
+                throw new BusinessException(500, "资源格式异常");
+            }
+            mime = src.substring(5, comma).split(";")[0];
+            bytes = java.util.Base64.getMimeDecoder().decode(src.substring(comma + 1));
+        } else if (src.stripLeading().startsWith("<svg")) {
+            // 题库里有一部分「图片」块其实是内联 SVG 源码（最大的一个 324KB），
+            // 原来它以字符串形式塞在 JSON 里，<img src> 根本渲染不出来。
+            mime = "image/svg+xml";
+            bytes = src.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        } else {
+            throw new BusinessException(404, "该块没有内联资源：" + blockId);
+        }
+        if (!mime.startsWith("image/")) {
+            // 只提供图片，避免这个端点变成任意内容的出口
+            throw new BusinessException(400, "仅支持图片资源");
+        }
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(mime))
+                .cacheControl(org.springframework.http.CacheControl.maxAge(java.time.Duration.ofDays(365)).cachePublic().immutable())
+                // SVG 可能带脚本：CSP sandbox 让它在被直接打开时也无法执行脚本
+                .header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(bytes);
+    }
+
+    /**
+     * 把 image 块里的 data: URI 换成本地资源 URL（带内容指纹，便于长缓存）。
+     * 非图片块原样返回，不额外解析 JSON。
+     */
+    private String externalizeInlineImages(KnowledgeBlock block) {
+        String json = block.getContentJson();
+        if (!"image".equals(block.getType()) || json == null) {
+            return json;
+        }
+        // 两种内联形态都要外置：data: URI（base64）与内联 SVG 源码。
+        if (!json.contains("data:") && !json.contains("<svg")) {
+            return json;
+        }
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode node =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(json);
+            String src = node.path("src").asText("");
+            if (src.startsWith("data:") || src.stripLeading().startsWith("<svg")) {
+                String version = sha256Short(src);
+                node.put("src", "/api/v1/knowledge/asset/" + block.getBlockId() + "?v=" + version);
+            }
+            return JSON.writeValueAsString(node);
+        } catch (Exception e) {
+            // 解析失败就原样返回：宁可用大一点的响应，也不要让正文渲染不出来
+            return json;
+        }
+    }
+
+    private String readJsonField(String json, String field) {
+        if (json == null) {
+            return null;
+        }
+        try {
+            return JSON.readTree(json).path(field).asText(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String sha256Short(String value) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest).substring(0, 12);
+        } catch (Exception e) {
+            return "0";
+        }
     }
 
     private long toLong(Object value) {

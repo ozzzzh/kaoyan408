@@ -26,6 +26,100 @@
     <meta name="twitter:card" content="summary_large_image" />
 
     <!--
+      启动骨架（内联）。
+      为什么放在这里：应用 JS 要经隧道下载，首字节到 Vue 挂载之间可能隔好几秒。
+      这段时间原来是纯白/纯黑，看起来像打不开。这段静态 HTML 由浏览器解析即渲染，
+      Vue 挂载时会把 #app 的内容整体替换掉，不会残留。
+
+      颜色走 :root 与 html.dark 两个分支：theme-init.js 在任何渲染前就给 <html> 加了
+      class，所以首帧就是正确配色，不会先亮后暗。
+      样式内联是允许的（CSP 为 style-src 'unsafe-inline'），且不引入任何外部资源。
+    -->
+    <style>
+      :root {
+        --boot-bg: #f5f6fa;
+        --boot-surface: #ffffff;
+        --boot-border: #e6e8ef;
+        --boot-text: #1f2329;
+        --boot-muted: #8b93a3;
+        --boot-accent: #00b5a8;
+      }
+      html.dark {
+        --boot-bg: #0f1117;
+        --boot-surface: #161a23;
+        --boot-border: #262c3a;
+        --boot-text: #e8eaf0;
+        --boot-muted: #7f8798;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--boot-bg);
+        color: var(--boot-text);
+      }
+      .boot-splash {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+          'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      }
+      .boot-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: var(--boot-text);
+      }
+      .boot-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--boot-accent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--boot-accent) 18%, transparent);
+        animation: boot-pulse 1.4s ease-in-out infinite;
+      }
+      .boot-card {
+        width: min(560px, 82vw);
+        border: 1px solid var(--boot-border);
+        border-radius: 14px;
+        background: var(--boot-surface);
+        padding: 22px 22px 26px;
+      }
+      .boot-line {
+        height: 10px;
+        border-radius: 6px;
+        background: var(--boot-border);
+        margin-bottom: 12px;
+        animation: boot-shimmer 1.3s ease-in-out infinite;
+      }
+      .boot-line:nth-child(1) { width: 64%; }
+      .boot-line:nth-child(2) { width: 92%; animation-delay: 0.12s; }
+      .boot-line:nth-child(3) { width: 78%; animation-delay: 0.24s; }
+      .boot-line:nth-child(4) { width: 40%; animation-delay: 0.36s; margin-bottom: 0; }
+      .boot-hint {
+        font-size: 12px;
+        color: var(--boot-muted);
+      }
+      @keyframes boot-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.35; }
+      }
+      @keyframes boot-shimmer {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-dot, .boot-line { animation: none; }
+      }
+    </style>
+
+    <!--
       首帧主题预设：必须在任何渲染之前同步执行，否则暗色用户会先看到白底再闪成暗色。
       用 public/theme-init.js 外链（经典脚本会阻塞渲染，执行完才继续），不用内联脚本：
       nginx 下发的是严格 CSP（script-src 'self'），内联脚本需要登记 sha256，
@@ -35,7 +129,21 @@
     <script src="/theme-init.js"></script>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="boot-splash" role="status" aria-label="正在加载题知链">
+        <div class="boot-brand">
+          <span class="boot-dot"></span>
+          题知链 408
+        </div>
+        <div class="boot-card">
+          <div class="boot-line"></div>
+          <div class="boot-line"></div>
+          <div class="boot-line"></div>
+          <div class="boot-line"></div>
+        </div>
+        <p class="boot-hint">正在加载题库与知识体系…</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

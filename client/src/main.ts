@@ -25,3 +25,18 @@ void userStore.restore()
 
 app.use(router)
 app.mount('#app')
+
+/**
+ * Service Worker：回访时把带哈希的构建产物与外壳从本地缓存直接给出，
+ * 免掉再次跨境下载（线上入口单次往返 0.9–2.7 秒）。
+ *
+ * 只在生产构建里注册：开发环境注册会干扰 HMR，也让「改完刷新看不到变化」变成常态。
+ * 失败不影响任何功能——它只是加速层。
+ */
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* 注册失败按无缓存运行 */
+    })
+  })
+}
