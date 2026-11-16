@@ -425,6 +425,23 @@ npm run build      # 依赖已装好，现在可以直接在服务器构建
 
 日常发版仍推荐本地构建（`npm run deploy`）；服务器侧构建作为应急手段保留。
 
+### 用 API 建 Cache Rule（`npm run cf:cache-rule`）
+
+不想点面板就用脚本，效果一样：
+
+```bash
+# 1. Cloudflare → My Profile → API Tokens → Create Token（自定义）
+#    权限：Zone → Cache Rules → Edit、Zone → Zone → Read（想自动清缓存再加 Cache Purge → Purge）
+#    Zone Resources 限定到 de5.net，不要给 All zones
+# 2. 本机设置（只在本机，不进仓库）
+setx CF_API_TOKEN "<token>"          # Windows；之后新开的终端生效
+# 3. 执行（会先查 zone、合并已有规则、清理入口缓存，再验证）
+npm run cf:cache-rule
+npm run cf:cache-rule -- --dry-run   # 只看将要提交的规则
+npm run check:edge                   # 单独再验一次，期望 cf-cache-status: HIT
+```
+
+用完后建议在 Cloudflare 后台把该 Token 撤销（它是长期凭据，只这次用得上）。
 ### 边缘缓存自检（`npm run check:edge`）
 
 ```bash
