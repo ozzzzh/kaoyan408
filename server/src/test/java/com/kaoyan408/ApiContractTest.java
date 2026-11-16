@@ -240,14 +240,16 @@ class ApiContractTest {
     // ---------- 管理员模式 ----------
 
     @Test
-    @DisplayName("演示账号提示接口匿名可读，且不泄露密码")
-    void demoInfoIsPublic() throws Exception {
+    @DisplayName("演示账号列表匿名可读：同时给出演示用户与演示管理员两个入口")
+    void demoInfoListsBothDemoAccounts() throws Exception {
         mockMvc.perform(get("/api/v1/auth/demo-info"))
                 .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.username").exists())
-                // 演示账号是公开展示账号，密码随接口返回（运维改了配置登录页才不会显示旧口令）；
-                // 管理员密码永远不会经过任何接口。
-                .andExpect(jsonPath("$.data.password").exists());
+                .andExpect(jsonPath("$.data.accounts").isArray())
+                // 两个角色都要有：登录页据此渲染「二选一」
+                .andExpect(jsonPath("$.data.accounts[?(@.role=='user')]").exists())
+                .andExpect(jsonPath("$.data.accounts[?(@.role=='admin')]").exists())
+                // 公开演示账号带密码（运维改了口令登录页才不会显示旧值）
+                .andExpect(jsonPath("$.data.accounts[0].password").exists());
     }
 
     @Test
@@ -315,6 +317,48 @@ class ApiContractTest {
         // 禁用后同一 token 应被拒（禁用时 token_version 自增 + 缓存失效）
         mockMvc.perform(get("/api/v1/user/current").header("Authorization", "Bearer " + victimToken))
                 .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    @DisplayName("演示管理员默认只读：能看概览与列表，写操作被服务端拒绝")
+    void demoAdminIsReadOnly() throws Exception {
+        // 配置默认 demo-admin / demo-admin123456 / read-only=true
+        String token = tokenOf2("demo-admin", "demo-admin123456");
+
+        mockMvc.perform(get("/api/v1/admin/overview").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.readOnly").value(true));
+        mockMvc.perform(get("/api/v1/admin/users").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.code").value(0));
+
+        Long demoId = userMapper.selectOne(new QueryWrapper<User>()
+                .eq("username", "demo").last("LIMIT 1")).getId();
+        // 写操作：即使密码公开、即使直接调接口，也必须被拒
+        mockMvc.perform(patch("/api/v1/admin/users/" + demoId + "/active")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false}"))
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.msg").value(org.hamcrest.Matchers.containsString("只读")));
+    }
+
+    /** 用已知账号密码登录（不新建用户）。 */
+    private String tokenOf2(String username, String password) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}"))
+                .andReturn();
+        String body = result.getResponse().getContentAsString();
+        assertThat(jsonCode(body)).as("登录应成功: " + body).isEqualTo(0);
+        return JSON.readTree(body).path("data").path("token").asText();
+    }
+
+    private int jsonCode(String body) {
+        try {
+            return JSON.readTree(body).path("code").asInt();
+        } catch (Exception e) {
+            return -999;
+        }
     }
 
     /** 建一个已知密码的账号；返回带 id 的实体，token 用 tokenOf 另取。 */

@@ -542,6 +542,8 @@ export interface AiAnimationResult {
 
 /** 站点概览（管理员首页卡片）。 */
 export interface AdminOverview {
+  /** 当前登录者是否为「只读的演示管理员」：能看概览与列表，不能改任何数据 */
+  readOnly: boolean
   users: number
   activeUsers: number
   admins: number
@@ -589,9 +591,18 @@ export interface AdminUserAction {
   removed?: Record<string, number>
 }
 
-/** 演示账号提示（匿名可读，密码是公开的展示账号密码）。 */
+/** 一个公开的演示账号（密码本来就是展示用的）。 */
+export interface DemoAccount {
+  role: 'user' | 'admin'
+  label: string
+  desc: string
+  username: string
+  password: string
+  /** 仅演示管理员有：true 表示只能看，写操作会被服务端拒绝 */
+  readOnly?: boolean
+}
+
+/** 登录页的「二选一」入口：演示用户 / 演示管理员。 */
 export interface DemoInfo {
-  enabled: boolean
-  username: string | null
-  password: string | null
+  accounts: DemoAccount[]
 }

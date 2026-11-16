@@ -1,6 +1,7 @@
 package com.kaoyan408.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.kaoyan408.config.AccountProperties;
 import com.kaoyan408.core.AccountStateCache;
 import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.entity.User;
@@ -40,19 +41,23 @@ public class AdminService {
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
     private final AccountStateCache accountStateCache;
+    private final AccountProperties accountProperties;
     private final SecureRandom random = new SecureRandom();
 
     public AdminService(UserMapper userMapper, JdbcTemplate jdbcTemplate,
-                        PasswordEncoder passwordEncoder, AccountStateCache accountStateCache) {
+                        PasswordEncoder passwordEncoder, AccountStateCache accountStateCache,
+                        AccountProperties accountProperties) {
         this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.passwordEncoder = passwordEncoder;
         this.accountStateCache = accountStateCache;
+        this.accountProperties = accountProperties;
     }
 
     /** 站点概览：账号、内容、练习、AI 的规模数据。 */
-    public Map<String, Object> overview() {
+    public Map<String, Object> overview(String operatorUsername) {
         Map<String, Object> data = new LinkedHashMap<>();
+        data.put("readOnly", isReadOnlyDemo(operatorUsername));
         data.put("users", count("SELECT COUNT(*) FROM app_user"));
         data.put("activeUsers", count("SELECT COUNT(*) FROM app_user WHERE is_active = 1"));
         data.put("admins", count("SELECT COUNT(*) FROM app_user WHERE is_admin = 1"));
@@ -128,7 +133,8 @@ public class AdminService {
 
     /** 启用 / 禁用账号。禁用会立刻让该用户的 token 失效。 */
     @Transactional
-    public Map<String, Object> setActive(Long operatorId, Long userId, boolean active) {
+    public Map<String, Object> setActive(String operatorUsername, Long operatorId, Long userId, boolean active) {
+        requireWritable(operatorUsername);
         User user = requireUser(userId);
         if (user.getId().equals(operatorId) && !active) {
             throw new BusinessException(400, "不能禁用你自己的账号。");
@@ -144,7 +150,8 @@ public class AdminService {
 
     /** 授予 / 撤销管理员。 */
     @Transactional
-    public Map<String, Object> setAdmin(Long operatorId, Long userId, boolean admin) {
+    public Map<String, Object> setAdmin(String operatorUsername, Long operatorId, Long userId, boolean admin) {
+        requireWritable(operatorUsername);
         User user = requireUser(userId);
         if (user.getId().equals(operatorId) && !admin) {
             throw new BusinessException(400, "不能撤销自己的管理员权限。");
@@ -166,7 +173,8 @@ public class AdminService {
      * 这正是「账号可能被盗」时该有的效果。
      */
     @Transactional
-    public Map<String, Object> resetPassword(Long userId, String newPassword) {
+    public Map<String, Object> resetPassword(String operatorUsername, Long userId, String newPassword) {
+        requireWritable(operatorUsername);
         User user = requireUser(userId);
         String password = (newPassword == null || newPassword.isBlank()) ? generatePassword() : newPassword;
         if (password.length() < 8) {
@@ -187,7 +195,8 @@ public class AdminService {
 
     /** 清空某个账号的练习数据（用于「演示账号复位」）。 */
     @Transactional
-    public Map<String, Object> clearUserData(Long userId) {
+    public Map<String, Object> clearUserData(String operatorUsername, Long userId) {
+        requireWritable(operatorUsername);
         User user = requireUser(userId);
         Map<String, Object> removed = new LinkedHashMap<>();
         removed.put("attempts", jdbcTemplate.update("DELETE FROM question_attempt WHERE user_id = ?", userId));
@@ -202,6 +211,26 @@ public class AdminService {
         return payload;
     }
 
+    /**
+     * 只读演示管理员的写操作拦截。
+     *
+     * <p>为什么在服务端而不是只在前端灰掉按钮：演示管理员的密码是公开的，
+     * 任何人都能拿它直接调接口。前端禁用只是提示，这里才是真正的门禁。
+     */
+    private void requireWritable(String operatorUsername) {
+        if (isReadOnlyDemo(operatorUsername)) {
+            throw new BusinessException(403, "演示管理员为只读模式，不能修改任何数据。");
+        }
+    }
+
+    /** 当前操作者是否是「只读的演示管理员」。 */
+    public boolean isReadOnlyDemo(String username) {
+        AccountProperties.DemoAdmin demoAdmin = accountProperties.getDemoAdmin();
+        return demoAdmin.isEnabled()
+                && demoAdmin.getUsername() != null
+                && demoAdmin.getUsername().equals(username)
+                && demoAdmin.isReadOnly();
+    }
     private User requireUser(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {

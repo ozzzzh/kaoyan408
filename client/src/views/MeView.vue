@@ -19,7 +19,7 @@ const mode = ref<'login' | 'register'>('login')
  * 演示账号提示（匿名可读接口）。为什么从后端拿而不是写死：
  * 运维改了 KAOYAN_DEMO_PASSWORD 之后，登录页不该继续显示旧口令。
  */
-const demo = ref<{ enabled: boolean; username: string | null; password: string | null } | null>(null)
+const demoAccounts = ref<import('@/api/types').DemoAccount[]>([])
 const username = ref('')
 const email = ref('')
 const password = ref('')
@@ -182,13 +182,18 @@ const scopeLabel: Record<string, string> = {
   all: '全部个人数据',
 }
 
-/** 一键填入演示账号，用户点「登录」即可。 */
-function fillDemo(): void {
-  if (!demo.value?.username || !demo.value?.password) return
+/**
+ * 一键填入某个演示账号并直接登录。
+ *
+ * 直接登录而不是只填表单：这两个就是公开的展示账号，
+ * 多一步「再点一次登录」只会让人以为按钮坏了。
+ */
+async function fillDemo(account: { username: string; password: string }): Promise<void> {
   mode.value = 'login'
-  username.value = demo.value.username
-  password.value = demo.value.password
+  username.value = account.username
+  password.value = account.password
   error.value = null
+  await submit()
 }
 
 async function submit() {
@@ -271,7 +276,7 @@ onMounted(() => {
   void api
     .demoInfo()
     .then((info) => {
-      demo.value = info
+      demoAccounts.value = info.accounts ?? []
     })
     .catch(() => {
       // 演示账号提示属于加分项，取不到就不显示
@@ -607,21 +612,32 @@ watch(user, (next) => {
         </button>
       </div>
 
-      <!-- 演示账号：给访客一个「点一下就进」的入口，不用注册 -->
-      <div
-        v-if="mode === 'login' && demo?.enabled && demo.username && demo.password"
-        class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--k-accent)]/40 bg-[var(--k-accent-soft)] px-3 py-2 text-xs"
-      >
-        <span class="text-[var(--k-accent-text)]">
-          演示账号：<b class="font-mono">{{ demo.username }}</b> / <b class="font-mono">{{ demo.password }}</b>
-          （里面已有做题与背诵数据）
-        </span>
+      <!--
+        演示账号（二选一）：一个是有数据的普通用户，一个是只读的演示管理员。
+        点一下就登录，不用再点一次「登录」—— 这两个本来就是公开的展示账号。
+      -->
+      <div v-if="mode === 'login' && demoAccounts.length" class="space-y-2">
+        <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">或者直接体验（无需注册）</p>
         <button
+          v-for="account in demoAccounts"
+          :key="account.role"
           type="button"
-          class="shrink-0 rounded-md bg-[var(--k-accent)] px-2.5 py-1 text-[11px] font-bold text-[var(--k-on-accent)]"
-          @click="fillDemo"
+          class="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--k-accent)]/40 bg-[var(--k-accent-soft)] px-3 py-2 text-left transition hover:border-[var(--k-accent)]"
+          @click="fillDemo(account)"
         >
-          一键填入
+          <span class="min-w-0">
+            <span class="flex items-center gap-1.5 text-xs font-bold text-[var(--k-accent-text)]">
+              {{ account.label }}
+              <span
+                v-if="account.role === 'admin'"
+                class="rounded bg-[var(--k-surface)] px-1 py-0.5 text-[10px] font-semibold text-[var(--k-text-muted)]"
+              >{{ account.readOnly ? '只读' : '可操作' }}</span>
+            </span>
+            <span class="mt-0.5 block truncate text-[11px] text-[var(--k-text-muted)]">{{ account.desc }}</span>
+          </span>
+          <span class="shrink-0 rounded-md bg-[var(--k-accent)] px-2.5 py-1 text-[11px] font-bold text-[var(--k-on-accent)]">
+            以此登录
+          </span>
         </button>
       </div>
 
