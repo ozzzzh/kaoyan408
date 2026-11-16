@@ -50,8 +50,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 // 版本必须严格相等：签发时用的是当时的 token_version，
                 // 服务端一旦把它加一（禁用、改密、主动踢下线），旧 token 立即不再匹配。
                 if (username != null && state.usable() && state.tokenVersion() == jwtUtil.tokenVersion(claims)) {
-                    var authentication = new UsernamePasswordAuthenticationToken(
-                            username, null, List.of(new SimpleGrantedAuthority("USER")));
+                    // 管理员与普通用户用同一套 token，权限位来自数据库（缓存 60 秒）。
+                    // 这样「授予/撤销管理员」不需要用户重新登录，最多 60 秒生效。
+                    List<SimpleGrantedAuthority> authorities = state.admin()
+                            ? List.of(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_ADMIN"))
+                            : List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                    var authentication = new UsernamePasswordAuthenticationToken(username, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
             } catch (Exception ignored) {

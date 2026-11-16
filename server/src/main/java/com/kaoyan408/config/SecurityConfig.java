@@ -72,6 +72,9 @@ public class SecurityConfig {
                         // AI：对话与状态对游客开放（游客限 3 次，计数在服务端按 IP 做），
                         // 只有会话列表/详情/删除需要登录——那是账号数据，游客本来也没有。
                         .requestMatchers("/api/v1/ai/conversations/**").authenticated()
+                        // 管理员接口：必须已登录且带 ROLE_ADMIN。
+                        // 权限位来自数据库（AccountStateCache 缓存 60 秒），授予/撤销无需重新登录。
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         // 答题接口对游客开放：服务端仍会判分并返回解析，只是不写任何记录。
                         // 之前要求登录，导致游客能打开刷题页却答不出结果。
                         .anyRequest().permitAll())

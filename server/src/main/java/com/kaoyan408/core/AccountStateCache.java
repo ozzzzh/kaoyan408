@@ -27,7 +27,8 @@ public class AccountStateCache {
     /** 超过这个条数整体清空，避免用户名被大量构造时无限增长。 */
     private static final int MAX_ENTRIES = 5_000;
 
-    public record State(boolean usable, int tokenVersion, long checkedAt) {
+    /** 是否管理员也一起缓存：鉴权过滤器每个请求都要判断权限，不能为此再查一次库。 */
+    public record State(boolean usable, boolean admin, int tokenVersion, long checkedAt) {
     }
 
     private final UserMapper userMapper;
@@ -46,7 +47,8 @@ public class AccountStateCache {
         User user = userMapper.selectOne(new QueryWrapper<User>().eq("username", username).last("LIMIT 1"));
         boolean usable = user != null && (user.getIsActive() == null || user.getIsActive() != 0);
         int version = user == null || user.getTokenVersion() == null ? 0 : user.getTokenVersion();
-        State fresh = new State(usable, version, now);
+        boolean admin = user != null && user.getIsAdmin() != null && user.getIsAdmin() == 1;
+        State fresh = new State(usable, admin, version, now);
         if (cache.size() >= MAX_ENTRIES) {
             cache.clear();
         }
