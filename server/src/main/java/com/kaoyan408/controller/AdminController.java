@@ -45,10 +45,10 @@ public class AdminController {
     public record PasswordRequest(String password) {
     }
 
-    /** 站点概览。 */
+    /** 站点概览。响应里的 readOnly 告诉前端「当前是只读演示管理员」。 */
     @GetMapping("/overview")
-    public Result<Map<String, Object>> overview() {
-        return Result.ok(adminService.overview());
+    public Result<Map<String, Object>> overview(Authentication authentication) {
+        return Result.ok(adminService.overview(authentication == null ? null : authentication.getName()));
     }
 
     /** 账号列表（分页 + 关键字）。 */
@@ -63,29 +63,38 @@ public class AdminController {
     @PatchMapping("/users/{id}/active")
     public Result<Map<String, Object>> setActive(@PathVariable Long id, @RequestBody ActiveRequest request,
                                                  Authentication authentication) {
-        return Result.ok(adminService.setActive(operatorId(authentication), id, request.active()));
+        return Result.ok(adminService.setActive(operatorName(authentication), operatorId(authentication), id, request.active()));
     }
 
     /** 授予 / 撤销管理员。 */
     @PatchMapping("/users/{id}/admin")
     public Result<Map<String, Object>> setAdmin(@PathVariable Long id, @RequestBody AdminRequest request,
                                                 Authentication authentication) {
-        return Result.ok(adminService.setAdmin(operatorId(authentication), id, request.admin()));
+        return Result.ok(adminService.setAdmin(operatorName(authentication), operatorId(authentication), id, request.admin()));
     }
 
     /** 重置密码（不传则生成随机密码并在响应里返回一次）。 */
     @PostMapping("/users/{id}/reset-password")
     public Result<Map<String, Object>> resetPassword(@PathVariable Long id,
-                                                     @RequestBody(required = false) PasswordRequest request) {
-        return Result.ok(adminService.resetPassword(id, request == null ? null : request.password()));
+                                                     @RequestBody(required = false) PasswordRequest request,
+                                                     Authentication authentication) {
+        return Result.ok(adminService.resetPassword(
+                operatorName(authentication), id, request == null ? null : request.password()));
     }
 
     /** 清空某个账号的练习数据（演示账号复位用）。 */
     @PostMapping("/users/{id}/clear-data")
-    public Result<Map<String, Object>> clearData(@PathVariable Long id) {
-        return Result.ok(adminService.clearUserData(id));
+    public Result<Map<String, Object>> clearData(@PathVariable Long id, Authentication authentication) {
+        return Result.ok(adminService.clearUserData(operatorName(authentication), id));
     }
 
+
+    private String operatorName(Authentication authentication) {
+        if (authentication == null) {
+            throw new BusinessException(401, "认证失败，无法访问系统资源。");
+        }
+        return authentication.getName();
+    }
 
     private Long operatorId(Authentication authentication) {
         if (authentication == null) {

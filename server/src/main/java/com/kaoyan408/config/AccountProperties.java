@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 public class AccountProperties {
 
     private Demo demo = new Demo();
+    private DemoAdmin demoAdmin = new DemoAdmin();
     private Admin admin = new Admin();
 
     @Data
@@ -31,6 +32,23 @@ public class AccountProperties {
         private String password = "demo123456";
         /** 是否给演示账号预置一些做题与背诵数据（首页/看板才有东西可看）。 */
         private boolean seedData = true;
+    }
+
+    /**
+     * 演示管理员：公开可登录，用来演示后台。
+     *
+     * <p>和真正的 admin 是**两个账号**：演示账号出的任何事都不该影响真管理员。
+     * 默认 read-only=true —— 公开站点上一个能点按钮的完整管理员，
+     * 等于把「禁用所有账号 / 清空所有数据」做成任何人都能点的功能。
+     * 想让它能操作，把 KAOYAN_DEMO_ADMIN_READONLY 设为 false。
+     */
+    @Data
+    public static class DemoAdmin {
+        private boolean enabled = true;
+        private String username = "demo-admin";
+        private String password = "demo-admin123456";
+        /** true = 只能看（概览与账号列表），所有写操作被服务端拒绝。 */
+        private boolean readOnly = true;
     }
 
     @Data

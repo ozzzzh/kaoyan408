@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -84,22 +86,41 @@ public class AuthController {
     }
 
     /**
-     * 演示账号提示（匿名可读）。
+     * 演示账号列表（匿名可读）：登录页据此渲染「以演示用户登录 / 以演示管理员登录」。
      *
-     * <p>这里**刻意连密码一起返回**：演示账号是公开的展示账号，密码本来就写在部署
-     * 配置里、也本来就要展示在登录页上；让接口返回而不是前端写死，是为了运维改了
-     * KAOYAN_DEMO_PASSWORD 之后登录页不会继续显示旧口令。
+     * <p>**刻意连密码一起返回**：这两个都是公开的展示账号，密码本来就写在部署配置里、
+     * 也本来就要展示在登录页上；让接口返回而不是前端写死，是为了运维改了口令后
+     * 登录页不会继续显示旧密码。
      *
-     * <p>边界很清楚：只有这一个账号、只在 demo.enabled=true 时返回。
-     * 管理员密码永远不经过任何接口取回。
+     * <p>边界：只有这两个账号会出现在响应里。真管理员的密码永远不经过任何接口取回。
+     * 演示管理员默认只读（写操作在 AdminService 里被拒），所以把它公开是可接受的。
      */
     @GetMapping("/auth/demo-info")
     public Result<Map<String, Object>> demoInfo() {
+        List<Map<String, Object>> accounts = new ArrayList<>();
+        AccountProperties.Demo demo = accountProperties.getDemo();
+        if (demo.isEnabled()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("role", "user");
+            item.put("label", "演示用户");
+            item.put("desc", "有做题与背诵数据，能看工作台与看板");
+            item.put("username", demo.getUsername());
+            item.put("password", demo.getPassword());
+            accounts.add(item);
+        }
+        AccountProperties.DemoAdmin demoAdmin = accountProperties.getDemoAdmin();
+        if (demoAdmin.isEnabled()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("role", "admin");
+            item.put("label", "演示管理员");
+            item.put("desc", demoAdmin.isReadOnly() ? "可查看后台概览与账号列表（只读）" : "可操作后台");
+            item.put("username", demoAdmin.getUsername());
+            item.put("password", demoAdmin.getPassword());
+            item.put("readOnly", demoAdmin.isReadOnly());
+            accounts.add(item);
+        }
         Map<String, Object> data = new LinkedHashMap<>();
-        boolean enabled = accountProperties.getDemo().isEnabled();
-        data.put("enabled", enabled);
-        data.put("username", enabled ? accountProperties.getDemo().getUsername() : null);
-        data.put("password", enabled ? accountProperties.getDemo().getPassword() : null);
+        data.put("accounts", accounts);
         return Result.ok(data);
     }
 

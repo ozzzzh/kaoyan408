@@ -78,6 +78,13 @@ kaoyan:
     password: ${KAOYAN_DEMO_PASSWORD:demo123456}
     # 是否给演示账号预置做题/背诵数据（首页与看板才有东西可看）
     seed-data: ${KAOYAN_DEMO_SEED_DATA:true}
+  demo-admin:
+    # 公开可登录的后台演示账号。默认只读：能看概览与账号列表，不能改任何数据。
+    # 它与真管理员是两个账号，用户名必须不同（同名时启动会跳过并报错）。
+    enabled: ${KAOYAN_DEMO_ADMIN_ENABLED:true}
+    username: ${KAOYAN_DEMO_ADMIN_USERNAME:demo-admin}
+    password: ${KAOYAN_DEMO_ADMIN_PASSWORD:demo-admin123456}
+    read-only: ${KAOYAN_DEMO_ADMIN_READONLY:true}
   admin:
     # 留空则不创建也不提升任何人 —— 仓库里不存在默认管理员口令
     username: ${KAOYAN_ADMIN_USERNAME:}

@@ -45,6 +45,7 @@ public class AccountBootstrap {
             try {
                 ensureAdmin(userMapper, passwordEncoder, properties.getAdmin());
                 ensureDemo(userMapper, questionMapper, passwordEncoder, jdbcTemplate, properties.getDemo());
+                ensureDemoAdmin(userMapper, passwordEncoder, properties);
             } catch (Exception ex) {
                 // 内置账号初始化失败不应该拖住整个服务启动
                 log.warn("内置账号初始化失败，服务继续启动：{}", ex.getMessage());
@@ -106,6 +107,57 @@ public class AccountBootstrap {
             log.info("管理员账号 {} 已对齐（管理员位/启用状态/密码）", username);
         } else {
             log.info("管理员账号 {} 已就绪", username);
+        }
+    }
+
+    /**
+     * 演示管理员：公开可登录的后台演示账号。
+     *
+     * <p>刻意与真管理员分开：它的用户名/密码会公开展示在登录页上，
+     * 不能和唯一的真管理员是同一个账号。同时默认只读（见 AccountProperties.DemoAdmin），
+     * 写操作在 AdminService 里被拒绝。
+     */
+    private void ensureDemoAdmin(UserMapper userMapper, PasswordEncoder encoder, AccountProperties properties) {
+        AccountProperties.DemoAdmin demoAdmin = properties.getDemoAdmin();
+        if (!demoAdmin.isEnabled()) {
+            log.info("演示管理员已禁用（kaoyan.demo-admin.enabled=false）");
+            return;
+        }
+        String username = demoAdmin.getUsername();
+        String realAdmin = properties.getAdmin().getUsername();
+        if (realAdmin != null && !realAdmin.isBlank() && realAdmin.equals(username)) {
+            // 同名会把真管理员变成公开账号，这是必须挡住的配置错误
+            log.error("演示管理员用户名与真管理员相同（{}），已跳过演示管理员初始化。"
+                    + "请把 KAOYAN_DEMO_ADMIN_USERNAME 改成其它名字。", username);
+            return;
+        }
+        User existing = findByUsername(userMapper, username);
+        if (existing == null) {
+            User user = new User();
+            user.setUsername(username);
+            user.setEmail(username + "@demo.local");
+            user.setPasswordHash(encoder.encode(demoAdmin.getPassword()));
+            user.setIsActive(1);
+            user.setIsAdmin(1);
+            user.setTokenVersion(1);
+            userMapper.insert(user);
+            log.info("已创建演示管理员 {}（只读={}）", username, demoAdmin.isReadOnly());
+            return;
+        }
+        boolean changed = false;
+        if (existing.getIsAdmin() == null || existing.getIsAdmin() != 1) {
+            existing.setIsAdmin(1);
+            changed = true;
+        }
+        if (existing.getIsActive() != null && existing.getIsActive() == 0) {
+            existing.setIsActive(1);
+            changed = true;
+        }
+        if (changed) {
+            userMapper.updateById(existing);
+            log.info("演示管理员 {} 已对齐为管理员/启用", username);
+        } else {
+            log.info("演示管理员 {} 已就绪（只读={}）", username, demoAdmin.isReadOnly());
         }
     }
 

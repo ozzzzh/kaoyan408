@@ -25,6 +25,8 @@ const message = ref<string | null>(null)
 const error = ref<string | null>(null)
 
 const meId = computed(() => userStore.user?.id ?? null)
+/** 只读的演示管理员：能看，不能改（服务端也会拒）。 */
+const readOnly = computed(() => overview.value?.readOnly === true)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size)))
 
 async function loadOverview() {
@@ -138,6 +140,16 @@ onMounted(refresh)
       </button>
     </header>
 
+    <!-- 只读演示管理员提示：让访客知道「这是演示，按钮点不动是设计如此」 -->
+    <div
+      v-if="readOnly"
+      class="rounded-lg border border-[#8a6d1f]/40 bg-[var(--k-warn-soft)] px-4 py-2.5 text-xs leading-6 text-[var(--k-warn)]"
+    >
+      你现在用的是<b>只读的演示管理员</b>账号：可以查看站点概览、浏览账号列表，
+      但禁用/授权/重置密码/清空数据这些操作会被服务端拒绝。
+      需要真正管理请用你自己的管理员账号登录。
+    </div>
+
     <!-- 提示条 -->
     <div
       v-if="message || error"
@@ -230,7 +242,7 @@ onMounted(refresh)
             <button
               type="button"
               class="rounded-lg border border-[var(--k-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--k-text-muted)] transition hover:bg-[var(--k-surface-soft)] disabled:opacity-50"
-              :disabled="busy === item.id || item.id === meId"
+              :disabled="readOnly || busy === item.id || item.id === meId"
               @click="toggleActive(item)"
             >
               {{ item.active ? '禁用' : '启用' }}
@@ -238,7 +250,7 @@ onMounted(refresh)
             <button
               type="button"
               class="rounded-lg border border-[var(--k-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--k-text-muted)] transition hover:bg-[var(--k-surface-soft)] disabled:opacity-50"
-              :disabled="busy === item.id || item.id === meId"
+              :disabled="readOnly || busy === item.id || item.id === meId"
               @click="toggleAdmin(item)"
             >
               {{ item.admin ? '撤销管理员' : '设为管理员' }}
@@ -246,7 +258,7 @@ onMounted(refresh)
             <button
               type="button"
               class="rounded-lg border border-[var(--k-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--k-text-muted)] transition hover:bg-[var(--k-surface-soft)] disabled:opacity-50"
-              :disabled="busy === item.id"
+              :disabled="readOnly || busy === item.id"
               @click="resetPassword(item)"
             >
               重置密码
@@ -254,7 +266,7 @@ onMounted(refresh)
             <button
               type="button"
               class="rounded-lg border border-[#8a6d1f]/40 px-2.5 py-1 text-[11px] font-semibold text-[var(--k-warn)] transition hover:bg-[var(--k-warn-soft)] disabled:opacity-50"
-              :disabled="busy === item.id || item.id === meId"
+              :disabled="readOnly || busy === item.id || item.id === meId"
               @click="clearData(item)"
             >
               清空数据
