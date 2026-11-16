@@ -367,6 +367,11 @@ export interface AuthUser {
   username: string
   email: string | null
   createdAt: string | null
+  /**
+   * 是否管理员。服务端一直在 profile 里返回它，只是前端类型此前漏了——
+   * 接入类型检查后立刻暴露（侧栏与路由守卫都用它决定是否显示管理入口）。
+   */
+  isAdmin: boolean
 }
 
 export interface LoginResult {
@@ -531,4 +536,62 @@ export interface AiAnimationResult {
     }>
   }
   cached: boolean
+}
+
+/* ---------------- 管理员 ---------------- */
+
+/** 站点概览（管理员首页卡片）。 */
+export interface AdminOverview {
+  users: number
+  activeUsers: number
+  admins: number
+  newUsers7d: number
+  attempts: number
+  attemptsToday: number
+  questions: number
+  knowledgePoints: number
+  knowledgeBlocks: number
+  memoryCards: number
+  mockSessions: number
+  aiMessages: number
+  aiConversations: number
+}
+
+export interface AdminUser {
+  id: number
+  username: string
+  email: string | null
+  active: boolean
+  admin: boolean
+  createdAt: string | null
+  attempts: number
+  cards: number
+  lastActiveAt: string | null
+}
+
+export interface AdminUserPage {
+  total: number
+  page: number
+  size: number
+  items: AdminUser[]
+}
+
+/** 管理操作的返回：统一的账号摘要 + 一句人话说明。 */
+export interface AdminUserAction {
+  id: number
+  username: string
+  active: boolean
+  admin: boolean
+  message: string
+  /** 仅「重置密码且未指定新密码」时返回一次 */
+  generatedPassword?: string
+  /** 仅「清空练习数据」时返回被删条数 */
+  removed?: Record<string, number>
+}
+
+/** 演示账号提示（匿名可读，密码是公开的展示账号密码）。 */
+export interface DemoInfo {
+  enabled: boolean
+  username: string | null
+  password: string | null
 }

@@ -344,11 +344,11 @@ cd server && mvn -B test            # 接口契约测试（10 个用例）+ jaco
 SyntaxError: The requested module 'node:util' does not provide an export named 'styleText'
 ```
 
-所以**不能在服务器上构建前端**。当前流程是：本地（Node 22/24）`npm run build` →
-把 `client/dist` 打包上传 → 解包到 `dist.new` → `mv dist dist.old.<ts> && mv dist.new dist`
-→ `docker compose -p kaoyan408 up -d --force-recreate web`。
+所以**不能直接用系统 node 在服务器上构建前端**。日常流程是本地构建后上传，已封成一条命令
+（见下面「一键发版」）。
 
-要把构建能力还给服务器，需要把 Node 升到 22 LTS（或 20.19+），否则每次发版都得在本地构建。
+要把构建能力还给服务器，需要 Node 22 LTS（或 20.19+）。已经装在 `/opt/node22`
+（不动系统 node，避免影响同机其它项目），用法见「服务器上的 Node 22」。
 
 ### 让回访更快：Cloudflare 缓存规则（面板操作，不在仓库里）
 
@@ -358,10 +358,13 @@ SyntaxError: The requested module 'node:util' does not provide an export named '
 
 在 Cloudflare 面板里加一条 Cache Rule 即可（一次性操作）：
 
+> 注意 zone 名：本站域名本身就是 zone 的 apex，所以 zone 是 **`tizhilian408.de5.net`**，
+> 不是 `de5.net`（按 `de5.net` 查会查不到）。
+
 | 项 | 值 |
 | --- | --- |
 | 规则名 | `cache-html-60s` |
-| 匹配条件 | `URI Path equals /` **或** `URI Path ends with index.html` |
+| 匹配条件 | 表达式填 `(http.request.uri.path eq "/") or (http.request.uri.path eq "/index.html")` |
 | Cache eligibility | Eligible for cache |
 | Edge TTL | Override origin → **60 seconds** |
 | Browser TTL | Respect origin（浏览器端仍 `max-age=0`，不会拿到旧入口） |
@@ -387,6 +390,126 @@ SyntaxError: The requested module 'node:util' does not provide an export named '
 - **知识点图片外置**：正文里内联的图片（含内联 SVG）改由
   `/api/v1/knowledge/asset/{blockId}?v=<指纹>` 提供，长缓存 + CSP `sandbox`。
   最重的一篇正文从 357KB 降到 23KB（gzip 6KB）。
+
+### 一键发版（`npm run deploy`）
+
+手动发版容易漏步骤（尤其 `--force-recreate web`：bind mount 持有旧 inode，不强制重建页面就还是旧的）。
+现在封成一条命令：
+
+```bash
+npm run deploy          # 本地构建 → 上传 dist → 切换 → 重建 web → 健康检查
+npm run deploy:api      # 顺带重建后端镜像（改了 Java / 新增迁移时）
+```
+
+前置：本机装了 Python 3 + `paramiko`（`pip install paramiko`），并且
+`~/.ssh/config_metadata.json` 里有 `ipeagent-server` 的连接信息
+（也可用 `DEPLOY_HOST / DEPLOY_PORT / DEPLOY_USER / DEPLOY_PASSWORD` 覆盖；
+脚本优先取 `~/.ssh/config` 里的端口——metadata 里那个端口曾经是过期的 22，照它连会认证失败）。
+
+脚本做的事：`npm run build`（含类型检查）→ 打包 `client/dist` → SFTP 上传 →
+服务器上解包到 `dist.new`、旧 `dist` 改名 `dist.prev.<时间戳>`（保留最近两版用于回滚）→
+`up -d --force-recreate web` → 探 `/api/v1/health` 与公网首页。
+
+改完后端要一起发时用 `--api`：它会重建 api 镜像并执行 Flyway 迁移。
+若服务器代码还没同步，可以带 `--patch <补丁文件>`：脚本会先 `git apply` 并提交到服务器仓库。
+
+### 服务器上的 Node 22（恢复服务器侧构建）
+
+生产机系统 Node 是 v20.11.1，而 vite 8 要求 `^20.19 || >=22.12`，直接在服务器
+`vite build` 会报 `node:util does not provide an export named 'styleText'`。
+
+已把 Node 22 独立装在 **/opt/node22**（不动系统 `/usr/local/bin/node`，避免影响同机其它项目）：
+
+```bash
+cd /mnt/workspace/kaoyan408/client
+export PATH=/opt/node22/bin:$PATH
+npm run build      # 依赖已装好，现在可以直接在服务器构建
+```
+
+日常发版仍推荐本地构建（`npm run deploy`）；服务器侧构建作为应急手段保留。
+
+### 已完成：入口 HTML 已被边缘缓存
+
+2026-11-16 用 `npm run cf:cache-rule` 在 zone `tizhilian408.de5.net` 上创建了
+`cache-html-60s (kaoyan408 entry)` 规则（`/` 与 `/index.html`，Edge TTL 60s，Browser TTL 跟随源站）。
+实测 `npm run check:edge`：
+
+```
+第1次 838ms MISS（回源并填充边缘） → 第2、3次 245ms / 248ms HIT
+对比：一次未缓存的 /api/v1/health 往返 1654ms
+```
+
+也就是说入口 HTML 的往返从「每次 1.6 秒」降到「边缘 0.25 秒」。发版后最多 60 秒生效
+（SWR 让过期后的第一个访客也不阻塞）；要立刻生效就在 Cloudflare 后台 Purge 一次。
+
+**下一个可选优化**：`/api/v1/knowledge/**` 与 `/api/v1/exams/**` 是匿名且与用户无关的内容接口，
+nginx 已经给了 `max-age=300`，但 Cloudflare 默认不缓存 JSON。再加一条针对这两个前缀的
+Cache Rule（Edge TTL 300s）就能把阅读页/真题页的往返也压到 0.25 秒级；
+`/practice/queue` 这类带用户进度的接口不能缓存，保持现状。
+### 用 API 建 Cache Rule（`npm run cf:cache-rule`）
+
+不想点面板就用脚本，效果一样：
+
+```bash
+# 1. Cloudflare → My Profile → API Tokens → Create Token（自定义）
+#    权限：Zone → Cache Rules → Edit、Zone → Zone → Read（想自动清缓存再加 Cache Purge → Purge）
+#    Zone Resources 限定到 tizhilian408.de5.net，不要给 All zones
+# 2. 本机设置（只在本机，不进仓库）
+setx CF_API_TOKEN "<token>"          # Windows；之后新开的终端生效
+# 3. 执行（会先查 zone、合并已有规则、清理入口缓存，再验证）
+npm run cf:cache-rule
+npm run cf:cache-rule -- --dry-run   # 只看将要提交的规则
+npm run check:edge                   # 单独再验一次，期望 cf-cache-status: HIT
+```
+
+用完后建议在 Cloudflare 后台把该 Token 撤销（它是长期凭据，只这次用得上）。
+### 边缘缓存自检（`npm run check:edge`）
+
+```bash
+npm run check:edge                        # 默认查 tizhilian408.de5.net
+npm run check:edge -- https://其他域名
+```
+
+连续取三次首页，打印 `cf-cache-status` / `cache-control` / 编码 / 耗时，并给出结论。
+当前应当是 `DYNAMIC`（说明 Cloudflare 的 Cache Rule 还没加），加上之后会变成 `HIT`。
+### 演示账号与管理员
+
+**演示账号**（公开可登录，用于让访客直接看到"有数据的样子"）：
+
+- 默认 `demo / demo123456`，可通过 `KAOYAN_DEMO_USERNAME` / `KAOYAN_DEMO_PASSWORD` 覆盖；
+  `KAOYAN_DEMO_ENABLED=false` 可完全关闭。
+- 首次创建时会预置一点历史数据（18 条作答、3 天打卡、6 张背诵卡），
+  这样工作台、热力图、错题本都不是空的。只在"该账号完全没有作答记录"时执行，
+  重启不会越积越多。
+- 登录页会显示这张卡片并支持"一键填入"，密码来自 `GET /api/v1/auth/demo-info`
+  （匿名可读）—— 这样运维改了口令，登录页不会继续显示旧密码。
+  接口只回显这一个公开账号，管理员密码永远不经过任何接口取回。
+
+**管理员账号**：
+
+```bash
+# 首次部署时在 .env 里设置，密码只从这里来（仓库里没有默认管理员口令）
+KAOYAN_ADMIN_USERNAME=admin
+KAOYAN_ADMIN_PASSWORD=<你的强密码>
+# 忘记密码时置 true 重启一次即可重置（会顺手踢掉旧登录态）
+KAOYAN_ADMIN_RESET_PASSWORD=false
+```
+
+启动时会自动创建或对齐该账号（设为管理员、恢复启用）。用户名留空则什么都不做。
+
+管理员入口：工作台左侧「管理」（仅管理员可见），页面在 `/#/admin`，提供：
+
+| 能力 | 说明 |
+| --- | --- |
+| 站点概览 | 账号数/启用数/管理员数、近 7 天新增、累计与今日作答、题库规模、背诵卡片、模拟考、AI 对话 |
+| 账号列表 | 分页 + 按用户名/邮箱搜索，显示作答数、卡片数、最近活跃 |
+| 禁用/启用 | 禁用会立刻踢掉该用户的登录态 |
+| 授予/撤销管理员 | 权限位走缓存（60 秒内生效，操作时主动失效） |
+| 重置密码 | 不填则生成 10 位随机密码并在响应里回显一次，同时让旧登录态失效 |
+| 清空练习数据 | 只删作答/掌握度/打卡/背诵/模拟考记录，不删账号 |
+
+三条安全约束：不能禁用或降权自己；不能撤销最后一个管理员；禁用/改密必然使旧 token 失效。
+权限实现在服务端（`/api/v1/admin/**` 要求 `ROLE_ADMIN`），前端隐藏入口只是体验层面。
 
 ### 已知取舍
 

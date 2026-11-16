@@ -62,7 +62,25 @@ const router = createRouter({
     { path: '/mock/:sessionId(-?\\d+)', name: 'mock-exam', component: () => import('@/views/MockExamView.vue') },
     { path: '/ai', name: 'ai', component: () => import('@/views/AiView.vue') },
     { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
-    { path: '/me', name: 'me', component: () => import('@/views/MeView.vue') },
+    // 管理页：进页面时二次确认管理员身份（侧栏入口已经隐藏，但用户可能直接输地址）。
+    // 前端守卫只是体验兜底，真正的门禁是服务端 /api/v1/admin/** 的 hasRole("ADMIN")。
+    {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('@/views/AdminView.vue'),
+      beforeEnter: () => {
+        return import('@/store/user').then(({ useUserStore }) => {
+          const userStore = useUserStore()
+          if (!userStore.isLoggedIn) {
+            return { path: '/me', query: { redirect: '/admin' } }
+          }
+          if (!userStore.user?.isAdmin) {
+            return { path: '/dashboard' }
+          }
+          return true
+        })
+      },
+    },    { path: '/me', name: 'me', component: () => import('@/views/MeView.vue') },
     { path: '/about', name: 'about', component: () => import('@/views/AboutView.vue') },
     { path: '/:pathMatch(.*)*', name: 'notFound', component: () => import('@/views/NotFoundView.vue') },
   ],

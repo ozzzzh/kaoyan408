@@ -1,6 +1,9 @@
 # 依赖与构建产物
 node_modules/
 client/dist/
+# 部署时留下的历史构建备份（dist.old.*、dist.prev.*、dist.replaced-*）同样不入库：
+# 只写 client/dist/ 匹配不到它们，实测已经把 1100+ 个构建产物提交进了仓库。
+client/dist.*
 client/content-bundle/
 server/target/
 dist/
@@ -31,5 +34,3 @@ coverage/
 
 # 编辑器/本地改配色时的临时备份
 *.bak-*
-# 部署备份目录不入库（dist.old.* / dist.prev.* / dist.replaced-*）
-client/dist.*

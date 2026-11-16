@@ -14,6 +14,12 @@ const userStore = useUserStore()
 const { user, loading } = storeToRefs(userStore)
 
 const mode = ref<'login' | 'register'>('login')
+
+/**
+ * 演示账号提示（匿名可读接口）。为什么从后端拿而不是写死：
+ * 运维改了 KAOYAN_DEMO_PASSWORD 之后，登录页不该继续显示旧口令。
+ */
+const demo = ref<{ enabled: boolean; username: string | null; password: string | null } | null>(null)
 const username = ref('')
 const email = ref('')
 const password = ref('')
@@ -176,6 +182,15 @@ const scopeLabel: Record<string, string> = {
   all: '全部个人数据',
 }
 
+/** 一键填入演示账号，用户点「登录」即可。 */
+function fillDemo(): void {
+  if (!demo.value?.username || !demo.value?.password) return
+  mode.value = 'login'
+  username.value = demo.value.username
+  password.value = demo.value.password
+  error.value = null
+}
+
 async function submit() {
   error.value = null
   if (!username.value || !password.value) {
@@ -253,6 +268,14 @@ async function sendCode() {
 }
 
 onMounted(() => {
+  void api
+    .demoInfo()
+    .then((info) => {
+      demo.value = info
+    })
+    .catch(() => {
+      // 演示账号提示属于加分项，取不到就不显示
+    })
   if (user.value) void loadPersonal()
 })
 
@@ -584,6 +607,24 @@ watch(user, (next) => {
         </button>
       </div>
 
+      <!-- 演示账号：给访客一个「点一下就进」的入口，不用注册 -->
+      <div
+        v-if="mode === 'login' && demo?.enabled && demo.username && demo.password"
+        class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--k-accent)]/40 bg-[var(--k-accent-soft)] px-3 py-2 text-xs"
+      >
+        <span class="text-[var(--k-accent-text)]">
+          演示账号：<b class="font-mono">{{ demo.username }}</b> / <b class="font-mono">{{ demo.password }}</b>
+          （里面已有做题与背诵数据）
+        </span>
+        <button
+          type="button"
+          class="shrink-0 rounded-md bg-[var(--k-accent)] px-2.5 py-1 text-[11px] font-bold text-[var(--k-on-accent)]"
+          @click="fillDemo"
+        >
+          一键填入
+        </button>
+      </div>
+
       <label class="block text-sm">
         <span class="text-[var(--k-text-muted)]">用户名</span>
         <input
@@ -653,7 +694,7 @@ watch(user, (next) => {
       </button>
 
       <p class="text-center text-xs leading-relaxed text-[var(--k-text-faint)]">
-        注册需邮箱验证。当前为演示模式时，验证码打印在服务端日志。
+        注册需邮箱验证码。若一段时间没收到邮件，请检查垃圾箱或联系站点管理员。
       </p>
     </section>
   </div>

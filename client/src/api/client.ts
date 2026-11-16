@@ -25,6 +25,10 @@ import type {
   SearchSuggestion,
   AuthUser,
   WrongBook,
+  AdminOverview,
+  AdminUserPage,
+  AdminUserAction,
+  DemoInfo,
 } from './types'
 
 const TOKEN_KEY = 'kaoyan408.token'
@@ -280,6 +284,41 @@ export const api = {
       post<AiDiagramResult>('/api/v1/ai/diagram', { question, answerExcerpt, knowledge }),
     aiDeleteConversation: (id: number) =>
       request<{ deleted: boolean }>(`/api/v1/ai/conversations/${id}`, { method: 'DELETE' }),
+  /* ---- 管理员 ---- */
+
+  /** 演示账号提示（匿名可读）：用于登录页「一键填入演示账号」。 */
+  demoInfo: () => request<DemoInfo>('/api/v1/auth/demo-info'),
+
+  adminOverview: () => request<AdminOverview>('/api/v1/admin/overview'),
+
+  adminUsers: (params: { keyword?: string; page?: number; size?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (params.keyword) query.set('keyword', params.keyword)
+    if (params.page) query.set('page', String(params.page))
+    if (params.size) query.set('size', String(params.size))
+    const suffix = query.toString()
+    return request<AdminUserPage>(`/api/v1/admin/users${suffix ? `?${suffix}` : ''}`)
+  },
+
+  adminSetActive: (id: number, active: boolean) =>
+    request<AdminUserAction>(`/api/v1/admin/users/${id}/active`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active }),
+    }),
+
+  adminSetAdmin: (id: number, admin: boolean) =>
+    request<AdminUserAction>(`/api/v1/admin/users/${id}/admin`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin }),
+    }),
+
+  adminResetPassword: (id: number, password?: string) =>
+    post<AdminUserAction>(`/api/v1/admin/users/${id}/reset-password`, password ? { password } : {}),
+
+  adminClearData: (id: number) =>
+    post<AdminUserAction>(`/api/v1/admin/users/${id}/clear-data`, {}),
   health: () => request<{ name: string; version: string; status: string }>('/api/v1/health'),
 
   login: (username: string, password: string) =>

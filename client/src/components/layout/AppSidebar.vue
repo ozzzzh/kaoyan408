@@ -69,6 +69,19 @@ const primaryNav: NavItem[] = [
   },
 ]
 
+/**
+ * 管理员入口：只有 isAdmin 的账号渲染。
+ * 前端隐藏只是「不打扰普通用户」，真正的权限在服务端 hasRole("ADMIN")。
+ */
+const adminNav: NavItem[] = [
+  {
+    to: '/admin',
+    label: '管理',
+    desc: '账号与站点概览',
+    icon: 'M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5l8-3Zm0 6v6m0 3v.5',
+  },
+]
+
 const accountNav: NavItem[] = [
   {
     to: '/me',
@@ -82,6 +95,7 @@ const isActive = (to: string) => route.path === to || route.path.startsWith(to +
 const done = computed(() => dashboard.value?.doneQuestions ?? 0)
 const total = computed(() => dashboard.value?.totalQuestions ?? 0)
 const progress = computed(() => dashboard.value?.progress ?? 0)
+const isAdmin = computed(() => Boolean(user.value?.isAdmin))
 </script>
 
 <template>
@@ -167,6 +181,30 @@ const progress = computed(() => dashboard.value?.progress ?? 0)
 
     <!-- 账号 -->
     <div class="border-t border-[var(--k-border)] px-3 py-3">
+      <!-- 管理员入口：仅 isAdmin 可见（真正的门禁在服务端） -->
+      <RouterLink
+        v-for="item in isAdmin ? adminNav : []"
+        :key="item.to"
+        :to="item.to"
+        class="flex items-center gap-3 rounded-xl px-3 py-2 no-underline transition"
+        :class="
+          isActive(item.to) ? 'bg-[var(--k-accent-soft)] text-[var(--k-accent-text)]' : 'text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)]'
+        "
+      >
+        <svg
+          class="h-[18px] w-[18px] shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path :d="item.icon" />
+        </svg>
+        <span class="text-sm font-semibold">{{ item.label }}</span>
+      </RouterLink>
+
       <RouterLink
         v-for="item in accountNav"
         :key="item.to"

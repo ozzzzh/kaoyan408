@@ -71,6 +71,19 @@ spring:
     max-tokens: ${KAOYAN_AI_MAX_TOKENS:2000}
     temperature: ${KAOYAN_AI_TEMPERATURE:0.3}
 kaoyan:
+  # 内置账号：演示账号（公开可登录）+ 管理员账号（密码只从环境变量来）
+  demo:
+    enabled: ${KAOYAN_DEMO_ENABLED:true}
+    username: ${KAOYAN_DEMO_USERNAME:demo}
+    password: ${KAOYAN_DEMO_PASSWORD:demo123456}
+    # 是否给演示账号预置做题/背诵数据（首页与看板才有东西可看）
+    seed-data: ${KAOYAN_DEMO_SEED_DATA:true}
+  admin:
+    # 留空则不创建也不提升任何人 —— 仓库里不存在默认管理员口令
+    username: ${KAOYAN_ADMIN_USERNAME:}
+    password: ${KAOYAN_ADMIN_PASSWORD:}
+    # 忘记密码时置 true，启动即按上面的密码重置（会顺手踢掉旧登录态）
+    reset-password: ${KAOYAN_ADMIN_RESET_PASSWORD:false}
   seed:
     enabled: true
     force: false

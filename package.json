@@ -10,7 +10,11 @@
     "import:apply": "npm run bundle:content && node scripts/import-content.mjs --apply",
     "dev": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
-    "install:client": "npm --prefix client install"
+    "install:client": "npm --prefix client install",
+    "deploy": "python scripts/deploy.py",
+    "deploy:api": "python scripts/deploy.py --api",
+    "check:edge": "node scripts/check-edge-cache.mjs",
+    "cf:cache-rule": "node scripts/cf-cache-rule.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
