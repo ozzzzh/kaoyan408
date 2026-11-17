@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import MemoryManagerPanel from '@/components/memory/MemoryManagerPanel.vue'
+import MemoryManagerDrawer from '@/components/memory/MemoryManagerDrawer.vue'
 import { api } from '@/api/client'
 import type { MemoryCardItem, MemorySummary } from '@/api/types'
 import { useUserStore } from '@/store/user'
@@ -16,6 +16,8 @@ const revealed = ref(false)
 const loading = ref(true)
 const busy = ref(false)
 const message = ref<string | null>(null)
+/** 管理抽屉开关 */
+const managerOpen = ref(false)
 /** 本次会话的复习计数 */
 const sessionDone = ref(0)
 const sessionCorrect = ref(0)
@@ -306,9 +308,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           + {{ SUBJECT_SHORT[item.subject] ?? item.name }}
           <span class="tabular-nums text-[var(--k-text-faint)]">({{ item.addable }})</span>
         </button>
+
+        <button
+          type="button"
+          class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[var(--k-text-faint)] transition hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]"
+          title="查看并移出队列里的卡片"
+          @click="managerOpen = true"
+        >
+          管理
+          <span v-if="summary?.total" class="tabular-nums">({{ summary.total }})</span>
+        </button>
       </div>
 
-      <MemoryManagerPanel class="mt-3" />
+      <MemoryManagerDrawer :open="managerOpen" @close="managerOpen = false" />
     </header>
 
     <!-- 未登录 -->
