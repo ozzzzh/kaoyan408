@@ -161,9 +161,133 @@ const subpointCount = computed(() => props.article.subpoints.length)
 </template>
 
 <style scoped>
+/*
+ * 图示皮肤：内容里内嵌 SVG 的 <style> 会被 htmlSanitize 的 FORBID_TAGS 整块剥掉
+ * （见 utils/htmlSanitize.ts 的 HTML_BLOCK_CONFIG）。剥掉之后类样式全部失效：
+ *   - <rect> 失去 fill   → 默认纯黑，暗色主题下变成一条黑带
+ *   - <line> 失去 stroke → 时间轴直接消失，只剩箭头
+ *   - <text> 失去 fill / font-size / text-anchor → 继承外层 16px、纯黑、左对齐，
+ *     原本居中的长句会从坐标点往右冲，超出 viewBox 后被裁成半截
+ *
+ * 约定改成「内容只写语义 class，样式由应用提供」，这里统一兜底：
+ *   1. 只兜底没写显式属性的元素（:not([fill]) / :not([stroke])），
+ *      内容里已经写死的语义色保持不动；
+ *   2. 颜色一律走主题变量，亮色/暗色自动适配（原来的 #dbeafe/#1e293b 写死了浅色主题）。
+ */
 .k-html-block :deep(svg) {
+  display: block;
+  margin: 0.75rem auto;
   max-width: 100%;
   height: auto;
+  color: var(--k-text-muted);
+  font-family: inherit;
+}
+
+/* 文字兜底：没写 fill 的跟随主题文字色；字号压回图示档位（外层 16px 太大） */
+.k-html-block :deep(svg text:where(:not([fill]))) {
+  fill: currentColor;
+}
+.k-html-block :deep(svg text:where(:not([font-size]))) {
+  font-size: 12.5px;
+}
+
+/* 标题类：加粗提亮一档 */
+.k-html-block :deep(svg .t),
+.k-html-block :deep(svg .title),
+.k-html-block :deep(svg .hdr) {
+  font-size: 13px;
+  font-weight: 700;
+}
+.k-html-block :deep(svg .t:not([fill])),
+.k-html-block :deep(svg .title:not([fill])),
+.k-html-block :deep(svg .hdr:not([fill])) {
+  fill: var(--k-text);
+}
+
+/* 说明类：字号小一档、颜色淡一档 */
+.k-html-block :deep(svg .b),
+.k-html-block :deep(svg .lbl),
+.k-html-block :deep(svg .sub),
+.k-html-block :deep(svg .note),
+.k-html-block :deep(svg .cap),
+.k-html-block :deep(svg .dim) {
+  font-size: 12px;
+}
+
+/*
+ * 居中：全库 648 条图示样式规则里 389 条写了 text-anchor: middle、只有 6 条是 start，
+ * 说明「居中」才是这些标签的默认意图。补回 middle，长句就不会再往右溢出被裁。
+ * 只对作者惯用的这些类生效，没写 class 的裸 <text> 仍保持默认左对齐。
+ */
+.k-html-block :deep(svg .t),
+.k-html-block :deep(svg .title),
+.k-html-block :deep(svg .b),
+.k-html-block :deep(svg .lbl) {
+  text-anchor: middle;
+}
+
+/*
+ * 图形兜底：默认黑色填充 + 默认无描边是「整张图变黑块」的直接原因。
+ * 这里所有兜底都套了 :where()——它把选择器特异性归零，
+ * 否则 `svg rect:not([fill])`（0,3,2）会盖掉下面 `.d-read`（0,3,1）的语义色。
+ */
+.k-html-block :deep(svg rect:where(:not([fill]))),
+.k-html-block :deep(svg circle:where(:not([fill]))),
+.k-html-block :deep(svg ellipse:where(:not([fill]))) {
+  fill: var(--k-surface-soft);
+}
+.k-html-block :deep(svg rect:where(:not([stroke]))),
+.k-html-block :deep(svg circle:where(:not([stroke]))),
+.k-html-block :deep(svg ellipse:where(:not([stroke]))) {
+  stroke: var(--k-border-strong);
+  stroke-width: 1;
+}
+
+/* 时间轴线：默认 stroke:none，不补就整条看不见 */
+.k-html-block :deep(svg line:where(:not([stroke]))) {
+  stroke: var(--k-border-strong);
+  stroke-width: 1.5;
+}
+
+/*
+ * 语义色块：颜色兜底只能救「读得清」，救不了「分得清」。
+ * 内容侧给有语义的段落挂 class，配色由这里统一给，暗色/亮色各一套。
+ * 命名对内容作者只需要记四类：读写 / 刷新或强调 / 轴线 / 标注。
+ */
+.k-html-block :deep(svg .d-read) {
+  fill: var(--k-accent-soft);
+  stroke: var(--k-accent);
+  stroke-width: 1.2;
+}
+.k-html-block :deep(svg .d-refresh) {
+  fill: var(--k-warn-soft);
+  stroke: var(--k-warn);
+  stroke-width: 1.2;
+}
+.k-html-block :deep(svg .d-axis) {
+  stroke: var(--k-border-strong);
+  stroke-width: 1.5;
+}
+.k-html-block :deep(svg .d-title) {
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--k-text);
+  text-anchor: middle;
+}
+.k-html-block :deep(svg .d-label) {
+  font-size: 11.5px;
+  fill: var(--k-text);
+  text-anchor: middle;
+}
+.k-html-block :deep(svg .d-note) {
+  font-size: 11.5px;
+  fill: var(--k-text-muted);
+  text-anchor: middle;
+}
+.k-html-block :deep(svg .d-legend) {
+  font-size: 11.5px;
+  fill: var(--k-text-muted);
+  text-anchor: start;
 }
 .k-html-block :deep(h2) {
   margin: 1.2rem 0 0.5rem;
