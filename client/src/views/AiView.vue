@@ -457,42 +457,15 @@ function goToPoint(id: string) {
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        <!-- 没有历史会话时别只留一行字：把「最近浏览」变成带上下文的快捷入口 -->
-        <div v-if="!conversations.length" class="px-1 pt-2">
-          <p class="text-[11px] text-[var(--k-text-faint)]">还没有历史会话</p>
-
-          <template v-if="sidebarRecent.length">
-            <p class="mt-3.5 text-[10px] font-semibold tracking-wide text-[var(--k-text-faint)]">
-              最近浏览
-            </p>
-            <button
-              v-for="point in sidebarRecent"
-              :key="point.pointId"
-              type="button"
-              class="mt-0.5 flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-left text-[11px] text-[var(--k-text-muted)] transition-colors hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]"
-              :title="`以「${point.title}」为上下文提问`"
-              @click="useContextPoint(point)"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                class="h-3 w-3 shrink-0 text-[var(--k-text-faint)]"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M4 5.5A1.5 1.5 0 015.5 4h6L20 12l-8 8-8-8V5.5z" stroke-linejoin="round" />
-              </svg>
-              <span class="truncate">{{ point.title }}</span>
-            </button>
-            <p class="mt-2 px-1 text-[10px] leading-relaxed text-[var(--k-text-faint)]">
-              点一下把它设为上下文，再提问
-            </p>
-          </template>
-
-          <p v-else class="mt-2 px-1 text-[10px] leading-relaxed text-[var(--k-text-faint)]">
-            去知识点页翻几篇，这里会出现快捷入口
-          </p>
-        </div>
+        <p v-if="!conversations.length" class="px-2 pt-2 text-[11px] text-[var(--k-text-faint)]">
+          还没有历史会话
+        </p>
+        <p
+          v-if="!conversations.length && !sidebarRecent.length"
+          class="mt-1 px-2 text-[10px] leading-relaxed text-[var(--k-text-faint)]"
+        >
+          去知识点页翻几篇，这里会出现快捷入口
+        </p>
         <button
           v-for="c in conversations"
           :key="c.id"
@@ -516,6 +489,39 @@ function goToPoint(id: string) {
             </svg>
           </span>
         </button>
+      </div>
+
+      <!--
+        「最近浏览」固定在侧栏底部，不再依附于「没有历史会话」这个分支。
+        之前它写在空态里，一旦开始对话、历史列表出现，这个上下文快捷入口就整块消失了。
+      -->
+      <div
+        v-if="sidebarRecent.length"
+        class="shrink-0 border-t border-[var(--k-border)] px-2 py-2"
+      >
+        <p class="px-1 text-[10px] font-semibold tracking-wide text-[var(--k-text-faint)]">
+          最近浏览
+        </p>
+        <button
+          v-for="point in sidebarRecent.slice(0, 3)"
+          :key="point.pointId"
+          type="button"
+          class="mt-0.5 flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-left text-[11px] text-[var(--k-text-muted)] transition-colors hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]"
+          :title="`以「${point.title}」为上下文提问`"
+          @click="useContextPoint(point)"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            class="h-3 w-3 shrink-0 text-[var(--k-text-faint)]"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M4 5.5A1.5 1.5 0 015.5 4h6L20 12l-8 8-8-8V5.5z" stroke-linejoin="round" />
+          </svg>
+          <span class="truncate">{{ point.title }}</span>
+        </button>
+        <p class="mt-1 px-1 text-[10px] text-[var(--k-text-faint)]">点一下设为上下文</p>
       </div>
     </aside>
 
