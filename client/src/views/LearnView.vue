@@ -5,6 +5,7 @@ import { api } from '@/api/client'
 import type { KnowledgePointView } from '@/api/types'
 import KnowledgeBlocks from '@/components/knowledge/KnowledgeBlocks.vue'
 import { toArticle } from '@/components/knowledge/types'
+import { rememberPoint } from '@/utils/recentPoints'
 
 const route = useRoute()
 const router = useRouter()
@@ -105,6 +106,12 @@ async function loadArticle(pointId: string) {
     article.value = toArticle(response)
     pointTitle.value = response.title ?? pointId
     questionCount.value = response.questionCount ?? 0
+    // 记一笔「最近浏览」，搜索页空状态用它接住「接着上次看」的需求
+    rememberPoint({
+      pointId: response.pointId || pointId,
+      title: pointTitle.value,
+      subject: response.subject ?? currentSubject.value,
+    })
   } catch (e) {
     article.value = null
     error.value = e instanceof Error ? e.message : '加载失败'
