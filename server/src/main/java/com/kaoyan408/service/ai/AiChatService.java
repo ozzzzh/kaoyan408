@@ -232,7 +232,18 @@ public class AiChatService {
             throw e;
         }
 
-        if (conv != null && !answer.isEmpty()) {
+        if (answer.isEmpty()) {
+            // 上游一个分片都没给、又没抛异常时，原来会当作成功：
+            // 会话里只剩用户那句提问，前端留下一个空气泡，日志里一行线索都没有。
+            // 这里改成显式失败，错误信息会通过 SSE 的 error 事件显示给用户，
+            // 同时把模型与用量写进日志，方便定位是额度、密钥还是模型名的问题。
+            log.warn("AI 上游零内容：model={} 用量={}/{}",
+                    client.modelName(), usage.promptTokens(), usage.completionTokens());
+            throw new BusinessException(502,
+                    "AI 这次没有返回内容（上游可能报错或额度不足），请重试；持续出现请联系管理员。");
+        }
+
+        if (conv != null) {
             persistMessage(conv.getId(), "assistant", answer.toString(),
                     usage.promptTokens(), usage.completionTokens());
             touch(conv);

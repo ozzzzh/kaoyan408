@@ -261,6 +261,15 @@ public class CommandCodeClient {
                     continue;
                 }
 
+                // 上游有时会在 200 的流里塞一个 {"error":{...}}：
+                // 之前这种分片没有 choices，被直接 continue 掉，表现为「回答空白且无日志」。
+                JsonNode error = node.path("error");
+                if (!error.isMissingNode() && !error.isNull()) {
+                    String message = error.path("message").asText(error.toString());
+                    log.error("AI 上游在流内返回错误：{}", truncate(message, 500));
+                    throw new IllegalStateException("AI 上游返回错误：" + truncate(message, 200));
+                }
+
                 // 用量一般出现在最后一个分片
                 JsonNode usage = node.path("usage");
                 if (!usage.isMissingNode() && !usage.isNull()) {
@@ -286,7 +295,17 @@ public class CommandCodeClient {
                 }
 
                 JsonNode content = delta.path("content");
-                if (!content.isMissingNode()) {
+                if (content.isArray()) {
+                    // 部分网关把正文发成 [{type:"text", text:"…"}]，asText() 对数组返回空串，
+                    // 之前会静默丢光所有正文。
+                    StringBuilder text = new StringBuilder();
+                    for (JsonNode part : content) {
+                        text.append(part.path("text").asText(""));
+                    }
+                    if (text.length() > 0) {
+                        onDelta.accept(text.toString());
+                    }
+                } else if (!content.isMissingNode()) {
                     String text = content.asText();
                     if (!text.isEmpty()) {
                         onDelta.accept(text);
