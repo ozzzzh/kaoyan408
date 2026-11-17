@@ -75,8 +75,10 @@ public class AiController {
     /** 服务状态：是否已配置、游客还剩几次。 */
     @GetMapping("/status")
     public Result<Map<String, Object>> status(Authentication authentication,
-                                              jakarta.servlet.http.HttpServletRequest request) {
-        return Result.ok(aiChatService.status(userIdOf(authentication), clientIp(request)));
+                                              jakarta.servlet.http.HttpServletRequest request,
+                                              @org.springframework.web.bind.annotation.RequestHeader(
+                                                      value = "X-Guest-Id", required = false) String guestId) {
+        return Result.ok(aiChatService.status(userIdOf(authentication), clientIp(request), guestId));
     }
 
     /** 会话列表；游客返回空数组。 */
@@ -115,10 +117,12 @@ public class AiController {
     @PostMapping("/animation")
     public Result<Map<String, Object>> animation(@RequestBody(required = false) DiagramRequest body,
                                                  Authentication authentication,
-                                                 jakarta.servlet.http.HttpServletRequest request) {
+                                                 jakarta.servlet.http.HttpServletRequest request,
+                                                 @org.springframework.web.bind.annotation.RequestHeader(
+                                                         value = "X-Guest-Id", required = false) String guestId) {
         Long userId = userIdOf(authentication);
         String ip = clientIp(request);
-        aiChatService.ensureQuota(userId, ip);
+        aiChatService.ensureQuota(userId, ip, guestId);
         return Result.ok(diagramService.generateAnimation(
                 body == null ? null : body.question(),
                 body == null ? null : body.answerExcerpt(),
@@ -136,10 +140,12 @@ public class AiController {
     @PostMapping("/diagram")
     public Result<Map<String, Object>> diagram(@RequestBody(required = false) DiagramRequest body,
                                                Authentication authentication,
-                                               jakarta.servlet.http.HttpServletRequest request) {
+                                               jakarta.servlet.http.HttpServletRequest request,
+                                               @org.springframework.web.bind.annotation.RequestHeader(
+                                                       value = "X-Guest-Id", required = false) String guestId) {
         Long userId = userIdOf(authentication);
         String ip = clientIp(request);
-        aiChatService.ensureQuota(userId, ip);
+        aiChatService.ensureQuota(userId, ip, guestId);
         return Result.ok(diagramService.generate(
                 body == null ? null : body.question(),
                 body == null ? null : body.answerExcerpt(),
@@ -166,7 +172,9 @@ public class AiController {
                            @org.springframework.web.bind.annotation.RequestHeader(
                                    value = "X-AI-Base", required = false) String aiBase,
                            @org.springframework.web.bind.annotation.RequestHeader(
-                                   value = "X-AI-Model", required = false) String aiModel) {
+                                   value = "X-AI-Model", required = false) String aiModel,
+                           @org.springframework.web.bind.annotation.RequestHeader(
+                                   value = "X-Guest-Id", required = false) String guestId) {
         // 超时给 3 分钟：模型推理 + 长回答偶尔会超过 2 分钟，
         // 设太短会在正常回答中途被掐断。
         SseEmitter emitter = new SseEmitter(180_000L);
@@ -186,7 +194,7 @@ public class AiController {
         executor.submit(() -> {
             try {
                 aiChatService.chat(
-                        userId, ip, finalConvId, question,
+                        userId, ip, guestId, finalConvId, question,
                         () -> sendQuietly(emitter, "thinking", Map.of("status", "thinking")),
                         chunk -> sendQuietly(emitter, "delta", Map.of("text", chunk)),
                         usage -> {
