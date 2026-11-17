@@ -34,6 +34,25 @@ app.mount('#app')
  * 失败不影响任何功能——它只是加速层。
  */
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  /**
+   * 新的 Service Worker 接管后自动刷新一次。
+   *
+   * 为什么需要：sw.js 安装时 skipWaiting + activate 时 clients.claim，会让新 SW 立刻
+   * 接管当前页面，但页面里跑的仍是**旧外壳加载的旧 JS**。不主动刷新的话，用户会一直
+   * 停在旧版本——2026-11-17 就出现过「左上角 logo 点不开落地页」，因为旧外壳引用的
+   * 旧 chunk 已经被发版清理掉了。
+   *
+   * 只在「本来就有 SW 在控」时刷新一次：首次安装时 controller 是 null，
+   * 那种情况不需要刷新（也避免首访闪一下）。
+   */
+  const hadController = Boolean(navigator.serviceWorker.controller)
+  let reloaded = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return
+    reloaded = true
+    window.location.reload()
+  })
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {
       /* 注册失败按无缓存运行 */

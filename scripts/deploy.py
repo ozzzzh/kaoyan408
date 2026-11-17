@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -34,6 +35,8 @@ DIST = CLIENT / "dist"
 PROJECT_REMOTE = "/mnt/workspace/kaoyan408"
 COMPOSE = "docker compose -p kaoyan408"
 DEFAULT_BASE = "https://tizhilian408.de5.net"
+ENTRY_RE = re.compile(r"assets/index-[A-Za-z0-9_-]+\.js")
+LOCK_SCRIPT = ROOT / "scripts" / "deploy-lock.py"
 
 
 def log(message: str) -> None:
@@ -89,6 +92,60 @@ def load_target() -> dict:
     if override_port:
         target["port"] = override_port
     return target
+
+
+def acquire_lock(owner: str) -> bool:
+    """拿服务器部署锁。拿不到说明别人正在发版，直接退出而不是硬上。"""
+    if not LOCK_SCRIPT.exists():
+        log("未找到 scripts/deploy-lock.py，跳过部署锁（不建议并发发版）")
+        return True
+    result = subprocess.run(
+        [sys.executable, str(LOCK_SCRIPT), "acquire", "--owner", owner],
+        capture_output=True, text=True,
+    )
+    out = (result.stdout or "") + (result.stderr or "")
+    print(out.strip())
+    if result.returncode != 0 or "ACQUIRED" not in out:
+        log("部署被锁：另一个会话正在发版。等它结束再试（15 分钟后锁会自动过期）")
+        return False
+    return True
+
+
+def release_lock() -> None:
+    if LOCK_SCRIPT.exists():
+        subprocess.run([sys.executable, str(LOCK_SCRIPT), "release"],
+                       capture_output=True, text=True)
+
+
+def check_not_behind_main(allow_behind: bool) -> bool:
+    """构建前确认自己的分支包含 main。
+
+    为什么必须查：用自己的分支构建 dist 会缺主线的新功能，发上去就把别人的功能盖掉了
+    （2026-11-16 线上前端被互相覆盖两次，就是这个原因）。
+    """
+    try:
+        behind = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD..main"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if behind.returncode != 0:
+            return True  # 不在 git 仓库里（比如打包下载的源码），不做限制
+        count = int((behind.stdout or "0").strip() or "0")
+    except Exception:
+        return True
+    if count == 0:
+        return True
+    log(f"当前分支落后 main {count} 个提交")
+    if allow_behind:
+        log("已用 --allow-behind 跳过；请确认你知道这会缺主线功能")
+        return True
+    log("先执行 `git merge main` 再发版（或用 --allow-behind 显式跳过）")
+    return False
+
+
+def entry_of(html: str) -> str | None:
+    match = ENTRY_RE.search(html or "")
+    return match.group(0) if match else None
 
 
 def build_frontend() -> None:
@@ -187,19 +244,35 @@ def main() -> int:
     parser.add_argument("--skip-build", action="store_true", help="复用已有 client/dist")
     parser.add_argument("--patch", help="先应用这个补丁到服务器仓库并提交")
     parser.add_argument("--base", default=DEFAULT_BASE, help="发版后校验用的地址")
+    parser.add_argument("--allow-behind", action="store_true",
+                        help="允许在落后 main 的分支上发版（默认拒绝）")
+    parser.add_argument("--owner", default=os.environ.get("DEPLOY_OWNER", "unknown"),
+                        help="占锁者标识，写进 .deploy.lock 便于排查")
     args = parser.parse_args()
+
+    # 多会话都能发版，但必须串行：锁没拿到就直接退出，绝不并发写服务器
+    if not acquire_lock(args.owner):
+        return 1
+    try:
+        return run_deploy(args)
+    finally:
+        release_lock()
+
+
+def run_deploy(args) -> int:
+    if not check_not_behind_main(args.allow_behind):
+        return 1
 
     if not args.skip_build:
         build_frontend()
     if not (DIST / "index.html").exists():
         sys.exit("client/dist 不存在，先跑一次构建")
 
-    entry = None
-    for line in (DIST / "index.html").read_text(encoding="utf-8").splitlines():
-        if 'assets/index-' in line:
-            entry = line.strip()
-            break
+    entry = entry_of((DIST / "index.html").read_text(encoding="utf-8"))
     log(f"本地入口：{entry or '(未识别)'}")
+    if not entry:
+        log("无法从 dist/index.html 解析入口文件名，停止发版")
+        return 1
 
     archive = pack_dist()
     remote = Remote(load_target())
@@ -220,15 +293,25 @@ def main() -> int:
         remote.upload(archive, "/tmp/kaoyan-dist-deploy.tgz")
 
         log("切换 dist（保留上一版，便于回滚）")
+        # 关键：合并 assets 而不是整包替换。
+        # 旧哈希 chunk 必须留着 —— 浏览器里的 Service Worker 可能还缓存着旧外壳，
+        # 它引用的正是这些旧文件名；一删就 404，表现为「某个菜单点了没反应」。
         code, _ = remote.run(
             "set -e; cd %s/client; TS=$(date +%%Y%%m%%d-%%H%%M%%S); "
             "rm -rf dist.new; mkdir -p dist.new; "
             "tar -xzf /tmp/kaoyan-dist-deploy.tgz -C dist.new --strip-components=1; "
             "test -f dist.new/index.html; test -f dist.new/sw.js; "
-            "test -d dist && mv dist dist.prev.$TS || true; "
-            "mv dist.new dist; chmod -R a+rX dist; "
+            "test -d dist && cp -a dist dist.prev.$TS || true; "
+            "mkdir -p dist/assets; "
+            "cp -a dist.new/assets/. dist/assets/; "
+            "cp -a dist.new/index.html dist/new-index.html; "
+            "for f in $(cd dist.new && ls -1 | grep -v '^assets$'); do cp -a \"dist.new/$f\" \"dist/$f\"; done; "
+            "rm -f dist/new-index.html; chmod -R a+rX dist; "
+            # 只清理 30 天前的旧 chunk，避免目录无限膨胀（保留最近若干代给旧客户端）
+            "find dist/assets -maxdepth 1 -type f -mtime +30 -delete 2>/dev/null || true; "
             "ls -d dist.prev.* 2>/dev/null | sort | head -n -2 | xargs -r rm -rf; "
-            "grep -o 'assets/index-[A-Za-z0-9_-]*\\.js' dist/index.html | head -1" % PROJECT_REMOTE
+            "echo -n '当前 entry: '; grep -o 'assets/index-[A-Za-z0-9_-]*\\.js' dist/index.html | head -1; "
+            "echo -n 'assets 文件数: '; ls dist/assets | wc -l" % PROJECT_REMOTE
         )
         if code != 0:
             return 1
@@ -266,6 +349,32 @@ def main() -> int:
             f"curl -s -m 15 -o /dev/null -w '%{{http_code}}' {args.base}/", quiet=True
         )
         log(f"首页 HTTP {body}（预热 {warmed} 个资源）")
+
+        # 规则 6.3 第 5 条：公网返回的入口必须就是这次构建的那个。
+        # 边缘缓存 entry HTML 60 秒，所以带随机参数重试，最多等 2 分钟。
+        matched = False
+        deadline = time.time() + 120
+        public_entry = None
+        while time.time() < deadline:
+            try:
+                from urllib.request import Request, urlopen
+                url = f"{args.base}/?warmup={int(time.time() * 1000)}"
+                with urlopen(Request(url, headers={"User-Agent": "kaoyan-deploy-check",
+                                                   "Cache-Control": "no-cache"}), timeout=20) as resp:
+                    public_entry = entry_of(resp.read().decode("utf-8", "replace"))
+            except Exception as error:
+                log(f"取公网入口失败（稍后重试）：{error}")
+                public_entry = None
+            if public_entry == entry:
+                matched = True
+                break
+            time.sleep(5)
+        if matched:
+            log(f"公网入口一致：{public_entry}")
+        else:
+            log(f"公网入口不一致：本地 {entry} / 公网 {public_entry}")
+            log("可能原因：另一个会话同时发版覆盖了 dist，或边缘缓存未过期。请查后再决定是否重发。")
+            return 1
     finally:
         remote.close()
 
