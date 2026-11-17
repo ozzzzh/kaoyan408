@@ -68,17 +68,26 @@ const router = createRouter({
       path: '/admin',
       name: 'admin',
       component: () => import('@/views/AdminView.vue'),
-      beforeEnter: () => {
-        return import('@/store/user').then(({ useUserStore }) => {
-          const userStore = useUserStore()
-          if (!userStore.isLoggedIn) {
-            return { path: '/me', query: { redirect: '/admin' } }
-          }
-          if (!userStore.user?.isAdmin) {
-            return { path: '/dashboard' }
-          }
-          return true
-        })
+      /**
+       * 管理页守卫。
+       *
+       * 两个坑（P2-4）：
+       * 1) 直接访问 / 刷新时登录态是异步恢复的，若不等 restore 就会把已登录用户当成
+       *    游客踢到 /me —— 表现为「深链进不去，点侧栏又能进去」；
+       * 2) 无权限时静默跳走，用户以为页面坏了。现在带上 ?forbidden=admin，
+       *    由工作台显示一条明确提示。
+       */
+      beforeEnter: async () => {
+        const { useUserStore } = await import('@/store/user')
+        const userStore = useUserStore()
+        await userStore.whenAuthReady()
+        if (!userStore.isLoggedIn) {
+          return { path: '/me', query: { redirect: '/admin' } }
+        }
+        if (!userStore.user?.isAdmin) {
+          return { path: '/dashboard', query: { forbidden: 'admin' } }
+        }
+        return true
       },
     },    { path: '/me', name: 'me', component: () => import('@/views/MeView.vue') },
     { path: '/about', name: 'about', component: () => import('@/views/AboutView.vue') },

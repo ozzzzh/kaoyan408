@@ -107,6 +107,25 @@ const isWrongScope = computed(() =>
   ['wrong', 'wrong-pending', 'wrong-mastered'].includes(scope.value),
 )
 
+/**
+ * 相关知识点去重。
+ *
+ * 一题可以挂多个 block，而多个 block 可能属于同一个小节（例如 kb-ds-2-2-5 与
+ * kb-ds-2-2-7 都叫「顺序表 · 顺序表的插入与删除」），直接渲染就会出现两条一模一样的
+ * 链接（P1-3）。按 label 去重，保留第一个可用链接。
+ */
+const knowledgeLinks = computed(() => {
+  const seen = new Set<string>()
+  const out: { blockId: string; label: string; pointId?: string | null }[] = []
+  for (const block of question.value?.knowledgeBlocks ?? []) {
+    const label = (block.label ?? '').trim()
+    if (!label || seen.has(label)) continue
+    seen.add(label)
+    out.push({ blockId: block.blockId, label, pointId: block.pointId })
+  }
+  return out
+})
+
 const progressText = computed(() =>
   queue.value ? `${index.value + 1} / ${queue.value.yearTotal ?? queue.value.total}` : '—',
 )
@@ -237,21 +256,54 @@ function isCollapsed(year: number) {
  * 其中 I.~IV. 属于题干内容，但按整段正文渲染时行距过松、视觉上像四个独立段落。
  * 这里按行切开，把罗马数字开头的行单独标记，由模板做紧凑排版。
  */
-type StemLine = { kind: 'text' | 'option'; text: string; mark?: string }
+/**
+ * 题干的一行。
+ *
+ * code 是整块代码（围栏内所有行），必须整体渲染：
+ * 之前按行 split 后逐行交给 Markdown，``` 围栏被拆散，c 语言标识变成正文里的
+ * 一个 <code>c</code>，代码块只剩一个空盒子（P1-2）。
+ */
+type StemLine =
+  | { kind: 'text'; text: string }
+  | { kind: 'option'; text: string; mark: string }
+  | { kind: 'code'; lang: string; code: string }
 
 const ROMAN = /^\s*(I{1,3}|IV|V|VI{1,3}|IX|X)\s*[.、．]\s*(.*)$/
 
 const stemLines = computed<StemLine[]>(() => {
   const stem = question.value?.stem
   if (!stem) return []
-  return stem.split('\n').map((raw) => {
+
+  // 围栏代码块先整体切出来：代码里的 `\n` 是内容，不能被逐行拆开
+  const lines = stem.split('\n')
+  const out: StemLine[] = []
+  let i = 0
+  while (i < lines.length) {
+    const raw = lines[i]
+    const fence = raw.match(/^\s*```\s*([A-Za-z0-9_+-]*)\s*$/)
+    if (fence) {
+      const lang = fence[1] ?? ''
+      const body: string[] = []
+      i += 1
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) {
+        body.push(lines[i])
+        i += 1
+      }
+      i += 1 // 跳过结束围栏
+      out.push({ kind: 'code', lang, code: body.join('\n') })
+      continue
+    }
     const matched = raw.match(ROMAN)
     if (matched) {
-      return { kind: 'option' as const, mark: `${matched[1]}.`, text: matched[2] }
+      out.push({ kind: 'option', mark: `${matched[1]}.`, text: matched[2] })
+    } else {
+      out.push({ kind: 'text', text: raw })
     }
-    return { kind: 'text' as const, text: raw }
-  })
+    i += 1
+  }
+  return out
 })
+
 
 /** 跳转输入框：接受「2026 3」「2026年第3题」「47」等写法 */
 function jumpToInput() {
@@ -386,6 +438,13 @@ async function loadQuestion() {
   } finally {
     loadingQuestion.value = false
   }
+}
+
+/** 重做：清空本地作答结果，允许再次提交（会覆盖本题的作答记录）。 */
+function redo() {
+  result.value = null
+  selected.value = ''
+  message.value = '已重置本题，可重新作答（再次提交会覆盖上一次记录）'
 }
 
 async function submit() {
@@ -809,8 +868,13 @@ watch(
                 原来这里用纯文本插值，题干里的公式（如 $n=9$）根本不会渲染；
                 换成组件后公式能显示，而不含公式的题仍然不会多下载一个字节。
               -->
+              <!-- 围栏代码块：整体渲染，别让 ``` 被拆成正文（P1-2） -->
+              <pre
+                v-if="line.kind === 'code'"
+                class="my-2 overflow-x-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-soft)] p-3 text-[13px] leading-relaxed"
+              ><code class="font-mono text-[var(--k-text)]">{{ line.code }}</code></pre>
               <div
-                v-if="line.kind === 'option'"
+                v-else-if="line.kind === 'option'"
                 class="flex gap-2 text-[15px] leading-relaxed text-[var(--k-text)]"
               >
                 <span class="shrink-0 font-semibold text-[var(--k-text-muted)]">{{ line.mark }}</span>
@@ -869,10 +933,19 @@ watch(
           <div class="mt-6 flex flex-wrap items-center gap-3">
             <button
               class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
-              :disabled="submitting"
+              :disabled="submitting || Boolean(result)"
               @click="submit"
             >
-              {{ submitting ? '提交中…' : result ? '再次提交' : '提交答案' }}
+              {{ submitting ? '提交中…' : result ? '已作答' : '提交答案' }}
+            </button>
+
+            <!-- 作答后锁定，重做必须显式点这里（并说明会覆盖记录） -->
+            <button
+              v-if="result"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--k-border)] px-4 py-2.5 text-sm text-[var(--k-text-muted)] transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)]"
+              @click="redo"
+            >
+              重做本题
             </button>
 
             <!-- 按本题关联的知识点跳 B 站搜索。不托管课程内容，只做「该看哪一节」的指引。 -->
@@ -933,7 +1006,7 @@ watch(
             <p class="mb-2 text-[11px] font-semibold text-[var(--k-text-faint)]">相关知识点</p>
             <div class="flex flex-wrap gap-2">
               <RouterLink
-                v-for="block in question.knowledgeBlocks"
+                v-for="block in knowledgeLinks"
                 :key="block.blockId"
                 :to="{
                   path: '/learn',
