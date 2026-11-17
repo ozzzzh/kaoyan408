@@ -249,6 +249,12 @@ async function send(preset?: string) {
       reply.streaming = false
       reply.thinking = false
       sending.value = false
+      // 流正常结束但一个字都没有：上游模型没吐内容（密钥/额度/模型名出问题时会这样）。
+      // 之前这里会留下一个没有任何文字的空气泡，用户完全不知道为什么没回答。
+      if (!reply.content.trim()) {
+        messages.value = messages.value.filter((m) => m !== reply)
+        errorText.value = '模型这次没有返回内容，请重试；持续出现请联系管理员检查 AI 配置。'
+      }
       if (evt.conversationId) {
         activeId.value = evt.conversationId
       }
