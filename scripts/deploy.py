@@ -40,6 +40,78 @@ def log(message: str) -> None:
     print(f"[deploy] {message}", flush=True)
 
 
+# 部署状态文件放在仓库目录之外：--patch 流程会在服务器仓库里跑 git add -A，
+# 放进去会被顺手提交，污染内容提交历史。
+STATE_REMOTE = "/mnt/workspace/kaoyan408-deploy-state.json"
+
+
+def git_out(*args: str) -> str:
+    """跑一条只读 git 命令，失败时返回空串（不阻断部署）。"""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(ROOT), *args],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        ).stdout.strip()
+    except Exception:
+        return ""
+
+
+def local_meta(entry: str | None) -> dict:
+    """这一次部署的指纹：谁、哪个分支、哪个提交、入口文件。"""
+    return {
+        "owner": os.environ.get("DEPLOY_OWNER", "") or git_out("config", "user.name"),
+        "branch": git_out("rev-parse", "--abbrev-ref", "HEAD"),
+        "commit": git_out("rev-parse", "--short", "HEAD"),
+        "subject": git_out("log", "-1", "--pretty=%s"),
+        "index": entry or "",
+        "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def live_index(base_url: str) -> str:
+    """当前公网实际在跑的入口文件；拿不到就返回空串。"""
+    import re
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{base_url}/", timeout=15) as resp:
+            html = resp.read().decode("utf-8", "replace")
+        match = re.search(r"assets/index-[A-Za-z0-9_-]+\.js", html)
+        return match.group(0) if match else ""
+    except Exception:
+        return ""
+
+
+def print_previous(previous: dict | None, base_url: str) -> None:
+    """部署前把上一次是谁发的打出来。
+
+    多会话共用同一个目标机时，光有锁不够：锁只防「同时发」，
+    防不了「别人刚发完、你用旧分支再覆盖一遍」。这里至少让覆盖变得可见。
+    """
+    if not previous:
+        log("上次部署：无记录（本机首次启用状态记录）")
+    else:
+        log(
+            "上次部署：%s 分支 %s 提交 %s（%s）入口 %s"
+            % (
+                previous.get("owner") or "?",
+                previous.get("branch") or "?",
+                previous.get("commit") or "?",
+                previous.get("at") or "?",
+                previous.get("index") or "?",
+            )
+        )
+
+    running = live_index(base_url)
+    recorded = (previous or {}).get("index") or ""
+    if running and recorded and running != recorded:
+        log(f"⚠ 线上入口 {running} 与记录 {recorded} 不一致：可能有人绕过本脚本或用了旧版脚本发布")
+    elif running:
+        log(f"线上入口：{running}")
+
+
 def _port_from_ssh_config(alias: str) -> int | None:
     """从 ~/.ssh/config 读取该别名的 Port/User（优先于 metadata）。
 
@@ -170,6 +242,16 @@ def main() -> int:
     archive = pack_dist()
     remote = Remote(load_target())
     try:
+        # 先读上一次的部署记录（文件在仓库目录外，不存在就当没有）
+        code, prev_raw = remote.run(f"cat {STATE_REMOTE} 2>/dev/null || true", quiet=True)
+        previous = None
+        if prev_raw:
+            try:
+                previous = json.loads(prev_raw)
+            except Exception:
+                previous = None
+        print_previous(previous, args.base)
+
         if args.patch:
             patch_path = Path(args.patch).resolve()
             log(f"上传补丁 {patch_path.name} 并应用到服务器仓库")
@@ -229,6 +311,18 @@ def main() -> int:
             f"curl -s -m 15 -o /dev/null -w '%{{http_code}}' {args.base}/", quiet=True
         )
         log(f"首页 HTTP {body}")
+
+        # 记下这一次是谁发的，供下一个部署的人判断会不会覆盖别人的成果
+        meta = local_meta(entry)
+        try:
+            payload = json.dumps(meta, ensure_ascii=False)
+            remote.run(
+                f"cat > {STATE_REMOTE} <<'KAOYAN_STATE'\n{payload}\nKAOYAN_STATE",
+                quiet=True,
+            )
+            log(f"状态已记录：{meta['owner']} / {meta['branch']}@{meta['commit']} / {meta['index']}")
+        except Exception as exc:  # 状态记录失败不该让部署算失败
+            log(f"状态记录失败（不影响本次发布）：{exc}")
     finally:
         remote.close()
 
