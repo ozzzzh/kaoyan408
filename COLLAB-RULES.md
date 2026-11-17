@@ -122,3 +122,49 @@ python scripts/deploy-lock.py release     # 发版结束（无论成败）都要
 服务器 `.env`（含 `JWT_SECRET`、管理员密码）、`docker-compose.yml`、
 `server/src/main/resources/db/migration/*`、内容种子 `seed/content.sql`
 属于共享资源：改之前先在对话里说清楚，不要"顺手改一下"。
+
+---
+
+## 六、主线职责（2026-11-16 起）
+
+背景：两条支线各自发版，20 分钟里线上的前端被互相覆盖了两次 —— 后发版的人
+用自己 worktree 构建的 dist 覆盖前一个人的，前一个人的功能直接"消失"，
+而所有验证（接口、后端）都还是好的，只有前端悄悄回到了旧版。
+
+### 6.1 只有主线合入、只有主线发版
+
+| 角色 | 可以做什么 |
+| --- | --- |
+| **主线**（`D:\kaoyan\kaoyan408-main`，分支 `main`） | 合入支线、跑全量回归、构建并发版、回滚 |
+| **支线**（`ai2` / `next` / 新开的 worktree） | 写代码、提交到自己的分支、本地验证；**不发版** |
+
+支线要把改动上线，只有一条路：**告诉主线「可以合了」**，由主线 merge → 回归 → 发版。
+支线不再直接 `deploy.py` / 直接换服务器 dist。
+
+### 6.2 支线开工前必做
+
+```bash
+git merge main        # 或 rebase；总之别在旧基线上开工
+```
+
+否则你构建的 dist 里没有主线的新功能——这次前端被覆盖就是这么发生的。
+
+### 6.3 主线发版检查清单（每次照做）
+
+1. `git status` 干净；`git log -1` 记下要发的提交
+2. `python scripts/deploy-lock.py acquire --owner main`
+3. 前端构建后**记下 entry 哈希**：`grep -o 'assets/index-[^"]*\.js' client/dist/index.html`
+4. 同步源码 → 重建 api → 换 dist → `--force-recreate web`
+5. **发版后自检**：`curl -s https://<域名>/ | grep -o 'assets/index-[^"]*\.js'`
+   必须等于第 3 步记录的哈希。**不相等就说明被人覆盖了**，立即重发并查明来源
+6. `python scripts/deploy-lock.py release`
+7. 在交付说明里写明：线上版本（entry 哈希 + 服务器 HEAD）
+
+### 6.4 合并约定
+
+- 纯行尾/空白类提交（如「行尾归一」）与功能改动撞在同一文件时：**取主线内容，
+  行尾统一为 LF**，不要为了消除冲突把功能改回去。
+- 合并后必须重跑：`npm run typecheck` / `npm test` / `mvn test`，
+  任何一项失败就不往下走。
+- 分支合入后，支线那边要 `git merge main` 跟上，避免长期落后。
+
