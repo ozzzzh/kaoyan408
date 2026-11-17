@@ -136,6 +136,41 @@ async function load() {
   }
 }
 
+/**
+ * 把当前这张卡移出背诵队列。
+ *
+ * 后端一直有 POST /memory/remove，只是界面上没有入口 —— 用户能"加"不能"减"，
+ * 队列只会越来越长。这里补上，并且：
+ *   - 移出前二次确认（不会动已产生的复习记录，但那道题的卡片和排期会消失）；
+ *   - 移出后把可加入数 +1，用户能立刻看到"加回来"的入口计数变化。
+ */
+async function removeCurrent() {
+  const card = current.value
+  if (!card || busy.value) return
+  const ok = window.confirm(
+    `把「${parseCard(card).title || '这张卡'}」移出背诵队列？\n\n· 已产生的复习记录不会被删除\n· 之后可以在上方的科目按钮里重新加入`,
+  )
+  if (!ok) return
+
+  busy.value = true
+  message.value = null
+  try {
+    await api.memoryRemove(card.cardId)
+    cards.value = cards.value.filter((item) => item.cardId !== card.cardId)
+    if (index.value >= cards.value.length) {
+      index.value = Math.max(0, cards.value.length - 1)
+    }
+    revealed.value = false
+    await load()
+    // load() 内部会清空 message，所以提示必须放在它之后，否则用户看不到反馈
+    message.value = '已移出背诵队列，可在上方科目按钮里再加回来'
+  } catch (e) {
+    message.value = e instanceof Error ? e.message : '移出失败'
+  } finally {
+    busy.value = false
+  }
+}
+
 async function review(remembered: boolean) {
   const card = current.value
   if (!card || busy.value) return
@@ -542,6 +577,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 <kbd class="ml-1.5 rounded border border-current/30 px-1 text-[10px] opacity-60">2</kbd>
               </button>
             </div>
+            </div>
+
+            <!-- 移出队列：放在卡片底部角落，不打扰复习主流程 -->
+            <div class="mt-3 flex shrink-0 justify-end">
+              <button
+                class="rounded-lg px-2 py-1 text-[11px] text-[var(--k-text-faint)] transition hover:text-[var(--k-danger)] disabled:opacity-40"
+                :disabled="busy"
+                title="把这张卡移出背诵队列（可随时再加回来）"
+                @click="removeCurrent"
+              >
+                移出队列
+              </button>
             </div>
 
             <!--
