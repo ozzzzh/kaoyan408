@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, isUnauthorized } from '@/api/client'
+import { api, ApiError, isUnauthorized } from '@/api/client'
 import StemMarkdown from '@/components/mock/StemMarkdown.vue'
 import type { PracticeQueue, QuestionView } from '@/api/types'
 import { useUserStore } from '@/store/user'
@@ -15,9 +15,13 @@ const question = ref<QuestionView | null>(null)
 const index = ref(0)
 const selected = ref('')
 const result = ref<{
-  correct: boolean
+  correct: boolean | null
   standardAnswer: string | null
   explanation: string | null
+  /** 综合题：没有对错，需要自评 */
+  comprehensive?: boolean
+  maxScore?: number | null
+  selfScore?: number | null
 } | null>(null)
 const loadingQueue = ref(true)
 const loadingQuestion = ref(false)
@@ -440,6 +444,34 @@ async function loadQuestion() {
   }
 }
 
+/** 综合题自评草稿（选中即高亮，点保存才落库）。 */
+const selfScoreDraft = ref<number | null>(null)
+const savingScore = ref(false)
+
+/** 保存综合题自评得分；成功后把该题标记为已作答。 */
+async function saveSelfScore() {
+  const value = selfScoreDraft.value
+  if (value == null || savingScore.value) return
+  savingScore.value = true
+  message.value = null
+  try {
+    const saved = await api.selfScore(current.value!.examRef, value)
+    if (result.value) result.value.selfScore = saved.selfScore
+    message.value = saved.mastered
+      ? `已记录自评 ${saved.selfScore}/${saved.maxScore} 分（视为已掌握）`
+      : `已记录自评 ${saved.selfScore}/${saved.maxScore} 分（已进入错题本）`
+    const target = queue.value?.items[index.value]
+    if (target) {
+      if (!target.answered) queue.value!.answered += 1
+      target.answered = true
+    }
+  } catch (e) {
+    message.value = e instanceof ApiError ? e.message : '保存自评失败'
+  } finally {
+    savingScore.value = false
+  }
+}
+
 /** 重做：清空本地作答结果，允许再次提交（会覆盖本题的作答记录）。 */
 function redo() {
   result.value = null
@@ -479,18 +511,23 @@ async function submit() {
       correct: answer.correct,
       standardAnswer: answer.standardAnswer,
       explanation: answer.explanation,
+      comprehensive: answer.comprehensive ?? false,
+      maxScore: answer.maxScore ?? null,
+      selfScore: answer.selfScore ?? null,
     }
+    selfScoreDraft.value = answer.selfScore ?? null
     // 连续答对计数：答错即清零（用于顶部的正反馈）
-    streak.value = answer.correct ? streak.value + 1 : 0
+    // 综合题的 correct 是 null（不判对错），不计入连续答对
+    streak.value = answer.correct === true ? streak.value + 1 : 0
     // 同步队列内的作答状态，让右侧导航与进度即时更新
     const target = queue.value?.items[index.value]
     if (queue.value && target) {
       if (!target.answered) queue.value.answered += 1
       target.answered = true
       const wasCorrect = target.correct
-      target.correct = answer.correct
+      target.correct = answer.correct ?? false
       // 错题闭环状态本地推演，避免整队列重取
-      if (!answer.correct) {
+      if (answer.correct === false) {
         target.wrongCount += 1
         target.mastered = false
       } else if (target.wrongCount > 0 && !wasCorrect) {
@@ -500,7 +537,7 @@ async function submit() {
       queue.value.correct = queue.value.items.filter((i) => i.correct).length
     }
     // 在错题范围内，订正成功后该题应移出列表——重新拉取以反映新成员
-    if (isWrongScope.value && answer.correct) {
+    if (isWrongScope.value && answer.correct === true) {
       const currentRef = item.examRef
       const fresh = await api.practiceQueue({
         subject: subjectParam.value,
@@ -964,9 +1001,23 @@ watch(
             <span
               v-if="result"
               class="text-sm font-semibold"
-              :class="result.correct ? 'text-[#0f7a4d]' : 'text-[#b23c3c]'"
+              :class="
+                result.comprehensive
+                  ? 'text-[var(--k-accent-text)]'
+                  : result.correct
+                    ? 'text-[#0f7a4d]'
+                    : 'text-[#b23c3c]'
+              "
             >
-              {{ result.correct ? '回答正确' : '回答错误' }}
+              {{
+                result.comprehensive
+                  ? result.selfScore == null
+                    ? '已作答 · 待自评'
+                    : `自评 ${result.selfScore}/${result.maxScore} 分`
+                  : result.correct
+                    ? '回答正确'
+                    : '回答错误'
+              }}
               <span v-if="result.standardAnswer" class="font-normal text-[var(--k-text-faint)]">
                 （正确答案 {{ result.standardAnswer }}）
               </span>
@@ -987,6 +1038,61 @@ watch(
               >
                 下一题 →
               </button>
+            </div>
+          </div>
+
+          <!-- 综合题自评：参考答案 + 分步给分点 + 自评打分（P0-1） -->
+          <div
+            v-if="result?.comprehensive"
+            class="mt-5 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
+          >
+            <p class="text-sm font-bold text-[var(--k-heading)]">自评得分</p>
+            <p class="mt-1 text-xs leading-5 text-[var(--k-text-faint)]">
+              综合题没有自动判分。对照下面的参考答案，给自己打一个分（满分 {{ result.maxScore }} 分）。
+            </p>
+
+            <div v-if="question.subQuestions.length" class="mt-3 space-y-1.5">
+              <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">分步给分点</p>
+              <div
+                v-for="sub in question.subQuestions"
+                :key="sub.number"
+                class="flex items-start gap-2 rounded-lg bg-[var(--k-surface-soft)] px-3 py-2 text-xs text-[var(--k-text-muted)]"
+              >
+                <span class="shrink-0 font-semibold">({{ sub.number }})</span>
+                <span class="min-w-0 flex-1">{{ sub.description }}</span>
+                <span v-if="sub.score" class="shrink-0 text-[var(--k-text-faint)]">{{ sub.score }} 分</span>
+              </div>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-1.5">
+              <button
+                v-for="n in (result.maxScore ?? 0) + 1"
+                :key="n"
+                type="button"
+                class="h-8 min-w-8 rounded-lg border px-2 text-xs transition"
+                :class="
+                  selfScoreDraft === n - 1
+                    ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)] font-bold text-[var(--k-accent-text)]'
+                    : 'border-[var(--k-border)] text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)]'
+                "
+                @click="selfScoreDraft = n - 1"
+              >
+                {{ n - 1 }}
+              </button>
+            </div>
+
+            <div class="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                class="rounded-lg bg-[var(--k-accent)] px-4 py-2 text-xs font-bold text-[var(--k-on-accent)] disabled:opacity-50"
+                :disabled="selfScoreDraft == null || savingScore"
+                @click="saveSelfScore"
+              >
+                {{ savingScore ? '保存中…' : result.selfScore == null ? '保存自评' : '更新自评' }}
+              </button>
+              <span class="text-[11px] text-[var(--k-text-faint)]">
+                ≥60% 视为已掌握，低于则进入错题本
+              </span>
             </div>
           </div>
 

@@ -51,6 +51,9 @@ public class StatsService {
             long total = row == null || row.getTotal() == null ? 0 : row.getTotal();
             long done = row == null || row.getDone() == null ? 0 : row.getDone();
             long correct = row == null || row.getCorrect() == null ? 0 : row.getCorrect();
+            long choiceDone = row == null || row.getChoiceDone() == null ? 0 : row.getChoiceDone();
+            long scoreTotal = row == null || row.getScoreTotal() == null ? 0 : row.getScoreTotal();
+            long scoreDone = row == null || row.getScoreDone() == null ? 0 : row.getScoreDone();
             totalQuestions += total;
             totalDone += done;
             totalCorrect += correct;
@@ -67,8 +70,13 @@ public class StatsService {
             item.put("total", total);
             item.put("done", done);
             item.put("correct", correct);
-            item.put("accuracy", done == 0 ? 0.0 : round(correct * 100.0 / done));
+            // 正确率分母只用选择题：综合题靠自评，不该拉低/拉高正确率
+            item.put("accuracy", choiceDone == 0 ? 0.0 : round(correct * 100.0 / choiceDone));
             item.put("progress", total == 0 ? 0.0 : round(done * 100.0 / total));
+            // 408 各科分值不均衡，只看题数会失真：同时给出按分值的覆盖率（P2-7）
+            item.put("scoreTotal", scoreTotal);
+            item.put("scoreDone", scoreDone);
+            item.put("scoreProgress", scoreTotal == 0 ? 0.0 : round(scoreDone * 100.0 / scoreTotal));
             // 掌握率 = 掌握题数 / 总题数（对齐 408os 的「掌握率」口径）
             item.put("masteryRate", total == 0 ? 0.0 : round(mastered * 100.0 / total));
             item.put("mastered", mastered);

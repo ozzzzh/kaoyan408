@@ -354,8 +354,10 @@ public class QuestionService {
     public Map<String, Object> submit(Long userId, Question question, String answer, Integer durationMs) {
         boolean isChoice = "choice".equals(question.getQuestionType());
         String standard = question.getAnswer() == null ? null : question.getAnswer().trim();
-        boolean correct = !isChoice || (answer != null && standard != null
-                && standard.equalsIgnoreCase(answer.trim()));
+        // 综合题不自动判分：答案是一段论述/代码，没有可比对的字符串。
+        // 之前这里把「非选择题」一律算 correct=true，等于交白卷也判对（P0-1）。
+        boolean correct = isChoice && answer != null && standard != null
+                && standard.equalsIgnoreCase(answer.trim());
 
         // 游客：只判分并返回解析，不写任何记录。
         // 之前这里直接抛 401，导致游客能打开刷题页却答不出结果，体验是断的。
@@ -381,12 +383,13 @@ public class QuestionService {
         attempt.setResult(correct ? 1 : 0);
         attempt.setAnswer(answer);
         attempt.setDurationMs(durationMs);
+        // 综合题只标记「已作答」，错题/掌握状态由自评得分决定（见 selfScore）
 
         // 错题重做闭环的状态维护：
         //   答错 → wrongCount 累加、记录首次答错时间、清空已掌握标记（重新回到错题本）
         //   答对且此前错过 → retryCorrectCount 累加、标记已掌握（移出错题本）
         //   答对且从未错过 → 不改动上述字段
-        if (!correct) {
+        if (!correct && isChoice) {
             attempt.setWrongCount((attempt.getWrongCount() == null ? 0 : attempt.getWrongCount()) + 1);
             if (attempt.getFirstWrongAt() == null) {
                 attempt.setFirstWrongAt(LocalDateTime.now());
@@ -424,9 +427,13 @@ public class QuestionService {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("questionId", question.getExamRef());
-        payload.put("correct", correct);
+        // 综合题没有"对/错"：返回 null，前端据此走自评流程而不是显示红绿
+        payload.put("correct", isChoice ? Boolean.valueOf(correct) : null);
         payload.put("standardAnswer", standard);
         payload.put("explanation", question.getExplanation());
+        payload.put("comprehensive", !isChoice);
+        payload.put("maxScore", question.getScore());
+        payload.put("selfScore", attempt.getSelfScore());
         payload.put("firstAttempt", firstAttempt);
         payload.put("blocks", blocks);
         payload.put("stats", statsService.dashboard(userId));
@@ -441,11 +448,17 @@ public class QuestionService {
      */
     private Map<String, Object> guestResult(Question question, String answer,
                                             boolean correct, String standard) {
+        boolean isChoice = "choice".equals(question.getQuestionType());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("questionId", question.getExamRef());
-        payload.put("correct", correct);
+        // 综合题没有"对/错"：返回 null，前端据此走自评流程而不是显示红绿
+        payload.put("correct", isChoice ? Boolean.valueOf(correct) : null);
         payload.put("standardAnswer", standard);
         payload.put("explanation", question.getExplanation());
+        payload.put("comprehensive", !isChoice);
+        payload.put("maxScore", question.getScore());
+        // 游客不留记录，自然没有自评得分
+        payload.put("selfScore", null);
         // 游客没有历史记录，每次都是「首次」
         payload.put("firstAttempt", true);
         payload.put("blocks", List.of());
@@ -465,6 +478,76 @@ public class QuestionService {
      *
      * <p>现在读取全部批量化（3 条 SQL），只有写入仍是按行 upsert（块数条）。
      */
+    /**
+     * 综合题自评。
+     *
+     * <p>只有综合题能自评；分数限制在 0..该题满分。写入后该题即为「已作答」，
+     * 并计入「已覆盖分值」（stats.scoreDone），但不参与正确率。
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public Map<String, Object> selfScore(Long userId, Question question, Integer score) {
+        if (userId == null) {
+            throw new BusinessException(401, "请先登录后再自评。");
+        }
+        if (!"comprehensive".equals(question.getQuestionType())) {
+            throw new BusinessException(400, "只有综合题需要自评。");
+        }
+        int max = question.getScore() == null ? 0 : question.getScore();
+        int value = score == null ? 0 : score;
+        if (value < 0 || value > max) {
+            throw new BusinessException(400, "自评分数需在 0-" + max + " 之间。");
+        }
+
+        QuestionAttempt attempt = attemptOf(userId, question.getId());
+        boolean fresh = attempt == null;
+        if (fresh) {
+            attempt = new QuestionAttempt();
+            attempt.setUserId(userId);
+            attempt.setQuestionId(question.getId());
+            attempt.setHintsUsed(0);
+            attempt.setWrongCount(0);
+            attempt.setRetryCorrectCount(0);
+            // 综合题不参与正确率，result 恒为 0
+            attempt.setResult(0);
+            attempt.setAnswer("（自评）");
+        }
+        attempt.setSelfScore(value);
+        // 自评达到 60% 视为掌握，否则记一次「答错」进入错题本
+        boolean passed = max > 0 && value * 10 >= max * 6;
+        if (passed) {
+            if (attempt.getMasteredAt() == null) {
+                attempt.setMasteredAt(LocalDateTime.now());
+            }
+        } else {
+            attempt.setWrongCount((attempt.getWrongCount() == null ? 0 : attempt.getWrongCount()) + 1);
+            if (attempt.getFirstWrongAt() == null) {
+                attempt.setFirstWrongAt(LocalDateTime.now());
+            }
+            attempt.setMasteredAt(null);
+        }
+
+        if (fresh) {
+            attemptMapper.insert(attempt);
+        } else {
+            attemptMapper.update(null,
+                    new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<QuestionAttempt>()
+                            .eq("id", attempt.getId())
+                            .set("self_score", attempt.getSelfScore())
+                            .set("wrong_count", attempt.getWrongCount())
+                            .set("mastered_at", attempt.getMasteredAt())
+                            .set("first_wrong_at", attempt.getFirstWrongAt()));
+        }
+
+        List<Map<String, Object>> blocks = refreshBlockProgressBatch(userId, blockIdsOf(question.getId()));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("questionId", question.getExamRef());
+        payload.put("selfScore", attempt.getSelfScore());
+        payload.put("maxScore", max);
+        payload.put("mastered", attempt.getMasteredAt() != null);
+        payload.put("blocks", blocks);
+        payload.put("stats", statsService.dashboard(userId));
+        return payload;
+    }
     private List<Map<String, Object>> refreshBlockProgressBatch(Long userId, List<String> blockIds) {
         if (blockIds == null || blockIds.isEmpty()) {
             return List.of();

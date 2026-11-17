@@ -345,6 +345,17 @@ export const api = {
       payload,
     ),
 
+  /** 综合题自评（0..该题满分）。返回最新统计，用于刷新看板。 */
+  selfScore: (examRef: string, score: number) =>
+    post<{
+      questionId: string
+      selfScore: number
+      maxScore: number
+      mastered: boolean
+      blocks: Array<{ blockId: string; total: number; done: number; correct: number }>
+      stats?: Dashboard
+    }>(`/api/v1/questions/${encodeURIComponent(examRef)}/self-score`, { score }),
+
   /** 发送邮箱注册验证码。mock 模式下不真发信，验证码在服务端日志里。 */
   sendMailCode: (email: string, purpose: 'register' | 'reset-password' = 'register') =>
     post<{ cooldownSeconds: number; mock: boolean; purpose: string; message: string }>(

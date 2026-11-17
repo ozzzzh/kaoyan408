@@ -76,6 +76,23 @@ public class QuestionController {
         return Result.ok(questionService.submit(userId, question, submitted, duration));
     }
 
+    public record SelfScoreRequest(Integer score) {
+    }
+
+    /**
+     * 综合题自评。
+     *
+     * <p>408 综合题占 70 分，没有可字符串比对的标准答案，只能由考生对照参考答案
+     * 自行打分。写入后该题算「已作答」，计入已覆盖分值，但不参与正确率。
+     */
+    @PostMapping("/{examRef}/self-score")
+    public Result<Map<String, Object>> selfScore(@PathVariable String examRef,
+                                                 @RequestBody(required = false) SelfScoreRequest request,
+                                                 Authentication authentication) {
+        Question question = questionService.requireByRef(examRef);
+        Long userId = userIdOf(authentication);
+        return Result.ok(questionService.selfScore(userId, question, request == null ? null : request.score()));
+    }
     /**
      * 视频指引：按该题关联的知识点，生成到 B 站的搜索入口。
      *
