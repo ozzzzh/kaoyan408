@@ -199,11 +199,16 @@ export function streamAiChat(
     onDone?: (evt: { conversationId: number | null; promptTokens?: number; completionTokens?: number; guest?: boolean }) => void
     onError?: (message: string) => void
   },
+  overrides?: { base?: string; key?: string; model?: string },
 ): () => void {
   const controller = new AbortController()
   const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' })
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
+  // 自带密钥（BYOK）：服务端只在本次请求内使用，不落库、不写日志
+  if (overrides?.key) headers.set('X-AI-Key', overrides.key)
+  if (overrides?.base) headers.set('X-AI-Base', overrides.base)
+  if (overrides?.model) headers.set('X-AI-Model', overrides.model)
 
   ;(async () => {
     try {

@@ -60,12 +60,57 @@ public class CommandCodeClient {
     @Value("${kaoyan.ai.temperature:0.3}")
     private double temperature;
 
+    /**
+     * 允许用户自带密钥时使用的接口域名白名单。
+     *
+     * <p>绝不能允许任意 baseUrl：那等于把服务器变成 SSRF 跳板，
+     * 用户可以把地址填成内网服务，让这台机器替他去打。
+     * 只放行已知的 OpenAI 兼容服务，且必须 https。
+     */
+    @Value("${kaoyan.ai.allowed-hosts:api.commandcode.ai,api.deepseek.com,api.openai.com,dashscope.aliyuncs.com}")
+    private String allowedHosts;
+
     public boolean isConfigured() {
         return apiKey != null && !apiKey.isBlank();
     }
 
     public String modelName() {
         return model;
+    }
+
+    /** 用户自带的调用参数；任一字段为空即回落到服务端默认。 */
+    public record Override(String baseUrl, String apiKey, String model) {
+        public boolean hasKey() {
+            return apiKey != null && !apiKey.isBlank();
+        }
+
+        public boolean isEmpty() {
+            return !hasKey()
+                    && (baseUrl == null || baseUrl.isBlank())
+                    && (model == null || model.isBlank());
+        }
+    }
+
+    /** baseUrl 是否在白名单内（必须 https + 主机名精确匹配）。 */
+    public boolean isAllowedBase(String url) {
+        if (url == null || url.isBlank()) {
+            return true;
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(url.trim());
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+                return false;
+            }
+            String host = uri.getHost().toLowerCase();
+            for (String allowed : allowedHosts.split(",")) {
+                if (host.equals(allowed.trim().toLowerCase())) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** 一次对话的输入：系统提示 + 历史消息 + 本次提问。 */
@@ -88,7 +133,25 @@ public class CommandCodeClient {
     public Usage stream(ChatInput input,
                         Runnable onThinking,
                         Consumer<String> onDelta) {
-        if (!isConfigured()) {
+        return stream(input, onThinking, onDelta, null);
+    }
+
+    /**
+     * 同 {@link #stream(ChatInput, Runnable, Consumer)}，但允许本次请求用用户自带的
+     * 接口地址 / 密钥 / 模型（BYOK）。任一字段为空就回落到服务端默认配置。
+     */
+    public Usage stream(ChatInput input,
+                        Runnable onThinking,
+                        Consumer<String> onDelta,
+                        Override override) {
+        Override effective = override == null ? null : override;
+        String useBase = effective != null && effective.baseUrl() != null && !effective.baseUrl().isBlank()
+                ? effective.baseUrl().trim() : baseUrl;
+        String useKey = effective != null && effective.hasKey() ? effective.apiKey().trim() : apiKey;
+        String useModel = effective != null && effective.model() != null && !effective.model().isBlank()
+                ? effective.model().trim() : model;
+
+        if (useKey == null || useKey.isBlank()) {
             throw new IllegalStateException("AI 服务未配置：缺少 kaoyan.ai.api-key");
         }
 
@@ -100,7 +163,7 @@ public class CommandCodeClient {
         messages.add(Map.of("role", "user", "content", input.question()));
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", model);
+        body.put("model", useModel);
         body.put("messages", messages);
         body.put("max_tokens", maxTokens);
         body.put("temperature", temperature);
@@ -114,9 +177,9 @@ public class CommandCodeClient {
         }
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/chat/completions"))
+                .uri(URI.create(useBase + "/chat/completions"))
                 .timeout(Duration.ofSeconds(120))
-                .header("Authorization", "Bearer " + apiKey)
+                .header("Authorization", "Bearer " + useKey)
                 .header("Content-Type", "application/json")
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))

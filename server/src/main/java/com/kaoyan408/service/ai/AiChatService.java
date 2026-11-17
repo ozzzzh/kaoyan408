@@ -175,10 +175,16 @@ public class AiChatService {
                      String question,
                      Runnable onThinking,
                      Consumer<String> onDelta,
-                     Consumer<CommandCodeClient.Usage> onDone) {
+                     Consumer<CommandCodeClient.Usage> onDone,
+                     CommandCodeClient.Override override) {
 
-        if (!client.isConfigured()) {
+        boolean ownKey = override != null && override.hasKey();
+        if (!client.isConfigured() && !ownKey) {
             throw new BusinessException(503, "AI 服务未配置，请联系管理员。");
+        }
+        if (override != null && !client.isAllowedBase(override.baseUrl())) {
+            // 任意 baseUrl 等于把服务器当 SSRF 跳板：只放行已知的 OpenAI 兼容服务
+            throw new BusinessException(400, "自定义接口地址不在允许范围内，请改用白名单内的服务商。");
         }
         String q = question == null ? "" : question.trim();
         if (q.isEmpty()) {
@@ -223,7 +229,8 @@ public class AiChatService {
                     chunk -> {
                         answer.append(chunk);
                         onDelta.accept(chunk);
-                    });
+                    },
+                    override);
         } catch (RuntimeException e) {
             // 失败时把已生成的部分存下来，用户不会白等一场
             if (conv != null && !answer.isEmpty()) {

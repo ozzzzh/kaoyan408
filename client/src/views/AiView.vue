@@ -27,6 +27,7 @@ import type { AiChatMessage, AiConversationSummary, AiStatus } from '@/api/types
 import { useUserStore } from '@/store/user'
 import { recentPoints } from '@/utils/recentPoints'
 import type { RecentPoint } from '@/utils/recentPoints'
+import { clearAiOverride, hasAiOverride, loadAiOverride, saveAiOverride } from '@/utils/aiOverride'
 import StemMarkdown from '@/components/mock/StemMarkdown.vue'
 import DiagramView from '@/components/ai/DiagramView.vue'
 import AnimationView from '@/components/ai/AnimationView.vue'
@@ -53,7 +54,43 @@ let cancelStream: (() => void) | null = null
 const isGuest = computed(() => status.value?.guest === true)
 const remaining = computed(() => status.value?.guestRemaining ?? 0)
 const configured = computed(() => status.value?.configured !== false)
-const canSend = computed(() => !sending.value && configured.value && input.value.trim().length > 0)
+
+/* ---------------- 自带密钥（BYOK，L1：仅存本机） ---------------- */
+
+const aiOverride = ref(loadAiOverride())
+const showAiSettings = ref(false)
+const draft = reactive({ ...loadAiOverride() })
+const hasOwnKey = computed(() => hasAiOverride(aiOverride.value))
+/** 站点没配 key 但用户自带了密钥，也应该允许提问。 */
+const effectiveConfigured = computed(() => configured.value || hasOwnKey.value)
+
+function openAiSettings() {
+  draft.base = aiOverride.value.base
+  draft.key = aiOverride.value.key
+  draft.model = aiOverride.value.model
+  showAiSettings.value = true
+}
+
+function saveAiSettings() {
+  saveAiOverride({ base: draft.base, key: draft.key, model: draft.model })
+  aiOverride.value = loadAiOverride()
+  showAiSettings.value = false
+  errorText.value = null
+}
+
+function clearAiSettings() {
+  clearAiOverride()
+  aiOverride.value = { base: '', key: '', model: '' }
+  draft.base = ''
+  draft.key = ''
+  draft.model = ''
+  showAiSettings.value = false
+  errorText.value = null
+}
+
+const canSend = computed(
+  () => !sending.value && effectiveConfigured.value && input.value.trim().length > 0,
+)
 
 /**
  * 快捷提问：空态引导用。
@@ -281,7 +318,11 @@ async function send(preset?: string) {
       sending.value = false
       errorText.value = msg
     },
-  })
+    },
+    hasOwnKey.value
+      ? { base: aiOverride.value.base, key: aiOverride.value.key, model: aiOverride.value.model }
+      : undefined,
+  )
 }
 
 /** Enter 发送，Shift+Enter 换行 */
@@ -535,9 +576,19 @@ function goToPoint(id: string) {
           </h1>
           <p class="mt-0.5 text-[11px] text-[var(--k-text-faint)]">
             408 学习助手
-            <span v-if="status?.model" class="ml-1.5 opacity-70">· {{ status.model }}</span>
+            <span v-if="hasOwnKey" class="ml-1.5 text-[var(--k-accent-text)]">· 自有密钥</span>
+            <span v-else-if="status?.model" class="ml-1.5 opacity-70">· {{ status.model }}</span>
           </p>
         </div>
+
+        <!-- 模型设置：用站点默认，或填自己的密钥 -->
+        <button
+          type="button"
+          class="shrink-0 rounded-lg border border-[var(--k-border)] px-2.5 py-1 text-[11px] text-[var(--k-text-muted)] transition-colors hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]"
+          @click="showAiSettings ? (showAiSettings = false) : openAiSettings()"
+        >
+          模型设置
+        </button>
 
         <!-- 游客剩余次数 -->
         <span
@@ -560,12 +611,84 @@ function goToPoint(id: string) {
         </RouterLink>
       </header>
 
+      <!-- 模型设置面板（BYOK L1：只存本机） -->
+      <div
+        v-if="showAiSettings"
+        class="m-3 rounded-xl border border-[var(--k-border-strong)] bg-[var(--k-surface-soft)] p-3"
+      >
+        <div class="flex items-baseline justify-between gap-2">
+          <p class="text-[12px] font-semibold text-[var(--k-text)]">使用自己的 API 密钥</p>
+          <button
+            type="button"
+            class="text-[11px] text-[var(--k-text-faint)] hover:text-[var(--k-text)]"
+            @click="showAiSettings = false"
+          >
+            关闭
+          </button>
+        </div>
+        <p class="mt-1 text-[10px] leading-relaxed text-[var(--k-text-faint)]">
+          仅保存在本机浏览器，不会上传或入库；三项都留空即使用站点默认模型。
+          接口地址须是白名单内的 https 服务（DeepSeek / OpenAI / 通义等）。
+        </p>
+        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+          <input
+            v-model="draft.base"
+            name="kaoyan-ai-base"
+            autocomplete="off"
+            data-lpignore="true"
+            class="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-2.5 py-1.5 text-[12px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)]"
+            placeholder="接口地址，如 https://api.deepseek.com"
+          />
+          <input
+            v-model="draft.model"
+            name="kaoyan-ai-model"
+            autocomplete="off"
+            data-lpignore="true"
+            class="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-2.5 py-1.5 text-[12px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)]"
+            placeholder="模型，如 deepseek-chat"
+          />
+          <!--
+            autocomplete="new-password" 必须留着：用默认的 password 语义时，
+            浏览器会把本站登录密码自动填进这个 API Key 输入框（实测填成了用户名 admin）。
+          -->
+          <input
+            v-model="draft.key"
+            type="password"
+            name="kaoyan-ai-key"
+            autocomplete="new-password"
+            data-lpignore="true"
+            class="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-2.5 py-1.5 text-[12px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)] sm:col-span-2"
+            placeholder="API Key（sk-…）"
+          />
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="rounded-lg bg-[var(--k-accent)] px-3 py-1 text-[11px] font-semibold text-[var(--k-on-accent)] transition-colors hover:bg-[var(--k-accent-hover)]"
+            @click="saveAiSettings"
+          >
+            保存
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-[var(--k-border)] px-3 py-1 text-[11px] text-[var(--k-text-muted)] transition-colors hover:bg-[var(--k-surface)]"
+            @click="clearAiSettings"
+          >
+            清除
+          </button>
+          <span v-if="hasOwnKey" class="text-[10px] text-[var(--k-accent-text)]">
+            已启用自有密钥
+          </span>
+        </div>
+      </div>
+
       <!-- 未配置提示 -->
       <div
-        v-if="!configured"
+        v-if="!configured && !hasOwnKey"
         class="m-4 rounded-xl border border-[var(--k-warn-border)] bg-[var(--k-warn-soft)] px-4 py-3 text-xs text-[var(--k-text-muted)]"
       >
-        AI 服务尚未配置，暂时无法对话。管理员配置 <code class="font-mono">KAOYAN_AI_API_KEY</code> 后即可使用。
+        AI 服务尚未配置，暂时无法对话。管理员配置 <code class="font-mono">KAOYAN_AI_API_KEY</code> 后即可使用；
+        你也可以在右上角「模型设置」里填入自己的 API 密钥。
       </div>
 
       <!-- 消息区 -->
@@ -594,7 +717,7 @@ function goToPoint(id: string) {
               :key="s.title"
               type="button"
               class="group rounded-xl border border-[var(--k-border)] bg-[var(--k-surface-soft)] px-3.5 py-3 text-left transition-colors hover:border-[var(--k-border-strong)]"
-              :disabled="!configured"
+              :disabled="!effectiveConfigured"
               @click="send(s.prompt)"
             >
               <p class="flex items-center justify-between text-xs font-semibold text-[var(--k-text)]">
@@ -805,7 +928,7 @@ function goToPoint(id: string) {
             ref="inputEl"
             v-model="input"
             rows="1"
-            :disabled="!configured || sending"
+            :disabled="!effectiveConfigured || sending"
             placeholder="问我任何问题…"
             class="max-h-[160px] w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--k-text)] outline-none placeholder:text-[var(--k-text-faint)] disabled:opacity-60"
             @keydown="onKeydown"
