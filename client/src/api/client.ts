@@ -30,6 +30,7 @@ import type {
   AdminUserAction,
   DemoInfo,
 } from './types'
+import { getGuestId } from '@/utils/guestId'
 
 const TOKEN_KEY = 'kaoyan408.token'
 
@@ -120,7 +121,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const post = <T>(path: string, body?: unknown) =>
-  request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+  request<T>(path, {
+    method: 'POST',
+    body: body === undefined ? undefined : JSON.stringify(body),
+    // 图解/动画也计入游客额度，必须带同一个匿名 id，否则会退回按 IP 记账
+    headers: { 'X-Guest-Id': getGuestId() },
+  })
 
 /* ---------------- 内容缓存与请求去重 ---------------- */
 
@@ -216,11 +222,18 @@ export function streamAiChat(
     onDone?: (evt: { conversationId: number | null; promptTokens?: number; completionTokens?: number; guest?: boolean }) => void
     onError?: (message: string) => void
   },
+  overrides?: { base?: string; key?: string; model?: string },
 ): () => void {
   const controller = new AbortController()
   const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' })
   const token = getToken()
   applyAuthHeader(headers, token)
+  // 自带密钥（BYOK）：服务端只在本次请求内使用，不落库、不写日志
+  if (overrides?.key) headers.set('X-AI-Key', overrides.key)
+  if (overrides?.base) headers.set('X-AI-Base', overrides.base)
+  if (overrides?.model) headers.set('X-AI-Model', overrides.model)
+  // 游客额度按浏览器匿名 id 记，不按 IP（隧道后面所有访客共用一个 IP）
+  if (!token) headers.set('X-Guest-Id', getGuestId())
 
   ;(async () => {
     try {
@@ -292,7 +305,8 @@ export function streamAiChat(
 }
 export const api = {
     /* ---- AI 学习助手 ---- */
-    aiStatus: () => request<AiStatus>('/api/v1/ai/status'),
+    aiStatus: () =>
+      request<AiStatus>('/api/v1/ai/status', { headers: { 'X-Guest-Id': getGuestId() } }),
     aiConversations: () => request<AiConversationSummary[]>('/api/v1/ai/conversations'),
     aiConversation: (id: number) => request<AiConversationDetail>(`/api/v1/ai/conversations/${id}`),
     aiAnimation: (question: string, answerExcerpt?: string, knowledge?: string) =>
