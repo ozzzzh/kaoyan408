@@ -59,72 +59,67 @@ export const sramDramArticle: KnowledgeArticleData = {
         {
           id: 'kb-co-memory-hierarchy-6-11',
           type: 'html',
-          html: `<svg viewBox="0 0 900 430" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    text { font-family: system-ui, sans-serif; }
-    .t { font-size: 15px; font-weight: 700; fill: #1e293b; text-anchor: middle; }
-    .b { font-size: 12px; fill: #475569; text-anchor: middle; }
-    .rw { fill: #dbeafe; stroke: #2563eb; stroke-width: 1.5; }
-    .rf { fill: #fef3c7; stroke: #d97706; stroke-width: 1.5; }
-    .tl { stroke: #94a3b8; stroke-width: 2.5; }
-  </style>
+          html: `<svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DRAM 三种刷新方式的时间轴示意">
+  <!-- ① 集中刷新 -->
+  <text x="380" y="24" class="d-title">① 集中刷新</text>
+  <rect x="30" y="58" width="490" height="22" class="d-read"/>
+  <rect x="520" y="58" width="180" height="22" class="d-refresh"/>
+  <text x="275" y="73" class="d-label">正常读/写</text>
+  <text x="610" y="73" class="d-label">集中刷新</text>
+  <line x1="30" y1="80" x2="716" y2="80" class="d-axis"/>
+  <polygon points="716,74 728,80 716,86" fill="currentColor"/>
+  <text x="380" y="98" class="d-note">前面一直正常读写，末尾暂停一切访问、集中刷完 → 死区 = 整段刷新时间</text>
 
-  <!-- ===== 集中刷新：时间轴末尾抢着刷 ===== -->
-  <text x="450" y="24" class="t">① 集中刷新</text>
-  <line x1="40" y1="62" x2="860" y2="62" class="tl"/>
-  <polygon points="860,56 872,62 860,68" fill="#94a3b8"/>
-  <text x="60" y="50" class="b">开始</text>
-  <text x="830" y="50" class="b">刷新周期结束</text>
-  <!-- 正常读写段 -->
-  <rect x="60" y="52" width="620" height="20" class="rw"/>
-  <text x="370" y="48" class="b">正常读/写（占大部分时间）</text>
-  <!-- 末尾集中刷新段 -->
-  <rect x="690" y="52" width="150" height="20" class="rf"/>
-  <text x="765" y="92" class="b" fill="#b45309">末尾集中刷全部行</text>
-  <text x="450" y="110" class="b">前面一直正常读写，到刷新周期快结束时暂停一切访问、集中刷一遍 → 死区 = 整段刷新时间</text>
+  <!-- ② 分散刷新：读写后紧跟刷新一行 -->
+  <text x="380" y="126" class="d-title">② 分散刷新</text>
+  <rect x="30" y="152" width="64" height="22" class="d-read"/>
+  <rect x="94" y="152" width="21" height="22" class="d-refresh"/>
+  <rect x="115" y="152" width="64" height="22" class="d-read"/>
+  <rect x="179" y="152" width="21" height="22" class="d-refresh"/>
+  <rect x="200" y="152" width="64" height="22" class="d-read"/>
+  <rect x="264" y="152" width="21" height="22" class="d-refresh"/>
+  <rect x="285" y="152" width="64" height="22" class="d-read"/>
+  <rect x="349" y="152" width="21" height="22" class="d-refresh"/>
+  <rect x="370" y="152" width="64" height="22" class="d-read"/>
+  <rect x="434" y="152" width="21" height="22" class="d-refresh"/>
+  <rect x="455" y="152" width="64" height="22" class="d-read"/>
+  <rect x="519" y="152" width="21" height="22" class="d-refresh"/>
+  <rect x="540" y="152" width="64" height="22" class="d-read"/>
+  <rect x="604" y="152" width="21" height="22" class="d-refresh"/>
+  <rect x="625" y="152" width="64" height="22" class="d-read"/>
+  <rect x="689" y="152" width="21" height="22" class="d-refresh"/>
+  <line x1="30" y1="174" x2="716" y2="174" class="d-axis"/>
+  <polygon points="716,168 728,174 716,180" fill="currentColor"/>
+  <text x="380" y="192" class="d-note">每个读写周期后紧跟刷新一行 → 几乎无死区，但每个周期拉长、速度约降一半</text>
 
-  <!-- ===== 分散刷新：每次读写后刷一下 ===== -->
-  <text x="450" y="148" class="t">② 分散刷新</text>
-  <line x1="40" y1="186" x2="860" y2="186" class="tl"/>
-  <polygon points="860,180 872,186 860,192" fill="#94a3b8"/>
-  <!-- 交替：读写-刷新-读写-刷新... -->
-  <rect x="60" y="176" width="90" height="20" class="rw"/>
-  <rect x="152" y="176" width="30" height="20" class="rf"/>
-  <rect x="184" y="176" width="90" height="20" class="rw"/>
-  <rect x="276" y="176" width="30" height="20" class="rf"/>
-  <rect x="308" y="176" width="90" height="20" class="rw"/>
-  <rect x="400" y="176" width="30" height="20" class="rf"/>
-  <rect x="432" y="176" width="90" height="20" class="rw"/>
-  <rect x="524" y="176" width="30" height="20" class="rf"/>
-  <rect x="556" y="176" width="90" height="20" class="rw"/>
-  <rect x="648" y="176" width="30" height="20" class="rf"/>
-  <rect x="680" y="176" width="90" height="20" class="rw"/>
-  <rect x="772" y="176" width="30" height="20" class="rf"/>
-  <text x="450" y="216" class="b">每个读/写周期后紧跟刷新一行，交替进行 → 几乎无死区，但每个存储周期拉长、速度约降一半</text>
-
-  <!-- ===== 异步刷新：每隔固定时间刷一下 ===== -->
-  <text x="450" y="254" class="t">③ 异步刷新</text>
-  <line x1="40" y1="292" x2="860" y2="292" class="tl"/>
-  <polygon points="860,286 872,292 860,298" fill="#94a3b8"/>
-  <!-- 大部分读写，每隔一段插一个刷新 -->
-  <rect x="60" y="282" width="90" height="20" class="rw"/>
-  <rect x="152" y="282" width="90" height="20" class="rw"/>
-  <rect x="244" y="282" width="30" height="20" class="rf"/>
-  <rect x="276" y="282" width="90" height="20" class="rw"/>
-  <rect x="368" y="282" width="90" height="20" class="rw"/>
-  <rect x="460" y="282" width="30" height="20" class="rf"/>
-  <rect x="492" y="282" width="90" height="20" class="rw"/>
-  <rect x="584" y="282" width="90" height="20" class="rw"/>
-  <rect x="676" y="282" width="30" height="20" class="rf"/>
-  <rect x="708" y="282" width="90" height="20" class="rw"/>
-  <text x="450" y="322" class="b">大多数时间正常读写，每隔固定时间（如 15.6μs）刷一行 → 死区小、速度损失小，实际最常用</text>
+  <!-- ③ 异步刷新：每隔固定时间刷一行 -->
+  <text x="380" y="220" class="d-title">③ 异步刷新</text>
+  <rect x="30" y="246" width="69" height="22" class="d-read"/>
+  <rect x="99" y="246" width="16" height="22" class="d-refresh"/>
+  <rect x="115" y="246" width="69" height="22" class="d-read"/>
+  <rect x="184" y="246" width="16" height="22" class="d-refresh"/>
+  <rect x="200" y="246" width="69" height="22" class="d-read"/>
+  <rect x="269" y="246" width="16" height="22" class="d-refresh"/>
+  <rect x="285" y="246" width="69" height="22" class="d-read"/>
+  <rect x="354" y="246" width="16" height="22" class="d-refresh"/>
+  <rect x="370" y="246" width="69" height="22" class="d-read"/>
+  <rect x="439" y="246" width="16" height="22" class="d-refresh"/>
+  <rect x="455" y="246" width="69" height="22" class="d-read"/>
+  <rect x="524" y="246" width="16" height="22" class="d-refresh"/>
+  <rect x="540" y="246" width="69" height="22" class="d-read"/>
+  <rect x="609" y="246" width="16" height="22" class="d-refresh"/>
+  <rect x="625" y="246" width="69" height="22" class="d-read"/>
+  <rect x="694" y="246" width="16" height="22" class="d-refresh"/>
+  <line x1="30" y1="268" x2="716" y2="268" class="d-axis"/>
+  <polygon points="716,262 728,268 716,274" fill="currentColor"/>
+  <text x="380" y="286" class="d-note">大多数时间正常读写，每隔固定时间（如 15.6μs）刷一行 → 死区分散、速度损失小</text>
 
   <!-- 图例 -->
-  <rect x="300" y="356" width="18" height="20" class="rw"/>
-  <text x="328" y="370" class="b">正常读/写</text>
-  <rect x="450" y="356" width="18" height="20" class="rf"/>
-  <text x="478" y="370" class="b">刷新一行</text>
-  <text x="450" y="402" class="b">时间轴 = 一个刷新周期（约 2ms）；刷新一行所需时间 = 一个存储周期</text>
+  <rect x="236" y="308" width="20" height="14" class="d-read"/>
+  <text x="266" y="319" class="d-legend">正常读/写</text>
+  <rect x="426" y="308" width="20" height="14" class="d-refresh"/>
+  <text x="456" y="319" class="d-legend">刷新一行</text>
+  <text x="380" y="334" class="d-note">时间轴 = 一个刷新周期（约 2ms）；刷新一行所需时间 = 一个存储周期</text>
 </svg>`,
         },
         {
