@@ -283,7 +283,7 @@ public class MockExamService {
         }
         int full = question.getScore() == null ? 0 : question.getScore();
         int score = selfScore == null ? 0 : Math.max(0, Math.min(full, selfScore));
-        boolean guest = session.getId() != null && session.getId() < 0;
+        boolean guest = guestStore.has(session.getId());
 
         MockAnswer row = guest
                 ? guestStore.answerOf(session.getId(), question.getId())
@@ -328,7 +328,7 @@ public class MockExamService {
     }
 
     private MockSession requireSession(Long userId, Long sessionId) {
-        // 游客会话 id 为负、只在内存；登录用户会话 id 为正、走数据库。
+        // 游客会话只存在内存（高位正数 id），登录用户会话落库、走数据库。
         // 两条路径都要校验归属，否则拿到别人的 id 就能看别人的卷。
         if (userId == null) {
             MockSession guest = guestStore.get(sessionId);
@@ -337,7 +337,7 @@ public class MockExamService {
             }
             return guest;
         }
-        MockSession session = sessionId == null || sessionId < 0
+        MockSession session = sessionId == null || guestStore.has(sessionId)
                 ? null
                 : sessionMapper.selectById(sessionId);
         if (session == null || !session.getUserId().equals(userId)) {

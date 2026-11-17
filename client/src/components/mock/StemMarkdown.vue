@@ -105,11 +105,33 @@ const rendered = computed(() => html.value)
   border-collapse: collapse;
   margin: 0.5rem 0;
   font-size: 0.8rem;
+  /* 宽表格在窄屏（含 390px 移动端）自己横向滚动，不要撑破整页 */
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .stem-md :deep(th),
 .stem-md :deep(td) {
   border: 1px solid var(--k-border);
   padding: 0.25rem 0.5rem;
+  white-space: nowrap;
 }
+
+.stem-md :deep(th) {
+  background: var(--k-surface-soft);
+  font-weight: 600;
+}
+
+/* GFM 对齐（由 utils/stem.ts 从 :---: 推断） */
+.stem-md :deep(.ta-left) {
+  text-align: left;
+}
+.stem-md :deep(.ta-center) {
+  text-align: center;
+}
+.stem-md :deep(.ta-right) {
+  text-align: right;
+}
+
 </style>

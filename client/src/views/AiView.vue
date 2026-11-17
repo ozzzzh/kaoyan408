@@ -25,6 +25,9 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { api, ApiError, streamAiChat } from '@/api/client'
 import type { AiChatMessage, AiConversationSummary, AiStatus } from '@/api/types'
 import { useUserStore } from '@/store/user'
+import { recentPoints } from '@/utils/recentPoints'
+import type { RecentPoint } from '@/utils/recentPoints'
+import { clearAiOverride, hasAiOverride, loadAiOverride, saveAiOverride } from '@/utils/aiOverride'
 import StemMarkdown from '@/components/mock/StemMarkdown.vue'
 import DiagramView from '@/components/ai/DiagramView.vue'
 import AnimationView from '@/components/ai/AnimationView.vue'
@@ -51,14 +54,109 @@ let cancelStream: (() => void) | null = null
 const isGuest = computed(() => status.value?.guest === true)
 const remaining = computed(() => status.value?.guestRemaining ?? 0)
 const configured = computed(() => status.value?.configured !== false)
-const canSend = computed(() => !sending.value && configured.value && input.value.trim().length > 0)
 
-/** 快捷提问：空态引导用 */
-const starters = [
-  { title: '聊聊复习安排', desc: '结合基础、进度与可用时间' },
-  { title: '讲清一个知识点', desc: '理解原理，串联前后关系' },
-  { title: '分析我的薄弱项', desc: '看错题与掌握度，给下一步' },
-]
+/* ---------------- 自带密钥（BYOK，L1：仅存本机） ---------------- */
+
+const aiOverride = ref(loadAiOverride())
+const showAiSettings = ref(false)
+const draft = reactive({ ...loadAiOverride() })
+const hasOwnKey = computed(() => hasAiOverride(aiOverride.value))
+/** 站点没配 key 但用户自带了密钥，也应该允许提问。 */
+const effectiveConfigured = computed(() => configured.value || hasOwnKey.value)
+
+function openAiSettings() {
+  draft.base = aiOverride.value.base
+  draft.key = aiOverride.value.key
+  draft.model = aiOverride.value.model
+  showAiSettings.value = true
+}
+
+function saveAiSettings() {
+  saveAiOverride({ base: draft.base, key: draft.key, model: draft.model })
+  aiOverride.value = loadAiOverride()
+  showAiSettings.value = false
+  errorText.value = null
+}
+
+function clearAiSettings() {
+  clearAiOverride()
+  aiOverride.value = { base: '', key: '', model: '' }
+  draft.base = ''
+  draft.key = ''
+  draft.model = ''
+  showAiSettings.value = false
+  errorText.value = null
+}
+
+const canSend = computed(
+  () => !sending.value && effectiveConfigured.value && input.value.trim().length > 0,
+)
+
+/**
+ * 快捷提问：空态引导用。
+ *
+ * 卡片上只展示 title/desc，真正发出去的是 prompt ——
+ * 原来直接 send(s.title)，模型收到的是「聊聊复习安排」这种没头没尾的短语，
+ * 只能靠猜，回答质量必然打折。
+ *
+ * 第 4 张优先接「最近浏览的知识点」（和搜索页共用同一份 localStorage），
+ * 没有记录时退回「精讲一道真题」。这样 2×2 也排得整齐。
+ */
+const recentForStarter = ref<RecentPoint | null>(null)
+
+const starters = computed(() => {
+  const list = [
+    {
+      title: '聊聊复习安排',
+      desc: '结合基础、进度与可用时间',
+      prompt: '结合我的复习进度和可用的时间，帮我排一份接下来两周的 408 复习计划，具体到每天做什么。',
+    },
+    {
+      title: '讲清一个知识点',
+      desc: '理解原理，串联前后关系',
+      prompt: '挑一个 408 里的高频难点，按「是什么 — 为什么 — 怎么考」讲清楚，最后配一道例题。',
+    },
+    {
+      title: '分析我的薄弱项',
+      desc: '看错题与掌握度，给下一步',
+      prompt: '根据我的错题和掌握情况，指出三个最该补的薄弱点，并给出具体的练法。',
+    },
+  ]
+
+  const latest = recentForStarter.value
+  list.push(
+    latest
+      ? {
+          title: `接着讲「${latest.title}」`,
+          desc: '从你最近看的那个知识点继续',
+          prompt: `接着我最近看的「${latest.title}」，帮我梳理它的核心考点和最容易错的地方。`,
+        }
+      : {
+          title: '精讲一道真题',
+          desc: '按考场思路拆步骤',
+          prompt: '选一道近三年的 408 真题，按考场思路一步步拆解，说清每一步为什么这么做。',
+        },
+  )
+  return list
+})
+
+/**
+ * 从知识点页带进来的上下文（?context=kp:xxx）。
+ *
+ * 之前是把「请讲讲…」直接覆盖进输入框：用户看到一句没头没尾的话，
+ * 还会盖掉已经打了一半的内容。现在改成输入框上方的胶囊，
+ * 看得见、可移除，发送时再作为前缀带上。
+ */
+const contextPoint = ref<{ pointId: string; title: string } | null>(null)
+
+/** 侧栏空态用的最近浏览（登录用户才看得到侧栏）。 */
+const sidebarRecent = ref<RecentPoint[]>([])
+
+/** 把某个知识点挂成当前上下文（侧栏、空态卡片都走这里）。 */
+function useContextPoint(point: { pointId: string; title: string }) {
+  contextPoint.value = { pointId: point.pointId, title: point.title }
+  inputEl.value?.focus()
+}
 
 onMounted(async () => {
   try {
@@ -68,6 +166,8 @@ onMounted(async () => {
   }
   await loadConversations()
   await applyRouteContext()
+  sidebarRecent.value = recentPoints(5)
+  recentForStarter.value = sidebarRecent.value[0] ?? null
   inputEl.value?.focus()
 })
 
@@ -82,8 +182,8 @@ async function applyRouteContext() {
     const points = await api.knowledgePoints()
     const hit = points.find((p) => p.pointId === pointId)
     if (hit) {
-      input.value = `请讲讲「${hit.title}」，重点讲清楚原理和常见考点。`
-      await nextTick()
+      // 只挂上下文，不覆写输入框：用户可能是带着草稿过来的
+      contextPoint.value = { pointId: hit.pointId, title: hit.title }
       inputEl.value?.focus()
     }
   } catch {
@@ -126,6 +226,7 @@ function newConversation() {
   messages.value = []
   errorText.value = null
   input.value = ''
+  contextPoint.value = null
   inputEl.value?.focus()
 }
 
@@ -148,6 +249,11 @@ async function send(preset?: string) {
     return
   }
 
+  // 气泡里显示用户原话；发给模型的可能带上下文前缀
+  const payload = contextPoint.value
+    ? `关于知识点「${contextPoint.value.title}」：${question}`
+    : question
+
   errorText.value = null
   input.value = ''
   sending.value = true
@@ -166,7 +272,7 @@ async function send(preset?: string) {
   messages.value.push(reply)
   await scrollToBottom()
 
-  cancelStream = streamAiChat(question, activeId.value, {
+  cancelStream = streamAiChat(payload, activeId.value, {
     onThinking: () => {
       reply.thinking = true
     },
@@ -180,6 +286,12 @@ async function send(preset?: string) {
       reply.streaming = false
       reply.thinking = false
       sending.value = false
+      // 流正常结束但一个字都没有：上游模型没吐内容（密钥/额度/模型名出问题时会这样）。
+      // 之前这里会留下一个没有任何文字的空气泡，用户完全不知道为什么没回答。
+      if (!reply.content.trim()) {
+        messages.value = messages.value.filter((m) => m !== reply)
+        errorText.value = '模型这次没有返回内容，请重试；持续出现请联系管理员检查 AI 配置。'
+      }
       if (evt.conversationId) {
         activeId.value = evt.conversationId
       }
@@ -206,7 +318,11 @@ async function send(preset?: string) {
       sending.value = false
       errorText.value = msg
     },
-  })
+    },
+    hasOwnKey.value
+      ? { base: aiOverride.value.base, key: aiOverride.value.key, model: aiOverride.value.model }
+      : undefined,
+  )
 }
 
 /** Enter 发送，Shift+Enter 换行 */
@@ -382,8 +498,14 @@ function goToPoint(id: string) {
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        <p v-if="!conversations.length" class="px-2 py-3 text-xs text-[var(--k-text-faint)]">
-          暂无历史会话
+        <p v-if="!conversations.length" class="px-2 pt-2 text-[11px] text-[var(--k-text-faint)]">
+          还没有历史会话
+        </p>
+        <p
+          v-if="!conversations.length && !sidebarRecent.length"
+          class="mt-1 px-2 text-[10px] leading-relaxed text-[var(--k-text-faint)]"
+        >
+          去知识点页翻几篇，这里会出现快捷入口
         </p>
         <button
           v-for="c in conversations"
@@ -409,6 +531,39 @@ function goToPoint(id: string) {
           </span>
         </button>
       </div>
+
+      <!--
+        「最近浏览」固定在侧栏底部，不再依附于「没有历史会话」这个分支。
+        之前它写在空态里，一旦开始对话、历史列表出现，这个上下文快捷入口就整块消失了。
+      -->
+      <div
+        v-if="sidebarRecent.length"
+        class="shrink-0 border-t border-[var(--k-border)] px-2 py-2"
+      >
+        <p class="px-1 text-[10px] font-semibold tracking-wide text-[var(--k-text-faint)]">
+          最近浏览
+        </p>
+        <button
+          v-for="point in sidebarRecent.slice(0, 3)"
+          :key="point.pointId"
+          type="button"
+          class="mt-0.5 flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-left text-[11px] text-[var(--k-text-muted)] transition-colors hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]"
+          :title="`以「${point.title}」为上下文提问`"
+          @click="useContextPoint(point)"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            class="h-3 w-3 shrink-0 text-[var(--k-text-faint)]"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M4 5.5A1.5 1.5 0 015.5 4h6L20 12l-8 8-8-8V5.5z" stroke-linejoin="round" />
+          </svg>
+          <span class="truncate">{{ point.title }}</span>
+        </button>
+        <p class="mt-1 px-1 text-[10px] text-[var(--k-text-faint)]">点一下设为上下文</p>
+      </div>
     </aside>
 
     <!-- 右侧：对话区 -->
@@ -421,9 +576,19 @@ function goToPoint(id: string) {
           </h1>
           <p class="mt-0.5 text-[11px] text-[var(--k-text-faint)]">
             408 学习助手
-            <span v-if="status?.model" class="ml-1.5 opacity-70">· {{ status.model }}</span>
+            <span v-if="hasOwnKey" class="ml-1.5 text-[var(--k-accent-text)]">· 自有密钥</span>
+            <span v-else-if="status?.model" class="ml-1.5 opacity-70">· {{ status.model }}</span>
           </p>
         </div>
+
+        <!-- 模型设置：用站点默认，或填自己的密钥 -->
+        <button
+          type="button"
+          class="shrink-0 rounded-lg border border-[var(--k-border)] px-2.5 py-1 text-[11px] text-[var(--k-text-muted)] transition-colors hover:bg-[var(--k-surface-soft)] hover:text-[var(--k-text)]"
+          @click="showAiSettings ? (showAiSettings = false) : openAiSettings()"
+        >
+          模型设置
+        </button>
 
         <!-- 游客剩余次数 -->
         <span
@@ -446,12 +611,84 @@ function goToPoint(id: string) {
         </RouterLink>
       </header>
 
+      <!-- 模型设置面板（BYOK L1：只存本机） -->
+      <div
+        v-if="showAiSettings"
+        class="m-3 rounded-xl border border-[var(--k-border-strong)] bg-[var(--k-surface-soft)] p-3"
+      >
+        <div class="flex items-baseline justify-between gap-2">
+          <p class="text-[12px] font-semibold text-[var(--k-text)]">使用自己的 API 密钥</p>
+          <button
+            type="button"
+            class="text-[11px] text-[var(--k-text-faint)] hover:text-[var(--k-text)]"
+            @click="showAiSettings = false"
+          >
+            关闭
+          </button>
+        </div>
+        <p class="mt-1 text-[10px] leading-relaxed text-[var(--k-text-faint)]">
+          仅保存在本机浏览器，不会上传或入库；三项都留空即使用站点默认模型。
+          接口地址须是白名单内的 https 服务（DeepSeek / OpenAI / 通义等）。
+        </p>
+        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+          <input
+            v-model="draft.base"
+            name="kaoyan-ai-base"
+            autocomplete="off"
+            data-lpignore="true"
+            class="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-2.5 py-1.5 text-[12px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)]"
+            placeholder="接口地址，如 https://api.deepseek.com"
+          />
+          <input
+            v-model="draft.model"
+            name="kaoyan-ai-model"
+            autocomplete="off"
+            data-lpignore="true"
+            class="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-2.5 py-1.5 text-[12px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)]"
+            placeholder="模型，如 deepseek-chat"
+          />
+          <!--
+            autocomplete="new-password" 必须留着：用默认的 password 语义时，
+            浏览器会把本站登录密码自动填进这个 API Key 输入框（实测填成了用户名 admin）。
+          -->
+          <input
+            v-model="draft.key"
+            type="password"
+            name="kaoyan-ai-key"
+            autocomplete="new-password"
+            data-lpignore="true"
+            class="rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-2.5 py-1.5 text-[12px] text-[var(--k-text)] outline-0 placeholder:text-[var(--k-text-faint)] sm:col-span-2"
+            placeholder="API Key（sk-…）"
+          />
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="rounded-lg bg-[var(--k-accent)] px-3 py-1 text-[11px] font-semibold text-[var(--k-on-accent)] transition-colors hover:bg-[var(--k-accent-hover)]"
+            @click="saveAiSettings"
+          >
+            保存
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-[var(--k-border)] px-3 py-1 text-[11px] text-[var(--k-text-muted)] transition-colors hover:bg-[var(--k-surface)]"
+            @click="clearAiSettings"
+          >
+            清除
+          </button>
+          <span v-if="hasOwnKey" class="text-[10px] text-[var(--k-accent-text)]">
+            已启用自有密钥
+          </span>
+        </div>
+      </div>
+
       <!-- 未配置提示 -->
       <div
-        v-if="!configured"
+        v-if="!configured && !hasOwnKey"
         class="m-4 rounded-xl border border-[var(--k-warn-border)] bg-[var(--k-warn-soft)] px-4 py-3 text-xs text-[var(--k-text-muted)]"
       >
-        AI 服务尚未配置，暂时无法对话。管理员配置 <code class="font-mono">KAOYAN_AI_API_KEY</code> 后即可使用。
+        AI 服务尚未配置，暂时无法对话。管理员配置 <code class="font-mono">KAOYAN_AI_API_KEY</code> 后即可使用；
+        你也可以在右上角「模型设置」里填入自己的 API 密钥。
       </div>
 
       <!-- 消息区 -->
@@ -480,8 +717,8 @@ function goToPoint(id: string) {
               :key="s.title"
               type="button"
               class="group rounded-xl border border-[var(--k-border)] bg-[var(--k-surface-soft)] px-3.5 py-3 text-left transition-colors hover:border-[var(--k-border-strong)]"
-              :disabled="!configured"
-              @click="send(s.title)"
+              :disabled="!effectiveConfigured"
+              @click="send(s.prompt)"
             >
               <p class="flex items-center justify-between text-xs font-semibold text-[var(--k-text)]">
                 {{ s.title }}
@@ -490,6 +727,10 @@ function goToPoint(id: string) {
               <p class="mt-1 text-[11px] text-[var(--k-text-faint)]">{{ s.desc }}</p>
             </button>
           </div>
+
+          <p class="mt-4 text-center text-[10px] text-[var(--k-text-faint)]">
+            回答由 AI 生成，仅供参考；涉及计算与结论请自行核对。
+          </p>
         </div>
 
         <!-- 消息列表 -->
@@ -656,19 +897,45 @@ function goToPoint(id: string) {
 
       <!-- 输入区 -->
       <div class="border-t border-[var(--k-border)] p-3">
+        <!-- 当前上下文：看得见、可移除，发送时作为前缀带上 -->
+        <div v-if="contextPoint" class="mb-2 flex">
+          <span
+            class="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-[var(--k-accent)] bg-[var(--k-accent-soft)] px-2.5 py-1 text-[11px] text-[var(--k-accent-text)]"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              class="h-3 w-3 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M4 5.5A1.5 1.5 0 015.5 4h6L20 12l-8 8-8-8V5.5z" stroke-linejoin="round" />
+            </svg>
+            <span class="truncate">上下文：{{ contextPoint.title }}</span>
+            <button
+              type="button"
+              class="shrink-0 rounded-full px-1 text-[13px] leading-none opacity-70 transition-opacity hover:opacity-100"
+              aria-label="移除上下文"
+              @click="contextPoint = null"
+            >
+              ×
+            </button>
+          </span>
+        </div>
+
         <div class="rounded-xl border border-[var(--k-border-strong)] bg-[var(--k-surface)] px-3 py-2 focus-within:border-[var(--k-accent)]">
           <textarea
             ref="inputEl"
             v-model="input"
             rows="1"
-            :disabled="!configured || sending"
+            :disabled="!effectiveConfigured || sending"
             placeholder="问我任何问题…"
             class="max-h-[160px] w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--k-text)] outline-none placeholder:text-[var(--k-text-faint)] disabled:opacity-60"
             @keydown="onKeydown"
           />
           <div class="mt-1.5 flex items-center justify-between gap-2">
             <p class="truncate text-[10px] text-[var(--k-text-faint)]">
-              Enter 发送 · Shift + Enter 换行 · 内容仅供参考
+              Enter 发送 · Shift + Enter 换行
             </p>
             <button
               type="button"

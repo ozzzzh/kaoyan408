@@ -6,6 +6,7 @@ import com.kaoyan408.core.Result;
 import com.kaoyan408.entity.User;
 import com.kaoyan408.service.AuthService;
 import com.kaoyan408.service.ai.AiChatService;
+import com.kaoyan408.service.ai.CommandCodeClient;
 import com.kaoyan408.service.ai.DiagramService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,8 +75,10 @@ public class AiController {
     /** 服务状态：是否已配置、游客还剩几次。 */
     @GetMapping("/status")
     public Result<Map<String, Object>> status(Authentication authentication,
-                                              jakarta.servlet.http.HttpServletRequest request) {
-        return Result.ok(aiChatService.status(userIdOf(authentication), clientIp(request)));
+                                              jakarta.servlet.http.HttpServletRequest request,
+                                              @org.springframework.web.bind.annotation.RequestHeader(
+                                                      value = "X-Guest-Id", required = false) String guestId) {
+        return Result.ok(aiChatService.status(userIdOf(authentication), clientIp(request), guestId));
     }
 
     /** 会话列表；游客返回空数组。 */
@@ -114,10 +117,12 @@ public class AiController {
     @PostMapping("/animation")
     public Result<Map<String, Object>> animation(@RequestBody(required = false) DiagramRequest body,
                                                  Authentication authentication,
-                                                 jakarta.servlet.http.HttpServletRequest request) {
+                                                 jakarta.servlet.http.HttpServletRequest request,
+                                                 @org.springframework.web.bind.annotation.RequestHeader(
+                                                         value = "X-Guest-Id", required = false) String guestId) {
         Long userId = userIdOf(authentication);
         String ip = clientIp(request);
-        aiChatService.ensureQuota(userId, ip);
+        aiChatService.ensureQuota(userId, ip, guestId);
         return Result.ok(diagramService.generateAnimation(
                 body == null ? null : body.question(),
                 body == null ? null : body.answerExcerpt(),
@@ -135,10 +140,12 @@ public class AiController {
     @PostMapping("/diagram")
     public Result<Map<String, Object>> diagram(@RequestBody(required = false) DiagramRequest body,
                                                Authentication authentication,
-                                               jakarta.servlet.http.HttpServletRequest request) {
+                                               jakarta.servlet.http.HttpServletRequest request,
+                                               @org.springframework.web.bind.annotation.RequestHeader(
+                                                       value = "X-Guest-Id", required = false) String guestId) {
         Long userId = userIdOf(authentication);
         String ip = clientIp(request);
-        aiChatService.ensureQuota(userId, ip);
+        aiChatService.ensureQuota(userId, ip, guestId);
         return Result.ok(diagramService.generate(
                 body == null ? null : body.question(),
                 body == null ? null : body.answerExcerpt(),
@@ -159,12 +166,22 @@ public class AiController {
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@RequestBody(required = false) ChatRequest body,
                            Authentication authentication,
-                           jakarta.servlet.http.HttpServletRequest request) {
+                           jakarta.servlet.http.HttpServletRequest request,
+                           @org.springframework.web.bind.annotation.RequestHeader(
+                                   value = "X-AI-Key", required = false) String aiKey,
+                           @org.springframework.web.bind.annotation.RequestHeader(
+                                   value = "X-AI-Base", required = false) String aiBase,
+                           @org.springframework.web.bind.annotation.RequestHeader(
+                                   value = "X-AI-Model", required = false) String aiModel,
+                           @org.springframework.web.bind.annotation.RequestHeader(
+                                   value = "X-Guest-Id", required = false) String guestId) {
         // 超时给 3 分钟：模型推理 + 长回答偶尔会超过 2 分钟，
         // 设太短会在正常回答中途被掐断。
         SseEmitter emitter = new SseEmitter(180_000L);
         Long userId = userIdOf(authentication);
         String ip = clientIp(request);
+        // 只在本请求内使用，不落库、不写日志
+        CommandCodeClient.Override override = buildOverride(aiKey, aiBase, aiModel);
 
         Long conversationId = body == null ? null : body.conversationId();
         String question = body == null ? null : body.question();
@@ -177,7 +194,7 @@ public class AiController {
         executor.submit(() -> {
             try {
                 aiChatService.chat(
-                        userId, ip, finalConvId, question,
+                        userId, ip, guestId, finalConvId, question,
                         () -> sendQuietly(emitter, "thinking", Map.of("status", "thinking")),
                         chunk -> sendQuietly(emitter, "delta", Map.of("text", chunk)),
                         usage -> {
@@ -189,7 +206,8 @@ public class AiController {
                             done.put("guest", userId == null);
                             sendQuietly(emitter, "done", done);
                             emitter.complete();
-                        });
+                        },
+                        override);
             } catch (BusinessException e) {
                 sendQuietly(emitter, "error", Map.of("code", e.getCode(), "message", e.getMessage()));
                 emitter.complete();
@@ -232,6 +250,32 @@ public class AiController {
      * 请求里加一个 X-Forwarded-For 就能换一个游客额度桶，AI 调用有真实成本。
      * 现在统一走 ClientIpResolver（只信 nginx 覆盖写的 X-Real-IP）。
      */
+    /**
+     * 从请求头读用户自带的模型参数（BYOK）。
+     *
+     * <p>这里只做去空白和长度上限，白名单校验放在 service 层——那里能抛业务异常、
+     * 走统一的错误事件。密钥只在本请求内使用，**绝不写日志**。
+     */
+    private static CommandCodeClient.Override buildOverride(String key, String base, String model) {
+        String k = key == null ? "" : key.trim();
+        String b = base == null ? "" : base.trim();
+        String m = model == null ? "" : model.trim();
+        if (k.length() > 400) {
+            k = k.substring(0, 400);
+        }
+        if (b.length() > 200) {
+            b = b.substring(0, 200);
+        }
+        if (m.length() > 100) {
+            m = m.substring(0, 100);
+        }
+        CommandCodeClient.Override override = new CommandCodeClient.Override(
+                b.isEmpty() ? null : b,
+                k.isEmpty() ? null : k,
+                m.isEmpty() ? null : m);
+        return override.isEmpty() ? null : override;
+    }
+
     private static String clientIp(jakarta.servlet.http.HttpServletRequest request) {
         return ClientIpResolver.resolve(request);
     }

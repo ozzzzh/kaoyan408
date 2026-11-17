@@ -35,15 +35,25 @@ public class GuestMockStore {
     private final Map<Long, Map<Long, MockAnswer>> answers = new ConcurrentHashMap<>();
     private final Map<Long, Long> createdAt = new ConcurrentHashMap<>();
 
-    /** 会话 id 从负数开始，与数据库自增 id（正数）天然区分。 */
-    private long nextId = -1;
+    /**
+     * 游客会话 id 取**正数高位段**（10 亿起，进程启动时再随机偏移）。
+     *
+     * <p>原先是负数（-1、-2…），于是 URL 上会出现 `#/mock/-2`、交卷后 `#/mock/-1/result`：
+     * 刷新、后退、分享都别扭，看着也像参数写错了。改成高位正数后与数据库自增 id
+     * （小整数）天然不冲突，URL 恢复成正常形态。
+     */
+    private static final long GUEST_ID_BASE = 1_000_000_000L;
+
+    private final java.util.concurrent.atomic.AtomicLong nextId =
+            new java.util.concurrent.atomic.AtomicLong(
+                    GUEST_ID_BASE + java.util.concurrent.ThreadLocalRandom.current().nextInt(1, 1_000_000));
 
     public synchronized MockSession create(int examYear, int durationMinutes) {
         evictExpired();
         if (sessions.size() >= MAX_SESSIONS) {
             evictOldest();
         }
-        long id = nextId--;
+        long id = nextId.getAndIncrement();
         MockSession session = new MockSession();
         session.setId(id);
         session.setUserId(null);
@@ -61,7 +71,7 @@ public class GuestMockStore {
     }
 
     public MockSession get(Long id) {
-        if (id == null || id >= 0) {
+        if (id == null) {
             return null;
         }
         MockSession session = sessions.get(id);
@@ -73,6 +83,16 @@ public class GuestMockStore {
             }
         }
         return session;
+    }
+
+    /**
+     * 这个 id 是不是游客内存会话。
+     *
+     * <p>用来替代原来的「id < 0 就是游客」判断——游客 id 现在也是正数了，
+     * 只能靠「在不在内存表里」区分。
+     */
+    public boolean has(Long id) {
+        return id != null && sessions.containsKey(id);
     }
 
     /** 会话对象本身在内存里是引用的，改完无需回写；此方法仅为语义清晰保留。 */

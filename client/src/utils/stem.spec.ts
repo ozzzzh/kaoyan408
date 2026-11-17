@@ -38,6 +38,29 @@ describe('renderStemCore', () => {
     expect(html).toContain('<code>a**b</code>')
     expect(html).toContain('<strong>c</strong>')
   })
+
+  it('GFM 表格渲染成 table（AI 回答里的排期表依赖它）', () => {
+    const html = renderStemCore('| 天 | 内容 |\n| --- | --- |\n| 1 | 线性表 |\n| 2 | 树 |')
+    expect(html).toContain('<table class="stem-table">')
+    expect(html).toContain('<th class="ta-left">天</th>')
+    expect(html).toContain('<td class="ta-left">线性表</td>')
+    // 表格行不能被拼成一行带 <br /> 的纯文本
+    expect(html).not.toContain('| --- |')
+  })
+
+  it('表格对齐标记生效，且单元格内支持加粗', () => {
+    const html = renderStemCore('| 左 | 中 | 右 |\n| :-- | :-: | --: |\n| a | **b** | c |')
+    expect(html).toContain('class="ta-left">左')
+    expect(html).toContain('class="ta-center">中')
+    expect(html).toContain('class="ta-right">右')
+    expect(html).toContain('<strong>b</strong>')
+  })
+
+  it('普通段落里的竖线不会误判成表格', () => {
+    const html = renderStemCore('a | b 只是普通文本')
+    expect(html).not.toContain('<table')
+    expect(html).toContain('a | b')
+  })
 })
 
 describe('containsMath', () => {

@@ -49,6 +49,10 @@ public class AiChatService {
     /** 游客免费试用次数。 */
     static final int GUEST_TRIAL_LIMIT = 3;
 
+    /** 前端匿名浏览器 id 的格式白名单（UUID 或 16 进制串都落在这个范围里）。 */
+    private static final java.util.regex.Pattern GUEST_ID_PATTERN =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{8,64}$");
+
     private static final DateTimeFormatter TITLE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final CommandCodeClient client;
@@ -73,12 +77,12 @@ public class AiChatService {
     }
 
     /** 数据源状态：前端据此决定是否禁用输入框。 */
-    public Map<String, Object> status(Long userId, String clientIp) {
+    public Map<String, Object> status(Long userId, String clientIp, String guestId) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("configured", client.isConfigured());
         out.put("model", client.modelName());
         if (userId == null) {
-            int used = guestUsed(clientIp);
+            int used = guestUsed(quotaKey(clientIp, guestId));
             out.put("guest", true);
             out.put("guestUsed", used);
             out.put("guestRemaining", Math.max(0, GUEST_TRIAL_LIMIT - used));
@@ -147,17 +151,36 @@ public class AiChatService {
      * <p>在调用模型**之前**扣：模型调用可能失败或超时，
      * 若等成功再扣，失败重试就能无限刷。
      */
-    public void ensureQuota(Long userId, String clientIp) {
+    public void ensureQuota(Long userId, String clientIp, String guestId) {
         if (userId != null) {
             return;
         }
-        int used = guestUsed(clientIp);
+        String key = quotaKey(clientIp, guestId);
+        int used = guestUsed(key);
         if (used >= GUEST_TRIAL_LIMIT) {
             throw new BusinessException(429,
                     "游客试用次数已用完（共 " + GUEST_TRIAL_LIMIT
                             + " 次）。登录后可继续使用，并能结合你的做题数据。");
         }
-        consumeGuestQuota(clientIp);
+        consumeGuestQuota(key);
+    }
+
+    /**
+     * 游客额度的计数键。
+     *
+     * <p>优先用前端生成的匿名浏览器 id：站点在隧道后面，nginx 看到的 remote_addr
+     * 是隧道对端而不是访客，按 IP 记账会让所有游客共用一个 3 次的桶
+     * （谁先用完，新访客一进来就显示「剩余 0 次」）。
+     *
+     * <p>id 格式做了白名单校验，拿不到或格式不对才退回 IP，保证不会因为
+     * 前端不传头就把额度算到同一个空串上。
+     */
+    private static String quotaKey(String clientIp, String guestId) {
+        String id = guestId == null ? "" : guestId.trim();
+        if (GUEST_ID_PATTERN.matcher(id).matches()) {
+            return "anon:" + id;
+        }
+        return "ip:" + normalizeIp(clientIp);
     }
 
     /**
@@ -171,14 +194,20 @@ public class AiChatService {
      * @param onDelta    正文分片回调
      * @param onDone     结束回调，带用量
      */
-    public void chat(Long userId, String clientIp, Long conversationId,
+    public void chat(Long userId, String clientIp, String guestId, Long conversationId,
                      String question,
                      Runnable onThinking,
                      Consumer<String> onDelta,
-                     Consumer<CommandCodeClient.Usage> onDone) {
+                     Consumer<CommandCodeClient.Usage> onDone,
+                     CommandCodeClient.Override override) {
 
-        if (!client.isConfigured()) {
+        boolean ownKey = override != null && override.hasKey();
+        if (!client.isConfigured() && !ownKey) {
             throw new BusinessException(503, "AI 服务未配置，请联系管理员。");
+        }
+        if (override != null && !client.isAllowedBase(override.baseUrl())) {
+            // 任意 baseUrl 等于把服务器当 SSRF 跳板：只放行已知的 OpenAI 兼容服务
+            throw new BusinessException(400, "自定义接口地址不在允许范围内，请改用白名单内的服务商。");
         }
         String q = question == null ? "" : question.trim();
         if (q.isEmpty()) {
@@ -189,7 +218,7 @@ public class AiChatService {
         }
 
         boolean guest = userId == null;
-        ensureQuota(userId, clientIp);
+        ensureQuota(userId, clientIp, guestId);
 
         // 会话：游客不落库，每次都是新会话
         AiConversation conv = null;
@@ -223,7 +252,8 @@ public class AiChatService {
                     chunk -> {
                         answer.append(chunk);
                         onDelta.accept(chunk);
-                    });
+                    },
+                    override);
         } catch (RuntimeException e) {
             // 失败时把已生成的部分存下来，用户不会白等一场
             if (conv != null && !answer.isEmpty()) {
@@ -232,7 +262,18 @@ public class AiChatService {
             throw e;
         }
 
-        if (conv != null && !answer.isEmpty()) {
+        if (answer.isEmpty()) {
+            // 上游一个分片都没给、又没抛异常时，原来会当作成功：
+            // 会话里只剩用户那句提问，前端留下一个空气泡，日志里一行线索都没有。
+            // 这里改成显式失败，错误信息会通过 SSE 的 error 事件显示给用户，
+            // 同时把模型与用量写进日志，方便定位是额度、密钥还是模型名的问题。
+            log.warn("AI 上游零内容：model={} 用量={}/{}",
+                    client.modelName(), usage.promptTokens(), usage.completionTokens());
+            throw new BusinessException(502,
+                    "AI 这次没有返回内容（上游可能报错或额度不足），请重试；持续出现请联系管理员。");
+        }
+
+        if (conv != null) {
             persistMessage(conv.getId(), "assistant", answer.toString(),
                     usage.promptTokens(), usage.completionTokens());
             touch(conv);
