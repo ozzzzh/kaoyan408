@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -67,6 +69,36 @@ public class MemoryCardController {
     }
 
     /** 移除一张卡片。 */
+    /** 我的背诵卡列表（管理页/批量移出用）。 */
+    @GetMapping("/cards")
+    public Result<Map<String, Object>> myCards(@RequestParam(required = false) String subject,
+                                               Authentication authentication) {
+        Long userId = requireUserId(authentication);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("items", cardService.myCards(userId, subject));
+        return Result.ok(payload);
+    }
+
+    /** 某个知识点下已建卡的 block → cardId，供知识点页「加入/移出」开关。 */
+    @GetMapping("/point-status")
+    public Result<Map<String, Object>> pointStatus(@RequestParam String pointId,
+                                                   Authentication authentication) {
+        return Result.ok(cardService.cardStatusOfPoint(requireUserId(authentication), pointId));
+    }
+
+    public record RemoveBatchRequest(List<Long> cardIds, String subject) {
+    }
+
+    /** 批量移出：按 id 列表或按科目清空。 */
+    @PostMapping("/remove-batch")
+    public Result<Map<String, Object>> removeBatch(@RequestBody(required = false) RemoveBatchRequest request,
+                                                    Authentication authentication) {
+        Long userId = requireUserId(authentication);
+        List<Long> ids = request == null ? null : request.cardIds();
+        String subject = request == null ? null : request.subject();
+        return Result.ok(cardService.removeBatch(userId, ids, subject));
+    }
+
     @PostMapping("/remove")
     public Result<Map<String, Object>> remove(@RequestParam Long cardId,
                                               Authentication authentication) {

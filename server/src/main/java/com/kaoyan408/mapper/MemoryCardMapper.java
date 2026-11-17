@@ -131,4 +131,34 @@ public interface MemoryCardMapper extends BaseMapper<MemoryCard> {
                                             @Param("pointId") String pointId,
                                             @Param("subject") String subject,
                                             @Param("limit") int limit);
-}
+    /** 我的背诵卡列表（管理用）：带科目、到期时间、复习次数，供批量移出。 */
+    @Select("""
+            SELECT c.id                 AS cardId,
+                   c.block_id           AS blockId,
+                   c.box                AS box,
+                   c.review_count       AS reviewCount,
+                   c.correct_count      AS correctCount,
+                   c.next_review_date   AS nextReviewDate,
+                   c.last_reviewed_at   AS lastReviewedAt,
+                   c.created_at         AS createdAt,
+                   p.subject            AS subject,
+                   p.title              AS pointTitle,
+                   b.subpoint_title     AS subpointTitle,
+                   b.type               AS type
+            FROM memory_card c
+            JOIN knowledge_block b ON b.block_id = c.block_id
+            JOIN knowledge_point p ON p.point_id = b.point_id
+            WHERE c.user_id = #{userId}
+              AND (#{subject} IS NULL OR p.subject = #{subject})
+            ORDER BY p.subject, c.next_review_date, c.id
+            """)
+    List<Map<String, Object>> myCards(@Param("userId") Long userId, @Param("subject") String subject);
+
+    /** 某个知识点（point）下已建卡的 block_id 列表，供知识点页的开关判断。 */
+    @Select("""
+            SELECT c.block_id AS blockId, c.id AS cardId
+            FROM memory_card c
+            JOIN knowledge_block b ON b.block_id = c.block_id
+            WHERE c.user_id = #{userId} AND b.point_id = #{pointId}
+            """)
+    List<Map<String, Object>> cardIdsOfPoint(@Param("userId") Long userId, @Param("pointId") String pointId);}

@@ -1,6 +1,7 @@
 package com.kaoyan408.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.entity.MemoryCard;
 import com.kaoyan408.mapper.MemoryCardMapper;
 import org.springframework.stereotype.Service;
@@ -270,6 +271,61 @@ public class MemoryCardService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("added", added);
         payload.put("candidates", blocks.size());
+        return payload;
+    }
+
+    /** 我的背诵卡列表（管理用）。 */
+    public List<Map<String, Object>> myCards(Long userId, String subject) {
+        if (userId == null) {
+            throw new BusinessException(401, "请先登录。");
+        }
+        String filter = subject == null || subject.isBlank() ? null : subject;
+        return cardMapper.myCards(userId, filter);
+    }
+
+    /** 某个知识点下已建卡的 block → cardId 映射，供知识点页的「加入/移出」开关。 */
+    public Map<String, Object> cardStatusOfPoint(Long userId, String pointId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (userId == null) {
+            payload.put("cards", Map.of());
+            return payload;
+        }
+        Map<String, Long> cards = new LinkedHashMap<>();
+        for (Map<String, Object> row : cardMapper.cardIdsOfPoint(userId, pointId)) {
+            cards.put(String.valueOf(row.get("blockId")), toLong(row.get("cardId")));
+        }
+        payload.put("cards", cards);
+        return payload;
+    }
+
+    /**
+     * 批量移出：给了 cardIds 就按 id 删，否则按科目清空。
+     * 只删自己的卡（user_id 条件），避免越权删除别人的。
+     */
+    @Transactional
+    public Map<String, Object> removeBatch(Long userId, List<Long> cardIds, String subject) {
+        if (userId == null) {
+            throw new BusinessException(401, "请先登录。");
+        }
+        int deleted = 0;
+        if (cardIds != null && !cardIds.isEmpty()) {
+            deleted = cardMapper.delete(new QueryWrapper<MemoryCard>()
+                    .eq("user_id", userId).in("id", cardIds));
+        } else if (subject != null && !subject.isBlank()) {
+            // 按科目清空：先查出该科目下属于本人的卡片 id
+            List<Long> ids = new ArrayList<>();
+            for (Map<String, Object> row : cardMapper.myCards(userId, subject)) {
+                ids.add(toLong(row.get("cardId")));
+            }
+            if (!ids.isEmpty()) {
+                deleted = cardMapper.delete(new QueryWrapper<MemoryCard>()
+                        .eq("user_id", userId).in("id", ids));
+            }
+        } else {
+            throw new BusinessException(400, "请提供 cardIds 或 subject。");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("deleted", deleted);
         return payload;
     }
 

@@ -483,6 +483,33 @@ export const api = {
   },
 
   /** 背诵：移除一张卡片。 */
+  /** 我的背诵卡列表（管理用） */
+  memoryCards: (subject?: string) =>
+    request<{
+      items: Array<{
+        cardId: number
+        blockId: string
+        box: number
+        reviewCount: number
+        correctCount: number
+        nextReviewDate: string | null
+        lastReviewedAt: string | null
+        subject: string
+        pointTitle: string
+        subpointTitle: string | null
+        type: string
+      }>
+    }>(`/api/v1/memory/cards${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`),
+
+  /** 批量移出：给 cardIds 按 id 删，或只给 subject 清空该科目 */
+  memoryRemoveBatch: (payload: { cardIds?: number[]; subject?: string }) =>
+    post<{ deleted: number }>('/api/v1/memory/remove-batch', payload),
+
+  /** 某知识点下已建卡：blockId → cardId */
+  memoryPointStatus: (pointId: string) =>
+    request<{ cards: Record<string, number> }>(
+      `/api/v1/memory/point-status?pointId=${encodeURIComponent(pointId)}`,
+    ),
   memoryRemove: (cardId: number) =>
     post<{ deleted: number }>(`/api/v1/memory/remove?cardId=${cardId}`, {}),
 

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api } from '@/api/client'
+import { api, ApiError } from '@/api/client'
+import { useUserStore } from '@/store/user'
 import type { KnowledgePointView } from '@/api/types'
 import KnowledgeBlocks from '@/components/knowledge/KnowledgeBlocks.vue'
 import { toArticle } from '@/components/knowledge/types'
 
 const route = useRoute()
+const userStore = useUserStore()
 const router = useRouter()
 
 const points = ref<KnowledgePointView[]>([])
@@ -133,6 +135,8 @@ async function bootstrap() {
   await loadPoints(currentSubject.value)
   if (currentPointId.value) {
     await loadArticle(currentPointId.value)
+    // 顺便查一下本节有没有已建卡的背诵卡，决定按钮显示「加入」还是「移出」
+    await loadMemoryStatus(currentPointId.value)
   } else {
     await goToFirstPoint(currentSubject.value)
   }
@@ -144,6 +148,49 @@ function selectSubject(code: string) {
 
 function scrollToBlock(blockId: string) {
   document.getElementById(blockId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+/** 当前知识点下「已建卡」的 block → cardId；用于把「加入背诵」做成开关。 */
+const memoryCards = ref<Record<string, number>>({})
+const memoryBusy = ref(false)
+const memoryMessage = ref<string | null>(null)
+
+async function loadMemoryStatus(pointId: string) {
+  if (!pointId) return
+  try {
+    const result = await api.memoryPointStatus(pointId)
+    memoryCards.value = result.cards ?? {}
+  } catch {
+    memoryCards.value = {}
+  }
+}
+
+const inMemory = computed(() => Object.keys(memoryCards.value).length > 0)
+
+/** 加入背诵 / 移出队列 的开关。 */
+async function toggleMemory() {
+  if (memoryBusy.value) return
+  if (!userStore.user) {
+    router.push({ path: '/me', query: { redirect: `/learn/${currentPointId.value}` } })
+    return
+  }
+  memoryBusy.value = true
+  memoryMessage.value = null
+  try {
+    if (inMemory.value) {
+      const cardIds = Object.values(memoryCards.value)
+      const result = await api.memoryRemoveBatch({ cardIds })
+      memoryMessage.value = `已移出 ${result.deleted} 张背诵卡`
+    } else {
+      const result = await api.memoryAdd({ pointId: currentPointId.value, limit: 50 })
+      memoryMessage.value = result.added > 0 ? `已加入 ${result.added} 张背诵卡` : '本节暂无可以加入的背诵要点'
+    }
+    await loadMemoryStatus(currentPointId.value)
+  } catch (e) {
+    memoryMessage.value = e instanceof ApiError ? e.message : '操作失败'
+  } finally {
+    memoryBusy.value = false
+  }
 }
 
 onMounted(bootstrap)
@@ -165,6 +212,7 @@ watch(
     }
     if (pointId !== oldPointId && typeof pointId === 'string') {
       void loadArticle(pointId)
+      void loadMemoryStatus(pointId)
     }
   },
 )
@@ -320,7 +368,30 @@ watch(
               问问 AI
               <span class="transition-transform group-hover:translate-x-0.5">→</span>
             </RouterLink>
+
+            <!-- 背诵开关：已加入显示「移出」，未加入显示「加入」 -->
+            <button
+              type="button"
+              class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-semibold transition disabled:opacity-50"
+              :class="
+                inMemory
+                  ? 'border-[var(--k-danger)]/40 text-[var(--k-danger)] hover:bg-[var(--k-warn-soft)]'
+                  : 'border-[var(--k-border)] text-[var(--k-accent-text)] hover:border-[var(--k-accent)] hover:bg-[var(--k-accent-soft)]'
+              "
+              :disabled="memoryBusy"
+              :title="inMemory ? '把本节背诵卡移出队列' : '把本节要点加入背诵队列'"
+              @click="toggleMemory"
+            >
+              {{ memoryBusy ? '处理中…' : inMemory ? '已在队列 · 移出' : '+ 加入背诵' }}
+            </button>
           </div>
+
+          <p
+            v-if="memoryMessage"
+            class="mt-2 text-[11px] text-[var(--k-text-faint)]"
+          >
+            {{ memoryMessage }}
+          </p>
 
           <KnowledgeBlocks :article="article" />
         </article>

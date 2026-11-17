@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import MemoryManagerPanel from '@/components/memory/MemoryManagerPanel.vue'
 import { api } from '@/api/client'
 import type { MemoryCardItem, MemorySummary } from '@/api/types'
 import { useUserStore } from '@/store/user'
@@ -306,6 +307,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <span class="tabular-nums text-[var(--k-text-faint)]">({{ item.addable }})</span>
         </button>
       </div>
+
+      <MemoryManagerPanel class="mt-3" />
     </header>
 
     <!-- 未登录 -->
