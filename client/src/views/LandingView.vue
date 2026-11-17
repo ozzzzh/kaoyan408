@@ -11,7 +11,7 @@
  * - Hero 右侧的掌握度是「学完一轮后的样子」，属于示意值，
  *   因为未登录用户还没有任何作答记录。标题与角标都标明了它是示意。
  */
-import { computed, onMounted, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import SiteHeader from '@/components/layout/SiteHeader.vue'
 import { useThemeStore } from '@/store/theme'
@@ -51,6 +51,19 @@ const dashboard = ref<Dashboard | null>(null)
 const exams = ref<ExamSummary[]>([])
 const knowledgeCount = ref(0)
 
+/**
+ * 落地页有自己的标题与描述。
+ *
+ * 之前这里沿用 index.html 的全局 meta（"题知链 408 · 计算机统考备考平台"），
+ * 把链接发给别人时看不出它在讲什么。落地页是唯一的对外入口，值得单独写一句。
+ * 卸载时还原，避免影响其它路由。
+ */
+const PAGE_TITLE = '题知链 408 · 把真题、正文与复习钉在同一张知识图上'
+const PAGE_DESCRIPTION =
+  '846 道真题按知识点归位：做完直接落到对应正文小节，正确率回收成掌握度，薄弱点自动排进下一轮复习清单。免注册即可试做。'
+let previousTitle = ''
+let previousDescription: string | null = null
+
 onMounted(async () => {
   themeStore.start()
   // 落地页不该因为接口慢而空白：三处各自独立请求，
@@ -61,6 +74,24 @@ onMounted(async () => {
     .then((list) => { knowledgeCount.value = list.length })
     .catch(() => {})
   await scrollToRequestedSection()
+})
+
+/** 进入落地页时替换标题/描述，离开时还原（只影响浏览器标签与分享卡片） */
+onMounted(() => {
+  if (typeof document === 'undefined') return
+  previousTitle = document.title
+  const meta = document.querySelector('meta[name="description"]')
+  previousDescription = meta ? meta.getAttribute('content') : null
+  document.title = PAGE_TITLE
+  meta?.setAttribute('content', PAGE_DESCRIPTION)
+})
+
+onBeforeUnmount(() => {
+  if (typeof document === 'undefined') return
+  if (previousTitle) document.title = previousTitle
+  if (previousDescription !== null) {
+    document.querySelector('meta[name="description"]')?.setAttribute('content', previousDescription)
+  }
 })
 
 /** Hero 掌握度：示意值（未登录没有真实作答），标注「示意」 */
@@ -157,7 +188,7 @@ const abilities = [
     title: '真题整卷',
     headline: '18 卷真题，按年份整卷刷',
     desc: '2009–2026 每一卷都是完整 47 题，含综合应用题。计时、交卷、复盘在同一屏完成，不会做到一半失去上下文。',
-    points: ['每题带知识点索引，错题自动归档', '整套计时，交卷即出分数与用时分布', '2012 / 2021 / 2026 卷分值异常已标注'],
+    points: ['每题带知识点索引，错题自动归档', '整套计时，交卷即出分数与用时分布', '18 卷由内容脚本生成并校验（题号 / 分值），异常卷面已标注'],
     visual: 'exams',
   },
   {
@@ -165,7 +196,7 @@ const abilities = [
     title: '知识正文',
     headline: '看不懂就跳到正文，不必换 App',
     desc: '每个知识块都有成体系的正文：概念、推导、复杂度对比。公式就地渲染，动画讲清楚指针怎么动、线程怎么长。',
-    points: ['KaTeX 公式，行内与独立块混排', '链表反转、二叉树遍历、KMP、调度算法配动画', '从错题一键跳到对应小节，不用自己找'],
+    points: ['1634 个知识块按教材结构重组', '链表反转、二叉树遍历、KMP、调度算法配动画', '从错题一键跳到对应小节，不用自己找'],
     visual: 'knowledge',
   },
   {
@@ -173,10 +204,19 @@ const abilities = [
     title: '错题与背诵',
     headline: '错题必回，背诵按遗忘曲线排',
     desc: '错题自动进重做队列，背诵卡按间隔重复排期。今天复习什么由数据决定，不由心情决定。',
-    points: ['错题重做会自动跳过已掌握的题', '卡片按 1 / 3 / 7 / 14 天到期提醒', '薄弱知识块直接排进下一轮计划'],
+    points: ['错题重做会自动跳过已掌握的题', '卡片按 1 / 3 / 7 / 14 天到期提醒', 'Leitner 8 盒间隔重复，错题状态机（待订正 / 已订正）落库可查'],
     visual: 'review',
   },
 ]
+
+/**
+ * 内容规模常量（评审最关心的“工作量”证据）。
+ *
+ * 数字来自内容管线产物 server/src/main/resources/seed/content.sql：
+ * 知识块 1634、题–知关联 1030、manim 动画 42。
+ * 题库与知识点数量走接口（随内容变），所以那两个不写死；这三个在内容大改时需要同步。
+ */
+const CONTENT_FACTS = { blocks: 1634, links: 1030, animations: 42 } as const
 </script>
 
 <template>
@@ -209,20 +249,24 @@ const abilities = [
           <h1
             class="mt-5 text-[34px] font-bold leading-[1.18] tracking-tight text-[var(--k-heading)] sm:text-[44px] lg:text-[52px]"
           >
-            把 <span class="text-[var(--k-accent-text)]">{{ totalQuestions }}</span> 道真题<br />
-            钉在 <span class="text-[var(--k-accent-text)]">{{ pointCount }}</span> 个知识点上
+            把「<span class="text-[var(--k-accent-text)]">题、正文、复习</span>」<br />
+            钉在<span class="text-[var(--k-accent-text)]">同一张知识图</span>上
           </h1>
 
           <p class="mt-5 max-w-[520px] text-[15px] leading-[1.75] text-[var(--k-text-muted)]">
-            每道题都挂在知识块上：做完立刻跳到对应正文与公式动画，正确率回收成掌握度，薄弱点在下一轮自动回流。
+            题、正文与复习共用同一套知识索引：做完直接落到对应正文小节，正确率回收成掌握度，薄弱点自动排进下一轮复习清单。
           </p>
 
           <div class="mt-7 flex flex-wrap items-center gap-3">
+            <!--
+              主 CTA 与顶栏原本都是「进入工作台」，重复了。现在顶栏改为去看内容
+              （知识体系），主 CTA 统一指向工作台，与侧边栏入口一致。
+            -->
             <RouterLink
-              to="/practice"
+              to="/dashboard"
               class="inline-flex items-center gap-1.5 rounded-[11px] bg-[var(--k-accent)] px-6 py-3 text-[15px] font-semibold text-[var(--k-on-accent)] no-underline transition-colors hover:bg-[var(--k-accent-hover)]"
             >
-              开始刷题
+              进入工作台
               <span aria-hidden="true">→</span>
             </RouterLink>
             <!--
@@ -240,7 +284,8 @@ const abilities = [
           </div>
 
           <p class="mt-6 text-xs text-[var(--k-text-faint)]">
-            2009–2026 共 {{ paperCount }} 卷 · {{ totalQuestions }} 题 · 四科全纲 · 免注册即可试做
+            2009–2026 共 {{ paperCount }} 卷 · {{ totalQuestions }} 题 · {{ CONTENT_FACTS.blocks }} 个知识块 ·
+            {{ CONTENT_FACTS.links }} 条题–知关联 · {{ CONTENT_FACTS.animations }} 个 manim 动画 · 免注册即可试做
           </p>
         </div>
 
@@ -277,7 +322,7 @@ const abilities = [
             </dl>
 
             <p class="mt-3 border-t border-[var(--k-border)] pt-3 text-[11px] text-[var(--k-text-faint)]">
-              示意数据 · 按知识块综合正确率计算
+              示意数据 · 按知识块正确率计算；真实规模见页末
             </p>
           </div>
 
@@ -517,7 +562,7 @@ const abilities = [
       </div>
     </section>
 
-    <!-- ============ 数据说明 ============ -->
+    <!-- ============ 数据与工程 ============ -->
     <section id="about-data" class="scroll-mt-[78px] border-t border-[var(--k-border)]">
       <div class="mx-auto w-full max-w-[1200px] px-5 py-14 md:px-8 md:py-16">
         <div class="grid gap-8 md:grid-cols-3">
@@ -529,7 +574,9 @@ const abilities = [
           <div>
             <p class="text-xs font-semibold text-[var(--k-accent-text)]">知识点</p>
             <p class="mt-2 text-[26px] font-bold tabular-nums text-[var(--k-heading)]">{{ pointCount }}</p>
-            <p class="mt-1 text-xs text-[var(--k-text-muted)]">知识块，题目与知识点一一关联</p>
+            <p class="mt-1 text-xs text-[var(--k-text-muted)]">
+              {{ CONTENT_FACTS.blocks }} 个知识块、{{ CONTENT_FACTS.links }} 条题–知关联
+            </p>
           </div>
           <div>
             <p class="text-xs font-semibold text-[var(--k-accent-text)]">内容来源</p>
@@ -538,6 +585,23 @@ const abilities = [
               遵循 CC BY 4.0 许可。2012 / 2021 / 2026 卷综合题分值异常已在卷面标注。
             </p>
           </div>
+        </div>
+
+        <!--
+          工程事实：评审关心的是“做了多少、怎么保证正确”，这部分必须写在明面上。
+          纯文本追加，沿用本段已有的字号与配色，不新增视觉元素。
+        -->
+        <div
+          class="mt-8 grid gap-3 border-t border-[var(--k-border)] pt-6 text-xs leading-relaxed text-[var(--k-text-muted)] md:grid-cols-2"
+        >
+          <p>
+            <span class="font-semibold text-[var(--k-heading)]">技术栈</span>：Vue 3 + Vite + TypeScript ·
+            Spring Boot 3 + MyBatis-Plus · MySQL 8（Flyway 迁移）· Docker Compose · Cloudflare Tunnel
+          </p>
+          <p>
+            <span class="font-semibold text-[var(--k-heading)]">工程保障</span>：36 个自动化用例（前端 23 / 后端 13）·
+            CI 三段（构建 / 数据 / 接口回归）· CSP 与安全响应头 · 边缘缓存 + Service Worker
+          </p>
         </div>
       </div>
     </section>
@@ -593,7 +657,7 @@ const abilities = [
             <ul class="mt-3 space-y-2">
               <li>
                 <RouterLink to="/about" class="text-xs text-white/50 no-underline transition-colors hover:text-[var(--k-brand)]">
-                  数据说明
+                  数据与工程
                 </RouterLink>
               </li>
               <li>
