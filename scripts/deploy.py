@@ -165,6 +165,20 @@ def pack_dist() -> Path:
     return archive
 
 
+def pack_source() -> Path:
+    """把当前 HEAD 打成 tar.gz，用于同步服务器源码。"""
+    out = Path(os.environ.get("TEMP", "/tmp")) / "kaoyan-tree-deploy.tgz"
+    if out.exists():
+        out.unlink()
+    log("打包源码（git archive HEAD）")
+    subprocess.run(
+        ["git", "archive", "--format=tar.gz", f"--output={out}", "HEAD"],
+        cwd=ROOT, check=True,
+    )
+    log(f"源码包 {out.stat().st_size / 1024 / 1024:.2f} MB")
+    return out
+
+
 def warm_up(base: str, rounds: int = 2) -> int:
     """把入口页面引用的资源在公网入口各取一次，让边缘缓存提前填充。
 
@@ -288,6 +302,20 @@ def run_deploy(args) -> int:
             )
             if code != 0:
                 return 1
+
+        # 关键：服务器上的 api 镜像是用**服务器仓库的源码**构建的。
+        # 以前这里只传 dist，--api 重建出的还是旧后端（新接口 404、迁移不跑）。
+        source = pack_source()
+        remote.upload(source, "/tmp/kaoyan-tree-deploy.tgz")
+        log("同步源码到服务器")
+        code, _ = remote.run(
+            f"cd {PROJECT_REMOTE} && tar -xzf /tmp/kaoyan-tree-deploy.tgz && git add -A && "
+            f"git -c user.name=kaoyan408-deploy -c user.email=deploy@kaoyan408.local "
+            f"commit -q -m 'deploy: 同步本地源码' 2>/dev/null; git log --oneline -1"
+        )
+        if code != 0:
+            log("源码同步失败")
+            return 1
 
         log("上传 dist")
         remote.upload(archive, "/tmp/kaoyan-dist-deploy.tgz")
