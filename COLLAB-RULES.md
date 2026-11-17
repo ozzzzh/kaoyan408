@@ -125,46 +125,24 @@ python scripts/deploy-lock.py release     # 发版结束（无论成败）都要
 
 ---
 
-## 六、主线职责（2026-11-16 起）
+## 五、已知网关限制：预览链接会剥 Authorization
 
-背景：两条支线各自发版，20 分钟里线上的前端被互相覆盖了两次 —— 后发版的人
-用自己 worktree 构建的 dist 覆盖前一个人的，前一个人的功能直接"消失"，
-而所有验证（接口、后端）都还是好的，只有前端悄悄回到了旧版。
+WorkBuddy 那类 sharecode 预览链接，请求会先经过平台代理，而**代理不转发 `Authorization` 头**。
 
-### 6.1 只有主线合入、只有主线发版
+实测（2026-11-16，同一个 token）：
 
-| 角色 | 可以做什么 |
+| 请求 | 结果 |
 | --- | --- |
-| **主线**（`D:\kaoyan\kaoyan408-main`，分支 `main`） | 合入支线、跑全量回归、构建并发版、回滚 |
-| **支线**（`ai2` / `next` / 新开的 worktree） | 写代码、提交到自己的分支、本地验证；**不发版** |
+| 只带 `Authorization: Bearer <token>` → `/api/v1/user/current` | **401** |
+| 只带 `X-Session-Token: <token>` | **200**（代理把它映射回 Authorization） |
+| `de5.net`（生产）只带 Authorization | 200 |
 
-支线要把改动上线，只有一条路：**告诉主线「可以合了」**，由主线 merge → 回归 → 发版。
-支线不再直接 `deploy.py` / 直接换服务器 dist。
+所以前端 `client/src/api/client.ts` 的 `applyAuthHeader()` 会**两个头一起发**：
+本机与生产只认 Authorization，多出来的头被后端忽略；预览链路上则靠平台代理把
+`X-Session-Token` 映射回去。SSE（AI 对话）走同一套头。
 
-### 6.2 支线开工前必做
+代价：两个头承载同一个 token、同源、同样走 HTTPS，不额外暴露凭据；因为 API 与前端同源
+（nginx 反代），也不会多出 OPTIONS 预检。
 
-```bash
-git merge main        # 或 rebase；总之别在旧基线上开工
-```
-
-否则你构建的 dist 里没有主线的新功能——这次前端被覆盖就是这么发生的。
-
-### 6.3 主线发版检查清单（每次照做）
-
-1. `git status` 干净；`git log -1` 记下要发的提交
-2. `python scripts/deploy-lock.py acquire --owner main`
-3. 前端构建后**记下 entry 哈希**：`grep -o 'assets/index-[^"]*\.js' client/dist/index.html`
-4. 同步源码 → 重建 api → 换 dist → `--force-recreate web`
-5. **发版后自检**：`curl -s https://<域名>/ | grep -o 'assets/index-[^"]*\.js'`
-   必须等于第 3 步记录的哈希。**不相等就说明被人覆盖了**，立即重发并查明来源
-6. `python scripts/deploy-lock.py release`
-7. 在交付说明里写明：线上版本（entry 哈希 + 服务器 HEAD）
-
-### 6.4 合并约定
-
-- 纯行尾/空白类提交（如「行尾归一」）与功能改动撞在同一文件时：**取主线内容，
-  行尾统一为 LF**，不要为了消除冲突把功能改回去。
-- 合并后必须重跑：`npm run typecheck` / `npm test` / `mvn test`，
-  任何一项失败就不往下走。
-- 分支合入后，支线那边要 `git merge main` 跟上，避免长期落后。
-
+**排查提示**：如果某个部署里"登录成功但立刻变游客"，先看是不是这一层代理把
+Authorization 丢了——用上面那张表的两行 curl 就能判定。
