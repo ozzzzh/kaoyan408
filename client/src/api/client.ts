@@ -53,6 +53,23 @@ export class ApiError extends Error {
 export function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError && error.code === 401
 }
+
+/**
+ * 认证头：`Authorization` + 兼容头 `X-Session-Token`。
+ *
+ * 为什么发两个：交付用的预览网关（WorkBuddy 分享链接）会剥掉 `Authorization`，
+ * 实测同一 token 只带 Authorization 请求 /api/v1/user/current 返回 401，
+ * 只带 X-Session-Token 返回 200；该网关负责把它映射回 Authorization。
+ * 本机与 de5.net 只认 Authorization，多发的这个头对它们是无害冗余。
+ */
+const SESSION_TOKEN_HEADER = 'X-Session-Token'
+
+function applyAuthHeader(headers: Headers, token: string | null): void {
+  if (!token) return
+  headers.set('Authorization', `Bearer ${token}`)
+  headers.set(SESSION_TOKEN_HEADER, token)
+}
+
 export function getToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY)
@@ -77,7 +94,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set('Content-Type', 'application/json')
   }
   const token = getToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  applyAuthHeader(headers, token)
 
   let response: Response
   try {
@@ -203,7 +220,7 @@ export function streamAiChat(
   const controller = new AbortController()
   const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' })
   const token = getToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  applyAuthHeader(headers, token)
 
   ;(async () => {
     try {
