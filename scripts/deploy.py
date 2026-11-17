@@ -108,6 +108,40 @@ def pack_dist() -> Path:
     return archive
 
 
+def warm_up(base: str, rounds: int = 2) -> int:
+    """把入口页面引用的资源在公网入口各取一次，让边缘缓存提前填充。
+
+    为什么需要：新构建的 chunk 文件名带新哈希，对 Cloudflare 来说全是 MISS。
+    第一个真实访客会替所有人「付」这轮回源（每个 chunk 200ms–1.6s）。
+    部署脚本自己先取一遍，就能把这个成本挪到部署阶段。
+    """
+    import re
+    from urllib.request import Request, urlopen
+
+    try:
+        with urlopen(Request(base + "/", headers={"User-Agent": "kaoyan-deploy-warmup"}), timeout=20) as resp:
+            html = resp.read().decode("utf-8", "replace")
+    except Exception as error:  # 预热失败不影响发版结果
+        log(f"预热跳过：取入口失败 {error}")
+        return 0
+
+    refs = sorted(set(re.findall(r'(?:src|href)="(\.?/?assets/[^"]+)"', html)))
+    refs += ["theme-init.js", "sw.js"]
+    ok = 0
+    for _ in range(rounds):
+        for ref in refs:
+            url = base + "/" + ref.lstrip("./")
+            try:
+                with urlopen(Request(url, headers={"User-Agent": "kaoyan-deploy-warmup"}), timeout=20) as resp:
+                    resp.read(1024)
+                    if resp.status == 200:
+                        ok += 1
+            except Exception:
+                pass
+    log(f"预热完成：{len(refs)} 个资源 × {rounds} 轮")
+    return ok
+
+
 class Remote:
     def __init__(self, target: dict):
         import paramiko  # 延迟导入：没装依赖时给出清晰提示
@@ -224,11 +258,14 @@ def main() -> int:
             log("健康检查未通过，请查日志：docker compose -p kaoyan408 logs --tail 100 api")
             return 1
 
+        log("边缘预热：把新构建的 chunk 在公网入口各取一次")
+        warmed = warm_up(args.base)
+
         log(f"公网校验 {args.base}")
         code, body = remote.run(
             f"curl -s -m 15 -o /dev/null -w '%{{http_code}}' {args.base}/", quiet=True
         )
-        log(f"首页 HTTP {body}")
+        log(f"首页 HTTP {body}（预热 {warmed} 个资源）")
     finally:
         remote.close()
 
