@@ -46,12 +46,18 @@ STATE_REMOTE = "/mnt/workspace/kaoyan408-deploy-state.json"
 
 
 def git_out(*args: str) -> str:
-    """跑一条只读 git 命令，失败时返回空串（不阻断部署）。"""
+    """跑一条只读 git 命令，失败时返回空串（不阻断部署）。
+
+    必须显式指定 utf-8：Windows 上默认用 GBK 解码 git 的 UTF-8 输出，
+    遇到中文提交信息会在读取线程里抛 UnicodeDecodeError。
+    """
     try:
         return subprocess.run(
             ["git", "-C", str(ROOT), *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
         ).stdout.strip()
     except Exception:
@@ -60,12 +66,16 @@ def git_out(*args: str) -> str:
 
 def local_meta(entry: str | None) -> dict:
     """这一次部署的指纹：谁、哪个分支、哪个提交、入口文件。"""
+    import re
+
+    # entry 可能是整行 <script src="...">，状态里只留 assets/index-xxx.js
+    match = re.search(r"assets/index-[A-Za-z0-9_-]+\.js", entry or "")
     return {
         "owner": os.environ.get("DEPLOY_OWNER", "") or git_out("config", "user.name"),
         "branch": git_out("rev-parse", "--abbrev-ref", "HEAD"),
         "commit": git_out("rev-parse", "--short", "HEAD"),
         "subject": git_out("log", "-1", "--pretty=%s"),
-        "index": entry or "",
+        "index": match.group(0) if match else (entry or ""),
         "at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
