@@ -45,7 +45,7 @@ function scrollTo(id: string) {
 const navItems = [
   { id: 'loop', label: '核心闭环' },
   { id: 'abilities', label: '四大能力' },
-  { id: 'about-data', label: '数据说明' },
+  { id: 'about-data', label: '数据与工程' },
 ] as const
 </script>
 
@@ -102,11 +102,16 @@ const navItems = [
           </svg>
         </button>
 
+        <!--
+          顶栏 CTA 用来「看内容」，不与应用入口重复：
+          hero 已经给了「进入工作台」，这里指向知识体系（147 个知识点 + 正文 + 动画），
+          评审最想确认的正是内容深度。
+        -->
         <RouterLink
-          to="/dashboard"
+          to="/learn"
           class="hidden items-center gap-1.5 rounded-[11px] bg-[var(--k-accent)] px-4 py-2 text-sm font-semibold text-[var(--k-on-accent)] no-underline transition-colors hover:bg-[var(--k-accent-hover)] sm:inline-flex"
         >
-          进入工作台
+          知识体系
           <span aria-hidden="true">→</span>
         </RouterLink>
 
@@ -138,10 +143,10 @@ const navItems = [
         {{ item.label }}
       </button>
       <RouterLink
-        to="/dashboard"
+        to="/learn"
         class="mt-2 block rounded-[11px] bg-[var(--k-accent)] px-4 py-2.5 text-center text-sm font-semibold text-[var(--k-on-accent)] no-underline"
       >
-        进入工作台 →
+        知识体系 →
       </RouterLink>
     </div>
   </header>
