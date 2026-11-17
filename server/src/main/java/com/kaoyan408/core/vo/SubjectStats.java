@@ -13,4 +13,13 @@ public class SubjectStats {
     private Long done;
 
     private Long correct;
+
+    /** 该科目总分值（408 各科分值不均衡，只看题数会失真） */
+    private Long scoreTotal;
+
+    /** 已作答的选择题数（正确率的分母；综合题不参与正确率） */
+    private Long choiceDone;
+
+    /** 已作答题目覆盖的分值 */
+    private Long scoreDone;
 }

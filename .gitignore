@@ -37,3 +37,7 @@ coverage/
 
 # 部署锁是运行期状态，不能入库（实测它被 git add -A 带进过一次）
 .deploy.lock
+
+# Python 字节码缓存
+__pycache__/
+*.pyc

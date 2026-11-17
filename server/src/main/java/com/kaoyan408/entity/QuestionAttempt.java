@@ -27,6 +27,9 @@ public class QuestionAttempt {
 
     private String answer;
 
+    /** 综合题自评得分（0..题目满分）。选择题为 null。 */
+    private Integer selfScore;
+
     private LocalDateTime answeredAt;
 
     /** 累计答错次数（答对不清零），用于识别错题与重做效果。 */

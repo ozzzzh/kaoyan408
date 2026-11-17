@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { api } from '@/api/client'
 import type { MemorySummary, PracticeEntrances } from '@/api/types'
@@ -15,6 +15,10 @@ import SearchBox from '@/components/dashboard/SearchBox.vue'
 import { subjectMeta } from '@/constants/subjects'
 
 const router = useRouter()
+const route = useRoute()
+
+/** 从受保护页面被踢回来时会带上 forbidden，这里明确告诉用户原因，而不是静默跳转（P2-4）。 */
+const forbidden = computed(() => (route.query.forbidden === 'admin' ? '管理后台' : ''))
 const userStore = useUserStore()
 const { user, dashboard } = storeToRefs(userStore)
 
@@ -104,6 +108,13 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-5">
+    <div
+      v-if="forbidden"
+      class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#8a6d1f]/40 bg-[var(--k-warn-soft)] px-4 py-2.5 text-sm text-[var(--k-warn)]"
+    >
+      <span>你没有访问{{ forbidden }}的权限（仅管理员可用），已回到工作台。</span>
+      <RouterLink to="/me" class="shrink-0 text-xs font-semibold underline">去「我的」查看账号</RouterLink>
+    </div>
     <div class="space-y-5">
       <!-- 欢迎 -->
       <header>

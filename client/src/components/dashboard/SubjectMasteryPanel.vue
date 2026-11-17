@@ -67,6 +67,14 @@ const buckets = [
           />
         </div>
 
+        <!--
+          分值覆盖（P2-7）：408 各科分值不均衡（ds 810 分 vs cn 449 分），
+          只看「做了多少题」会高估小题、低估大题；这里同时给出按分值的覆盖率。
+        -->
+        <p v-if="item.scoreTotal" class="mt-1.5 text-[11px] text-[var(--k-text-faint)] tabular-nums">
+          已覆盖 {{ item.scoreDone }}/{{ item.scoreTotal }} 分（{{ item.scoreProgress }}%）
+        </p>
+
         <!-- 四个分桶 -->
         <div class="mt-3 grid grid-cols-4 gap-2">
           <div

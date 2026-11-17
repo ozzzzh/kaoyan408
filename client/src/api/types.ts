@@ -14,6 +14,12 @@ export interface SubjectStat {
   correct: number
   accuracy: number
   progress: number
+  /** 该科目总分值 */
+  scoreTotal: number
+  /** 已作答题目覆盖的分值（综合题按自评计入「已覆盖」，但不进正确率） */
+  scoreDone: number
+  /** 按分值的覆盖率（%） */
+  scoreProgress: number
   /** 掌握率 = 掌握题数 / 总题数 */
   masteryRate: number
   mastered: number
@@ -349,10 +355,17 @@ export interface KnowledgeBlockDetail {
 
 export interface AnswerResult {
   questionId: string
-  correct: boolean
+  /** 综合题没有对错：为 null，走自评流程 */
+  correct: boolean | null
   standardAnswer: string | null
   explanation: string | null
   firstAttempt: boolean
+  /** 是否综合题（需要自评） */
+  comprehensive?: boolean
+  /** 该题满分（综合题自评上限） */
+  maxScore?: number | null
+  /** 已保存的自评得分 */
+  selfScore?: number | null
   blocks: Array<{ blockId: string; total: number; done: number; correct: number }>
   /** 游客作答时不返回（未登录没有可统计的数据） */
   stats?: Dashboard

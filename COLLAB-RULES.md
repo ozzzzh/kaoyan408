@@ -125,24 +125,83 @@ python scripts/deploy-lock.py release     # 发版结束（无论成败）都要
 
 ---
 
-## 五、已知网关限制：预览链接会剥 Authorization
+## 六、主线职责（2026-11-16 起）
 
-WorkBuddy 那类 sharecode 预览链接，请求会先经过平台代理，而**代理不转发 `Authorization` 头**。
+背景：两条支线各自发版，20 分钟里线上的前端被互相覆盖了两次 —— 后发版的人
+用自己 worktree 构建的 dist 覆盖前一个人的，前一个人的功能直接"消失"，
+而所有验证（接口、后端）都还是好的，只有前端悄悄回到了旧版。
 
-实测（2026-11-16，同一个 token）：
+### 6.1 谁都能发版，但只能通过 `scripts/deploy.py`
 
-| 请求 | 结果 |
+2026-11-17 修订：不再限制"只有主线能发"。发版权放开，代价是**必须走脚本**——
+脚本里已经内建了四道闸门，手工拼 `tar/scp/mv` 一律不允许：
+
+| 闸门 | 作用 |
 | --- | --- |
-| 只带 `Authorization: Bearer <token>` → `/api/v1/user/current` | **401** |
-| 只带 `X-Session-Token: <token>` | **200**（代理把它映射回 Authorization） |
-| `de5.net`（生产）只带 Authorization | 200 |
+| **部署锁** | 拿不到锁直接退出；并发发版被串行化，不会互相覆盖 |
+| **落后 main 检查** | 分支落后 main 就拒绝构建（`--allow-behind` 可显式跳过），避免发出缺功能的产物 |
+| **assets 合并替换** | 旧哈希 chunk 保留 30 天，旧客户端不会因 404 打不开页面 |
+| **公网入口哈希校验** | 发完必须与本地构建的 entry 一致，不一致即报错退出（被人覆盖或缓存未过期） |
 
-所以前端 `client/src/api/client.ts` 的 `applyAuthHeader()` 会**两个头一起发**：
-本机与生产只认 Authorization，多出来的头被后端忽略；预览链路上则靠平台代理把
-`X-Session-Token` 映射回去。SSE（AI 对话）走同一套头。
+主线仍然负责**合流**（merge 支线、跑全量回归）；发版这件事不再独占。
 
-代价：两个头承载同一个 token、同源、同样走 HTTPS，不额外暴露凭据；因为 API 与前端同源
-（nginx 反代），也不会多出 OPTIONS 预检。
+### 6.2 支线开工前必做
 
-**排查提示**：如果某个部署里"登录成功但立刻变游客"，先看是不是这一层代理把
-Authorization 丢了——用上面那张表的两行 curl 就能判定。
+```bash
+git merge main        # 或 rebase；总之别在旧基线上开工
+```
+
+否则你构建的 dist 里没有主线的新功能——这次前端被覆盖就是这么发生的。
+
+### 6.3 主线发版检查清单（每次照做）
+
+1. `git status` 干净；`git log -1` 记下要发的提交
+2. `python scripts/deploy-lock.py acquire --owner main`
+3. 前端构建后**记下 entry 哈希**：`grep -o 'assets/index-[^"]*\.js' client/dist/index.html`
+4. 同步源码 → 重建 api → 换 dist → `--force-recreate web`
+5. **发版后自检**：`curl -s https://<域名>/ | grep -o 'assets/index-[^"]*\.js'`
+   必须等于第 3 步记录的哈希。**不相等就说明被人覆盖了**，立即重发并查明来源
+6. `python scripts/deploy-lock.py release`
+7. 在交付说明里写明：线上版本（entry 哈希 + 服务器 HEAD）
+
+### 6.4 合并约定
+
+- 纯行尾/空白类提交（如「行尾归一」）与功能改动撞在同一文件时：**取主线内容，
+  行尾统一为 LF**，不要为了消除冲突把功能改回去。
+- 合并后必须重跑：`npm run typecheck` / `npm test` / `mvn test`，
+  任何一项失败就不往下走。
+- 分支合入后，支线那边要 `git merge main` 跟上，避免长期落后。
+
+### 6.5 支线禁止事项（硬规则）
+
+| 禁止 | 原因 |
+| --- | --- |
+| 手工发版（自己 tar/scp/mv 换 dist、直接 `docker compose up` 改线上） | 绕过了锁与哈希自检，会覆盖别人刚上线的前端 |
+| 改 `scripts/deploy.py`、`web/nginx.conf`、`docker-compose.yml` | 发版与反代是共享设施；要改先提，评审后再动 |
+| 改 `server/src/main/resources/db/migration/*`、`seed/content.sql`、服务器 `.env` | 生产数据不可逆，需要统一排期 |
+| `git add -A` / `git commit -a` | 会把别人未提交的改动卷进自己的提交（已发生 3 次） |
+| 在落后 main 的分支上发版 | 产物会缺主线功能；脚本会拒绝，别用 `--allow-behind` 绕过 |
+
+支线要验证线上效果，只能用**只读**手段（`curl` 接口、浏览器看页面），
+不能改服务器文件。要本地起服务就用独立的 compose 项目名和错开的端口
+（前端 5174+、后端 8081+），不要占 18080/8080。
+
+### 6.6 发版口径（对外说法统一）
+
+- 任何人说「做完了」≠ 已上线。上线以 `deploy.py` 跑通为准。
+- 每次发布都要留下两个标识：**entry 哈希 + 服务器 HEAD**（脚本会打印 entry）。
+- 线上异常时先查三件事：`curl /` 的 entry 哈希是否等于最近一次主线构建、
+  `/api/v1/health` 的 db 状态、浏览器是否还在用旧壳（Service Worker）。
+
+### 6.7 静态资源与 Service Worker（2026-11-17 事故）
+
+现象：用户点左上角 logo 打不开落地页，而其他页面正常。
+
+原因：发版是**整包替换 `client/dist`**，旧哈希 chunk 被删；用户浏览器里的
+Service Worker 还缓存着旧外壳，点开一个没缓存过的路由时去请求旧 chunk → 404 →
+动态 import 失败，路由静默不跳转。
+
+因此主线发版需要做到：**新旧 assets 并存**（旧文件保留两代再清理），
+而不是覆盖式替换。支线不要试图自己"修一下 dist"，这类问题只能由发布流程解决。
+
+

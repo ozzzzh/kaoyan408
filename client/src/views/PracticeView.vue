@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, isUnauthorized } from '@/api/client'
+import { api, ApiError, isUnauthorized } from '@/api/client'
 import StemMarkdown from '@/components/mock/StemMarkdown.vue'
 import type { PracticeQueue, QuestionView } from '@/api/types'
 import { useUserStore } from '@/store/user'
@@ -15,9 +15,13 @@ const question = ref<QuestionView | null>(null)
 const index = ref(0)
 const selected = ref('')
 const result = ref<{
-  correct: boolean
+  correct: boolean | null
   standardAnswer: string | null
   explanation: string | null
+  /** 综合题：没有对错，需要自评 */
+  comprehensive?: boolean
+  maxScore?: number | null
+  selfScore?: number | null
 } | null>(null)
 const loadingQueue = ref(true)
 const loadingQuestion = ref(false)
@@ -106,6 +110,25 @@ const scopeLabel = computed(() => {
 const isWrongScope = computed(() =>
   ['wrong', 'wrong-pending', 'wrong-mastered'].includes(scope.value),
 )
+
+/**
+ * 相关知识点去重。
+ *
+ * 一题可以挂多个 block，而多个 block 可能属于同一个小节（例如 kb-ds-2-2-5 与
+ * kb-ds-2-2-7 都叫「顺序表 · 顺序表的插入与删除」），直接渲染就会出现两条一模一样的
+ * 链接（P1-3）。按 label 去重，保留第一个可用链接。
+ */
+const knowledgeLinks = computed(() => {
+  const seen = new Set<string>()
+  const out: { blockId: string; label: string; pointId?: string | null }[] = []
+  for (const block of question.value?.knowledgeBlocks ?? []) {
+    const label = (block.label ?? '').trim()
+    if (!label || seen.has(label)) continue
+    seen.add(label)
+    out.push({ blockId: block.blockId, label, pointId: block.pointId })
+  }
+  return out
+})
 
 const progressText = computed(() =>
   queue.value ? `${index.value + 1} / ${queue.value.yearTotal ?? queue.value.total}` : '—',
@@ -237,21 +260,54 @@ function isCollapsed(year: number) {
  * 其中 I.~IV. 属于题干内容，但按整段正文渲染时行距过松、视觉上像四个独立段落。
  * 这里按行切开，把罗马数字开头的行单独标记，由模板做紧凑排版。
  */
-type StemLine = { kind: 'text' | 'option'; text: string; mark?: string }
+/**
+ * 题干的一行。
+ *
+ * code 是整块代码（围栏内所有行），必须整体渲染：
+ * 之前按行 split 后逐行交给 Markdown，``` 围栏被拆散，c 语言标识变成正文里的
+ * 一个 <code>c</code>，代码块只剩一个空盒子（P1-2）。
+ */
+type StemLine =
+  | { kind: 'text'; text: string }
+  | { kind: 'option'; text: string; mark: string }
+  | { kind: 'code'; lang: string; code: string }
 
 const ROMAN = /^\s*(I{1,3}|IV|V|VI{1,3}|IX|X)\s*[.、．]\s*(.*)$/
 
 const stemLines = computed<StemLine[]>(() => {
   const stem = question.value?.stem
   if (!stem) return []
-  return stem.split('\n').map((raw) => {
+
+  // 围栏代码块先整体切出来：代码里的 `\n` 是内容，不能被逐行拆开
+  const lines = stem.split('\n')
+  const out: StemLine[] = []
+  let i = 0
+  while (i < lines.length) {
+    const raw = lines[i]
+    const fence = raw.match(/^\s*```\s*([A-Za-z0-9_+-]*)\s*$/)
+    if (fence) {
+      const lang = fence[1] ?? ''
+      const body: string[] = []
+      i += 1
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) {
+        body.push(lines[i])
+        i += 1
+      }
+      i += 1 // 跳过结束围栏
+      out.push({ kind: 'code', lang, code: body.join('\n') })
+      continue
+    }
     const matched = raw.match(ROMAN)
     if (matched) {
-      return { kind: 'option' as const, mark: `${matched[1]}.`, text: matched[2] }
+      out.push({ kind: 'option', mark: `${matched[1]}.`, text: matched[2] })
+    } else {
+      out.push({ kind: 'text', text: raw })
     }
-    return { kind: 'text' as const, text: raw }
-  })
+    i += 1
+  }
+  return out
 })
+
 
 /** 跳转输入框：接受「2026 3」「2026年第3题」「47」等写法 */
 function jumpToInput() {
@@ -388,6 +444,41 @@ async function loadQuestion() {
   }
 }
 
+/** 综合题自评草稿（选中即高亮，点保存才落库）。 */
+const selfScoreDraft = ref<number | null>(null)
+const savingScore = ref(false)
+
+/** 保存综合题自评得分；成功后把该题标记为已作答。 */
+async function saveSelfScore() {
+  const value = selfScoreDraft.value
+  if (value == null || savingScore.value) return
+  savingScore.value = true
+  message.value = null
+  try {
+    const saved = await api.selfScore(current.value!.examRef, value)
+    if (result.value) result.value.selfScore = saved.selfScore
+    message.value = saved.mastered
+      ? `已记录自评 ${saved.selfScore}/${saved.maxScore} 分（视为已掌握）`
+      : `已记录自评 ${saved.selfScore}/${saved.maxScore} 分（已进入错题本）`
+    const target = queue.value?.items[index.value]
+    if (target) {
+      if (!target.answered) queue.value!.answered += 1
+      target.answered = true
+    }
+  } catch (e) {
+    message.value = e instanceof ApiError ? e.message : '保存自评失败'
+  } finally {
+    savingScore.value = false
+  }
+}
+
+/** 重做：清空本地作答结果，允许再次提交（会覆盖本题的作答记录）。 */
+function redo() {
+  result.value = null
+  selected.value = ''
+  message.value = '已重置本题，可重新作答（再次提交会覆盖上一次记录）'
+}
+
 async function submit() {
   const item = current.value
   if (!item || submitting.value) return
@@ -420,18 +511,23 @@ async function submit() {
       correct: answer.correct,
       standardAnswer: answer.standardAnswer,
       explanation: answer.explanation,
+      comprehensive: answer.comprehensive ?? false,
+      maxScore: answer.maxScore ?? null,
+      selfScore: answer.selfScore ?? null,
     }
+    selfScoreDraft.value = answer.selfScore ?? null
     // 连续答对计数：答错即清零（用于顶部的正反馈）
-    streak.value = answer.correct ? streak.value + 1 : 0
+    // 综合题的 correct 是 null（不判对错），不计入连续答对
+    streak.value = answer.correct === true ? streak.value + 1 : 0
     // 同步队列内的作答状态，让右侧导航与进度即时更新
     const target = queue.value?.items[index.value]
     if (queue.value && target) {
       if (!target.answered) queue.value.answered += 1
       target.answered = true
       const wasCorrect = target.correct
-      target.correct = answer.correct
+      target.correct = answer.correct ?? false
       // 错题闭环状态本地推演，避免整队列重取
-      if (!answer.correct) {
+      if (answer.correct === false) {
         target.wrongCount += 1
         target.mastered = false
       } else if (target.wrongCount > 0 && !wasCorrect) {
@@ -441,7 +537,7 @@ async function submit() {
       queue.value.correct = queue.value.items.filter((i) => i.correct).length
     }
     // 在错题范围内，订正成功后该题应移出列表——重新拉取以反映新成员
-    if (isWrongScope.value && answer.correct) {
+    if (isWrongScope.value && answer.correct === true) {
       const currentRef = item.examRef
       const fresh = await api.practiceQueue({
         subject: subjectParam.value,
@@ -809,8 +905,13 @@ watch(
                 原来这里用纯文本插值，题干里的公式（如 $n=9$）根本不会渲染；
                 换成组件后公式能显示，而不含公式的题仍然不会多下载一个字节。
               -->
+              <!-- 围栏代码块：整体渲染，别让 ``` 被拆成正文（P1-2） -->
+              <pre
+                v-if="line.kind === 'code'"
+                class="my-2 overflow-x-auto rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-soft)] p-3 text-[13px] leading-relaxed"
+              ><code class="font-mono text-[var(--k-text)]">{{ line.code }}</code></pre>
               <div
-                v-if="line.kind === 'option'"
+                v-else-if="line.kind === 'option'"
                 class="flex gap-2 text-[15px] leading-relaxed text-[var(--k-text)]"
               >
                 <span class="shrink-0 font-semibold text-[var(--k-text-muted)]">{{ line.mark }}</span>
@@ -869,10 +970,19 @@ watch(
           <div class="mt-6 flex flex-wrap items-center gap-3">
             <button
               class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
-              :disabled="submitting"
+              :disabled="submitting || Boolean(result)"
               @click="submit"
             >
-              {{ submitting ? '提交中…' : result ? '再次提交' : '提交答案' }}
+              {{ submitting ? '提交中…' : result ? '已作答' : '提交答案' }}
+            </button>
+
+            <!-- 作答后锁定，重做必须显式点这里（并说明会覆盖记录） -->
+            <button
+              v-if="result"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--k-border)] px-4 py-2.5 text-sm text-[var(--k-text-muted)] transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)]"
+              @click="redo"
+            >
+              重做本题
             </button>
 
             <!-- 按本题关联的知识点跳 B 站搜索。不托管课程内容，只做「该看哪一节」的指引。 -->
@@ -891,9 +1001,23 @@ watch(
             <span
               v-if="result"
               class="text-sm font-semibold"
-              :class="result.correct ? 'text-[#0f7a4d]' : 'text-[#b23c3c]'"
+              :class="
+                result.comprehensive
+                  ? 'text-[var(--k-accent-text)]'
+                  : result.correct
+                    ? 'text-[#0f7a4d]'
+                    : 'text-[#b23c3c]'
+              "
             >
-              {{ result.correct ? '回答正确' : '回答错误' }}
+              {{
+                result.comprehensive
+                  ? result.selfScore == null
+                    ? '已作答 · 待自评'
+                    : `自评 ${result.selfScore}/${result.maxScore} 分`
+                  : result.correct
+                    ? '回答正确'
+                    : '回答错误'
+              }}
               <span v-if="result.standardAnswer" class="font-normal text-[var(--k-text-faint)]">
                 （正确答案 {{ result.standardAnswer }}）
               </span>
@@ -917,6 +1041,61 @@ watch(
             </div>
           </div>
 
+          <!-- 综合题自评：参考答案 + 分步给分点 + 自评打分（P0-1） -->
+          <div
+            v-if="result?.comprehensive"
+            class="mt-5 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-4"
+          >
+            <p class="text-sm font-bold text-[var(--k-heading)]">自评得分</p>
+            <p class="mt-1 text-xs leading-5 text-[var(--k-text-faint)]">
+              综合题没有自动判分。对照下面的参考答案，给自己打一个分（满分 {{ result.maxScore }} 分）。
+            </p>
+
+            <div v-if="question.subQuestions.length" class="mt-3 space-y-1.5">
+              <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">分步给分点</p>
+              <div
+                v-for="sub in question.subQuestions"
+                :key="sub.number"
+                class="flex items-start gap-2 rounded-lg bg-[var(--k-surface-soft)] px-3 py-2 text-xs text-[var(--k-text-muted)]"
+              >
+                <span class="shrink-0 font-semibold">({{ sub.number }})</span>
+                <span class="min-w-0 flex-1">{{ sub.description }}</span>
+                <span v-if="sub.score" class="shrink-0 text-[var(--k-text-faint)]">{{ sub.score }} 分</span>
+              </div>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-1.5">
+              <button
+                v-for="n in (result.maxScore ?? 0) + 1"
+                :key="n"
+                type="button"
+                class="h-8 min-w-8 rounded-lg border px-2 text-xs transition"
+                :class="
+                  selfScoreDraft === n - 1
+                    ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)] font-bold text-[var(--k-accent-text)]'
+                    : 'border-[var(--k-border)] text-[var(--k-text-muted)] hover:bg-[var(--k-surface-soft)]'
+                "
+                @click="selfScoreDraft = n - 1"
+              >
+                {{ n - 1 }}
+              </button>
+            </div>
+
+            <div class="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                class="rounded-lg bg-[var(--k-accent)] px-4 py-2 text-xs font-bold text-[var(--k-on-accent)] disabled:opacity-50"
+                :disabled="selfScoreDraft == null || savingScore"
+                @click="saveSelfScore"
+              >
+                {{ savingScore ? '保存中…' : result.selfScore == null ? '保存自评' : '更新自评' }}
+              </button>
+              <span class="text-[11px] text-[var(--k-text-faint)]">
+                ≥60% 视为已掌握，低于则进入错题本
+              </span>
+            </div>
+          </div>
+
           <div
             v-if="result?.explanation"
             class="mt-5 rounded-lg border border-[var(--k-border)] bg-[var(--k-surface-soft)] p-4"
@@ -933,7 +1112,7 @@ watch(
             <p class="mb-2 text-[11px] font-semibold text-[var(--k-text-faint)]">相关知识点</p>
             <div class="flex flex-wrap gap-2">
               <RouterLink
-                v-for="block in question.knowledgeBlocks"
+                v-for="block in knowledgeLinks"
                 :key="block.blockId"
                 :to="{
                   path: '/learn',

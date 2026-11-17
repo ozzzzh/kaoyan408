@@ -18,7 +18,11 @@ public interface QuestionMapper extends BaseMapper<Question> {
             SELECT q.subject              AS subject,
                    COUNT(q.id)            AS total,
                    COUNT(a.id)            AS done,
-                   COALESCE(SUM(a.result), 0) AS correct
+                   -- 正确率只统计选择题：综合题没有可字符串比对的标准答案，靠自评得分
+                   COALESCE(SUM(CASE WHEN q.question_type = 'choice' THEN a.result ELSE 0 END), 0) AS correct,
+                   COALESCE(SUM(CASE WHEN q.question_type = 'choice' AND a.id IS NOT NULL THEN 1 ELSE 0 END), 0) AS choiceDone,
+                   COALESCE(SUM(q.score), 0) AS scoreTotal,
+                   COALESCE(SUM(CASE WHEN a.id IS NOT NULL THEN q.score ELSE 0 END), 0) AS scoreDone
             FROM question q
             LEFT JOIN question_attempt a ON a.question_id = q.id AND a.user_id = #{userId}
             GROUP BY q.subject

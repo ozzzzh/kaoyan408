@@ -70,36 +70,14 @@ export function setToken(token: string | null): void {
   }
 }
 
-/**
- * 认证头：`Authorization` + 一个兼容头 `X-Session-Token`。
- *
- * 为什么两个都发：预览类网关（WorkBuddy 的 sharecode 链接就是这种）会把请求转给
- * 平台代理，而代理**不转发 `Authorization`**——实测：同一个 token 只带 Authorization
- * 访问该站点的 /api/v1/user/current 返回 401，只带 X-Session-Token 则返回 200。
- * 平台代理负责把这个头映射回 Authorization，后端本身只认 Authorization。
- *
- * 代价与取舍：本机（127.0.0.1）与生产（de5.net）只认 Authorization，多出来的这个头
- * 会被后端忽略，不影响任何行为；两个头承载的是同一个 token、同一目标域、同样走 HTTPS，
- * 不额外暴露凭据。反过来如果不发，任何走这种网关的部署登录会整体失效。
- *
- * 注意：新增自定义请求头会让**跨域**请求多一次 OPTIONS 预检；本项目 API 与前端同源
- * （nginx /api 反代），不触发预检。
- */
-const SESSION_TOKEN_HEADER = 'X-Session-Token'
-
-function applyAuthHeader(headers: Headers, token: string | null): void {
-  if (!token) return
-  headers.set('Authorization', `Bearer ${token}`)
-  headers.set(SESSION_TOKEN_HEADER, token)
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  applyAuthHeader(headers, getToken())
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
 
   let response: Response
   try {
@@ -224,8 +202,8 @@ export function streamAiChat(
 ): () => void {
   const controller = new AbortController()
   const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' })
-  // SSE 同样要走网关，认证头必须和普通请求一致（见 applyAuthHeader 的说明）
-  applyAuthHeader(headers, getToken())
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
 
   ;(async () => {
     try {
@@ -349,10 +327,39 @@ export const api = {
   register: (username: string, email: string, password: string, code: string) =>
     post<LoginResult>('/api/v1/auth/register', { username, email, password, code }),
 
+  /** 修改资料（昵称 / 头像）。演示账号会被服务端拒绝（403）。 */
+  updateProfile: (payload: { displayName?: string; avatar?: string }) =>
+    request<AuthUser>('/api/v1/user/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  /**
+   * 修改密码。需要邮箱验证码（用途 reset-password）。
+   * 成功后会返回新 token：旧 token 因 token_version 自增已全部失效。
+   */
+  changePassword: (payload: { currentPassword: string; newPassword: string; code: string }) =>
+    post<{ token: string; expiresAt: number; expiresIn: number; user: AuthUser }>(
+      '/api/v1/user/password',
+      payload,
+    ),
+
+  /** 综合题自评（0..该题满分）。返回最新统计，用于刷新看板。 */
+  selfScore: (examRef: string, score: number) =>
+    post<{
+      questionId: string
+      selfScore: number
+      maxScore: number
+      mastered: boolean
+      blocks: Array<{ blockId: string; total: number; done: number; correct: number }>
+      stats?: Dashboard
+    }>(`/api/v1/questions/${encodeURIComponent(examRef)}/self-score`, { score }),
+
   /** 发送邮箱注册验证码。mock 模式下不真发信，验证码在服务端日志里。 */
-  sendMailCode: (email: string) =>
-    post<{ cooldownSeconds: number; mock: boolean; message: string }>(
-      '/api/v1/auth/send-mail-code',
+  sendMailCode: (email: string, purpose: 'register' | 'reset-password' = 'register') =>
+    post<{ cooldownSeconds: number; mock: boolean; purpose: string; message: string }>(
+      `/api/v1/auth/send-mail-code${purpose === 'register' ? '' : `?purpose=${purpose}`}`,
       { email },
     ),
 
