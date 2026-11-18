@@ -17,12 +17,34 @@ const user = computed(() => userStore.user)
 
 const EMOJIS = ['🦊', '🐼', '🐧', '🦉', '🐳', '🌱', '🍀', '⭐', '🚀', '📘', '🧠', '☕']
 
+/**
+ * 头像底色可选值。第一项就是站点品牌绿（默认），其余是给想区分的人用的。
+ * 存储形式：`auto`（品牌绿 + 首字母）/ `color:#rrggbb`（自选底色 + 首字母）/ `emoji:x`（图案）。
+ */
+const BRAND_COLOR = '#0b7c73'
+const AVATAR_COLORS = [
+  { value: BRAND_COLOR, color: BRAND_COLOR, label: '品牌绿（默认）' },
+  { value: '#2e9e7a', color: '#2e9e7a', label: '青草绿' },
+  { value: '#3d6be5', color: '#3d6be5', label: '蓝' },
+  { value: '#7c5cf0', color: '#7c5cf0', label: '紫' },
+  { value: '#f0a020', color: '#f0a020', label: '橙' },
+  { value: '#e0574f', color: '#e0574f', label: '红' },
+  { value: '#b4577e', color: '#b4577e', label: '玫红' },
+  { value: '#4b5563', color: '#4b5563', label: '石墨灰' },
+]
+
 const editing = ref(false)
 const draftName = ref('')
 const draftAvatar = ref('auto')
 const saving = ref(false)
 const message = ref<string | null>(null)
 const error = ref<string | null>(null)
+
+/** 当前是否选了图案；选图案时底色固定品牌绿，所以底色选择器置灰。 */
+const isEmojiAvatar = computed(() => draftAvatar.value.startsWith('emoji:'))
+const avatarColor = computed(() =>
+  draftAvatar.value.startsWith('color:') ? draftAvatar.value.slice('color:'.length) : BRAND_COLOR,
+)
 
 const showPassword = ref(false)
 const currentPassword = ref('')
@@ -45,6 +67,16 @@ function startEdit() {
 
 function pickEmoji(emoji: string) {
   draftAvatar.value = `emoji:${emoji}`
+}
+
+/** 选底色 = 回到「首字母」模式；品牌绿就存 auto，避免把默认值写死成具体色值。 */
+function pickColor(hex: string) {
+  draftAvatar.value = hex === BRAND_COLOR ? 'auto' : `color:${hex}`
+}
+
+/** 从图案切回「首字母」，保留当前底色选择。 */
+function clearEmoji() {
+  draftAvatar.value = avatarColor.value === BRAND_COLOR ? 'auto' : `color:${avatarColor.value}`
 }
 
 async function save() {
@@ -198,7 +230,35 @@ const field =
 
           <div>
             <p class="text-sm text-[var(--k-text-muted)]">头像</p>
-            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+
+            <!-- 底色：默认品牌绿，也可以自选。存储在 avatar 字段的 `color:#rrggbb` 形式里。 -->
+            <p class="mt-1.5 text-[11px] text-[var(--k-text-faint)]">
+              底色
+              <span v-if="isEmojiAvatar" class="text-[var(--k-text-muted)]">（选了图案时固定为品牌绿）</span>
+            </p>
+            <div class="mt-1 flex flex-wrap items-center gap-1.5" :class="isEmojiAvatar ? 'pointer-events-none opacity-40' : ''">
+              <button
+                v-for="option in AVATAR_COLORS"
+                :key="option.value"
+                type="button"
+                class="grid h-7 w-7 place-items-center rounded-lg border-2 transition"
+                :class="
+                  avatarColor === option.value
+                    ? 'border-[var(--k-text)]'
+                    : 'border-transparent hover:border-[var(--k-border-strong)]'
+                "
+                :style="{ backgroundColor: option.color }"
+                :title="option.label"
+                :aria-label="`底色：${option.label}`"
+                :aria-pressed="avatarColor === option.value"
+                @click="pickColor(option.value)"
+              >
+                <span v-if="avatarColor === option.value" class="text-[11px] font-bold text-white">✓</span>
+              </button>
+            </div>
+
+            <p class="mt-3 text-[11px] text-[var(--k-text-faint)]">图案（可选，会盖在底色上）</p>
+            <div class="mt-1 flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 class="rounded-lg border px-2.5 py-1 text-xs transition"
@@ -207,9 +267,9 @@ const field =
                     ? 'border-[var(--k-accent)] bg-[var(--k-accent-soft)] font-semibold text-[var(--k-accent-text)]'
                     : 'border-[var(--k-border)] text-[var(--k-text-muted)]'
                 "
-                @click="draftAvatar = 'auto'"
+                @click="clearEmoji"
               >
-                首字母（自动配色）
+                用首字母
               </button>
               <button
                 v-for="emoji in EMOJIS"

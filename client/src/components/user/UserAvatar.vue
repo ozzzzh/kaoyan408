@@ -4,8 +4,10 @@ import { computed } from 'vue'
 /**
  * 账号头像。
  *
- * 没有图片上传：头像只有两种来源——按用户名哈希生成的首字母 + 配色，
- * 或从固定 emoji 库里选一个（后端存 'emoji:🦊'）。
+ * 没有图片上传：头像只有三种来源——
+ *   1. `auto`：品牌绿底 + 昵称首字（默认）；
+ *   2. `color:#rrggbb`：用户自选底色 + 昵称首字；
+ *   3. `emoji:🦊`：自选图案（emoji 显示在底色上）。
  * 这样不需要对象存储、不需要上传接口，nginx 也不用多挂目录。
  */
 const props = withDefaults(
@@ -18,23 +20,31 @@ const props = withDefaults(
   { avatar: 'auto', size: 48 },
 )
 
-const COLORS = ['#3D6BE5', '#7C5CF0', '#F0A020', '#E0574F', '#2E9E7A', '#B4577E']
+/**
+ * 默认底色 = 站点品牌绿（与 --k-accent 一致）。
+ *
+ * 原来是按昵称哈希从六种颜色里挑一个，于是同一个页面里会出现玫红、橙、紫各种头像，
+ * 和整体青绿主题不搭（实测昵称「111111」被分到了玫红）。现在默认统一成品牌绿，
+ * 想区分的人去「编辑资料」里自选颜色。
+ */
+const BRAND_COLOR = '#0b7c73'
+const COLOR_PREFIX = 'color:'
+const HEX = /^#[0-9a-fA-F]{6}$/
 
 const emoji = computed(() => {
   const value = props.avatar ?? 'auto'
   return value.startsWith('emoji:') ? value.slice('emoji:'.length) : ''
 })
 
-const initial = computed(() => (props.name || '?').trim().slice(0, 1).toUpperCase())
-
-/** 同名同色：把用户名哈希到一个固定色板，避免每次刷新换色。 */
+/** 用户自选颜色；非法值（历史脏数据）回落到品牌绿，不抛错。 */
 const color = computed(() => {
-  let hash = 0
-  for (const ch of props.name || '') {
-    hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) % 997
-  }
-  return COLORS[hash % COLORS.length]
+  const value = props.avatar ?? 'auto'
+  if (!value.startsWith(COLOR_PREFIX)) return BRAND_COLOR
+  const hex = value.slice(COLOR_PREFIX.length).trim()
+  return HEX.test(hex) ? hex : BRAND_COLOR
 })
+
+const initial = computed(() => (props.name || '?').trim().slice(0, 1).toUpperCase())
 
 const boxStyle = computed(() => ({
   width: `${props.size}px`,

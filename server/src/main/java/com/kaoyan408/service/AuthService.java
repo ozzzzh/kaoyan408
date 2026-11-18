@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.format.DateTimeFormatter;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
@@ -197,11 +198,19 @@ public class AuthService {
         return user;
     }
 
-    /** 头像只接受 'auto' 或 'emoji:<一个字符>'，拒绝任意字符串（避免前端渲染出意料外的东西）。 */
+    /** 头像只接受 'auto' / 'color:#rrggbb' / 'emoji:<一个字符>'，拒绝任意字符串（避免前端渲染出意料外的东西）。 */
     private String normalizeAvatar(String avatar) {
         String value = avatar.trim();
         if (value.isEmpty() || "auto".equals(value)) {
             return "auto";
+        }
+        if (value.startsWith("color:")) {
+            // 底色：只认 #rrggbb，存小写，避免同一颜色因大小写产生不同取值
+            String hex = value.substring("color:".length()).trim();
+            if (hex.matches("#[0-9a-fA-F]{6}")) {
+                return "color:" + hex.toLowerCase(Locale.ROOT);
+            }
+            throw new BusinessException(400, "头像颜色不合法。");
         }
         if (value.startsWith("emoji:")) {
             String emoji = value.substring("emoji:".length()).trim();
