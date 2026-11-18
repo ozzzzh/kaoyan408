@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.kaoyan408.core.BusinessException;
 import com.kaoyan408.core.Result;
 import com.kaoyan408.entity.Question;
+import com.kaoyan408.service.AiGradeService;
 import com.kaoyan408.service.AuthService;
 import com.kaoyan408.service.QuestionService;
 import com.kaoyan408.service.StatsService;
@@ -34,13 +35,16 @@ public class QuestionController {
     private final AuthService authService;
     private final StatsService statsService;
     private final VideoGuideService videoGuideService;
+    private final AiGradeService aiGradeService;
 
     public QuestionController(QuestionService questionService, AuthService authService,
-                              StatsService statsService, VideoGuideService videoGuideService) {
+                              StatsService statsService, VideoGuideService videoGuideService,
+                              AiGradeService aiGradeService) {
         this.questionService = questionService;
         this.authService = authService;
         this.statsService = statsService;
         this.videoGuideService = videoGuideService;
+        this.aiGradeService = aiGradeService;
     }
 
     public record AnswerRequest(String answer, Integer durationMs) {
@@ -99,6 +103,36 @@ public class QuestionController {
      * <p>不返回任何第三方课程的播放地址：本项目不托管、也不转存课程内容，
      * 只依据自有数据告诉用户「该去搜什么」。
      */
+    public record AiGradeRequest(String answer) {
+    }
+
+    /** AI 评改是否可用（未配置模型密钥时为 false，前端据此决定是否显示入口）。 */
+    @GetMapping("/{examRef}/ai-grade/available")
+    public Result<Map<String, Object>> aiGradeAvailable(@PathVariable String examRef) {
+        Question question = questionService.requireByRef(examRef);
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("available",
+                aiGradeService.available() && "comprehensive".equals(question.getQuestionType()));
+        payload.put("reason", aiGradeService.available() ? null : "服务端未配置模型密钥，请使用自评");
+        return Result.ok(payload);
+    }
+
+    /**
+     * 综合题 AI 评改。
+     *
+     * <p>只返回「建议分 + 逐点命中」，不直接入库：最终分数由用户确认后才写入，
+     * 因为 408 综合题是过程题，AI 给分口径不稳，误判会伤信任。
+     */
+    @PostMapping("/{examRef}/ai-grade")
+    public Result<Map<String, Object>> aiGrade(@PathVariable String examRef,
+                                               @RequestBody(required = false) AiGradeRequest request,
+                                               Authentication authentication) {
+        if (authentication == null) {
+            throw new com.kaoyan408.core.BusinessException(401, "请先登录后再使用 AI 评改。");
+        }
+        Question question = questionService.requireByRef(examRef);
+        return Result.ok(aiGradeService.grade(question, request == null ? null : request.answer()));
+    }
     @GetMapping("/{examRef}/video-guide")
     public Result<Map<String, Object>> videoGuide(@PathVariable String examRef) {
         return Result.ok(videoGuideService.guideOf(examRef));

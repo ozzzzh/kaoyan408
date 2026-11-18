@@ -404,6 +404,23 @@ export const api = {
    */
   dashboard: () => dedupe('dashboard', () => request<Dashboard>('/api/v1/stats/dash')),
 
+  /** AI 评改是否可用（服务端未配置模型密钥时为 false） */
+  aiGradeAvailable: (examRef: string) =>
+    request<{ available: boolean; reason: string | null }>(
+      `/api/v1/questions/${encodeURIComponent(examRef)}/ai-grade/available`,
+    ),
+
+  /** 综合题 AI 评改：只返回建议分与逐点命中，最终分数由用户确认 */
+  aiGrade: (examRef: string, answer: string) =>
+    post<{
+      subpoints: Array<{ index: number; max: number; awarded: number; comment: string }>
+      total: number
+      max: number
+      confidence: number
+      rationale: string
+      model: string
+      disclaimer: string
+    }>(`/api/v1/questions/${encodeURIComponent(examRef)}/ai-grade`, { answer }),
   /** 真题卷进度：每卷的练习进度与模考成绩（两种口径分开返回） */
   examProgress: () =>
     request<
