@@ -65,6 +65,12 @@ function startEdit() {
   error.value = null
 }
 
+/**
+ * 暴露给「我的」页顶部身份卡：那边有个「换头像/改资料」的快捷入口，
+ * 点一下就能滚到这张卡并直接进入编辑态，不用自己往下找「编辑资料」按钮。
+ */
+defineExpose({ startEdit })
+
 function pickEmoji(emoji: string) {
   draftAvatar.value = `emoji:${emoji}`
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/user'
@@ -14,6 +14,15 @@ import ThemeToggle from '@/components/layout/ThemeToggle.vue'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+
+/** 顶部身份卡的「换头像 / 改昵称」：滚到设置卡并展开编辑态。 */
+const profileRef = ref<{ startEdit: () => void } | null>(null)
+function jumpToProfileEdit() {
+  profileRef.value?.startEdit()
+  void nextTick(() => {
+    document.getElementById('profile')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
 const { user, loading } = storeToRefs(userStore)
 
 const mode = ref<'login' | 'register'>('login')
@@ -340,6 +349,20 @@ watch(user, (next) => {
             {{ user.username }} · {{ user.email || '未绑定邮箱' }}
           </p>
         </div>
+
+        <!--
+          快捷入口：颜色的设置在下面「账号与资料 → 编辑资料」里，
+          第一次用的人根本找不到（实测反馈「怎么改呀，没看到呀」）。
+          这里放一个直达键：滚到那张卡并直接展开编辑态。
+        -->
+        <button
+          v-if="!user.demo"
+          type="button"
+          class="shrink-0 rounded-lg border border-[var(--k-border)] px-3 py-1.5 text-xs font-semibold text-[var(--k-text-muted)] transition hover:border-[var(--k-accent)] hover:text-[var(--k-accent-text)]"
+          @click="jumpToProfileEdit"
+        >
+          换头像 / 改昵称
+        </button>
       </section>
 
       <!--
@@ -522,7 +545,7 @@ watch(user, (next) => {
       </section>
 
       <!-- 设置：账号与资料 / 安全（原来排在数据前面，改到数据之后——用户来「我的」主要是看数据） -->
-      <ProfileSettings />
+      <ProfileSettings ref="profileRef" />
 
       <!-- 偏好：主题与时间跟随（与侧栏的 ThemeToggle 复用同一个组件，两处都能改） -->
       <section class="space-y-3">
