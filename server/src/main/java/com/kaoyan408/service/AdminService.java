@@ -225,11 +225,21 @@ public class AdminService {
 
     /** 当前操作者是否是「只读的演示管理员」。 */
     public boolean isReadOnlyDemo(String username) {
+        if (username == null) {
+            return false;
+        }
         AccountProperties.DemoAdmin demoAdmin = accountProperties.getDemoAdmin();
-        return demoAdmin.isEnabled()
+        boolean isSeparateDemoAdmin = demoAdmin.isEnabled()
                 && demoAdmin.getUsername() != null
                 && demoAdmin.getUsername().equals(username)
                 && demoAdmin.isReadOnly();
+        // 合并后的演示账号（demo 同时是管理员）也一律只读：
+        // 它是公开账号，能改数据等于把后台开放给全网
+        AccountProperties.Demo demo = accountProperties.getDemo();
+        boolean isMergedDemo = demo.isEnabled()
+                && demo.getUsername() != null
+                && demo.getUsername().equals(username);
+        return isSeparateDemoAdmin || isMergedDemo;
     }
     private User requireUser(Long userId) {
         User user = userMapper.selectById(userId);

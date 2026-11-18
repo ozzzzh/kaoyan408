@@ -31,7 +31,16 @@ import java.util.Map;
 public class AccountBootstrap {
 
     /** 演示账号预置的作答分布：让看板有正确率、错题本有内容，但不至于满屏。 */
-    private static final int DEMO_ATTEMPTS = 18;
+    /** 种子版本：改大后下次启动会清掉 demo 的历史数据并重铺（只影响演示账号） */
+    private static final int DEMO_SEED_VERSION = 2;
+    /** 铺多少条作答：覆盖四科和多个年份，够让看板/错题本/热力图都有内容 */
+    private static final int DEMO_ATTEMPTS_TARGET = 220;
+    /** 铺多少张背诵卡 */
+    private static final int DEMO_CARDS_TARGET = 72;
+    /** 铺几次模拟考试 */
+    private static final int DEMO_MOCK_SESSIONS = 4;
+    /** 连续打卡天数 */
+    private static final int DEMO_STREAK_DAYS = 14;
     private static final int DEMO_WRONG = 5;
     private static final int DEMO_CARDS = 6;
 
@@ -120,7 +129,16 @@ public class AccountBootstrap {
     private void ensureDemoAdmin(UserMapper userMapper, PasswordEncoder encoder, AccountProperties properties) {
         AccountProperties.DemoAdmin demoAdmin = properties.getDemoAdmin();
         if (!demoAdmin.isEnabled()) {
-            log.info("演示管理员已禁用（kaoyan.demo-admin.enabled=false）");
+            // 已合并到 demo 账号：把历史上可能存在的 demo-admin 停用，避免还能登录
+            User legacy = findByUsername(userMapper, demoAdmin.getUsername());
+            if (legacy != null && legacy.getIsActive() != null && legacy.getIsActive() == 1
+                    && !legacy.getUsername().equals(properties.getDemo().getUsername())) {
+                legacy.setIsActive(0);
+                userMapper.updateById(legacy);
+                log.info("演示管理员已合并到 demo 账号，旧账号 {} 已停用", legacy.getUsername());
+            } else {
+                log.info("演示管理员已合并到 demo 账号（kaoyan.demo-admin.enabled=false）");
+            }
             return;
         }
         String username = demoAdmin.getUsername();
@@ -181,11 +199,17 @@ public class AccountBootstrap {
             user.setEmail(username + "@demo.local");
             user.setPasswordHash(encoder.encode(demo.getPassword()));
             user.setIsActive(1);
-            user.setIsAdmin(0);
+            // 与「演示管理员」合并：同一个账号既展示学习数据，也能进只读后台
+            user.setIsAdmin(1);
             user.setTokenVersion(1);
             userMapper.insert(user);
             existing = user;
-            log.info("已创建演示账号 {}（密码见 KAOYAN_DEMO_PASSWORD）", username);
+            log.info("已创建演示账号 {}（管理员视图·只读，密码见 KAOYAN_DEMO_PASSWORD）", username);
+        } else if (existing.getIsAdmin() == null || existing.getIsAdmin() == 0) {
+            existing.setIsAdmin(1);
+            existing.setIsActive(1);
+            userMapper.updateById(existing);
+            log.info("演示账号 {} 已提升为管理员（只读）", username);
         } else if (existing.getIsActive() != null && existing.getIsActive() == 0) {
             // 演示账号被误禁用时自动恢复：它是对外承诺的入口
             existing.setIsActive(1);
@@ -199,75 +223,150 @@ public class AccountBootstrap {
     }
 
     /**
-     * 给演示账号铺一点历史数据：做题记录（含几道错题）、掌握度、每日统计、背诵卡片。
+     * 给演示账号铺一套「像真的用过一阵」的数据。
      *
-     * <p>只在「该账号完全没有作答记录」时执行，所以重启不会越积越多。
+     * <p>覆盖：220 条作答（四科多年份、约 72% 正确）、14 天连续打卡、4 次模拟考试
+     * （不同年份与分数）、72 张处在不同盒/不同到期日的背诵卡、按题-知关联刷新的
+     * 知识块进度。目的是让访客看到「用了一段时间之后长什么样」，而不是空面板。
+     *
+     * <p>幂等：用 app_meta 的 demo_seed_version 記账；版本没变就不重铺。
+     * 版本升级时会清空 demo 自己的历史（只动 demo，不影响真实用户）。
      */
     private void seedDemoData(UserMapper userMapper, QuestionMapper questionMapper,
                               JdbcTemplate jdbcTemplate, Long demoUserId) {
-        Integer existing = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM question_attempt WHERE user_id = ?", Integer.class, demoUserId);
-        if (existing != null && existing > 0) {
-            log.info("演示账号已有 {} 条作答记录，跳过数据预置", existing);
+        String seeded = null;
+        try {
+            seeded = jdbcTemplate.queryForObject(
+                    "SELECT value FROM app_meta WHERE k = 'demo_seed_version'", String.class);
+        } catch (Exception ignored) {
+            // 没有记录 = 从没铺过
+        }
+        if (seeded != null && Integer.parseInt(seeded) >= DEMO_SEED_VERSION) {
+            log.info("演示数据已是 v{}，跳过预置", seeded);
             return;
         }
 
-        List<Question> questions = questionMapper.selectList(new QueryWrapper<Question>()
-                .orderByAsc("exam_id", "exam_number").last("LIMIT " + DEMO_ATTEMPTS));
-        if (questions.isEmpty()) {
+        Long questionCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM question", Long.class);
+        if (questionCount == null || questionCount == 0) {
             log.warn("题库为空，跳过演示数据预置（内容种子可能还没灌入）");
             return;
         }
 
-        Map<String, Integer> perBlock = new LinkedHashMap<>();
+        // 清掉旧的演示数据（含早先 v1 的 18 条）
+        jdbcTemplate.update("DELETE FROM question_attempt WHERE user_id = ?", demoUserId);
+        jdbcTemplate.update("DELETE FROM daily_stat WHERE user_id = ?", demoUserId);
+        jdbcTemplate.update("DELETE FROM memory_card WHERE user_id = ?", demoUserId);
+        jdbcTemplate.update("DELETE FROM block_progress WHERE user_id = ?", demoUserId);
+        jdbcTemplate.update("DELETE FROM mock_answer WHERE session_id IN "
+                + "(SELECT id FROM mock_session WHERE user_id = ?)", demoUserId);
+        jdbcTemplate.update("DELETE FROM mock_session WHERE user_id = ?", demoUserId);
+
+        // 1) 作答：随机取 220 题，按 index 决定对错与日期，保证分布稳定可复现
+        List<Question> questions = questionMapper.selectList(new QueryWrapper<Question>()
+                .last("ORDER BY RAND() LIMIT " + DEMO_ATTEMPTS_TARGET));
+        int[] perDayQuestions = new int[DEMO_STREAK_DAYS];
+        int[] perDayCorrect = new int[DEMO_STREAK_DAYS];
+        int wrong = 0;
         for (int i = 0; i < questions.size(); i++) {
             Question question = questions.get(i);
-            // 前 DEMO_WRONG 道记成答错，用来触发错题本与薄弱点
-            boolean correct = i >= DEMO_WRONG;
+            boolean correct = i % 100 < 72;
+            int dayOffset = i % DEMO_STREAK_DAYS;
+            LocalDate day = LocalDate.now().minusDays(dayOffset);
+            java.sql.Timestamp answeredAt = java.sql.Timestamp.valueOf(
+                    day.atTime(9 + (i % 10), (i * 7) % 60));
+            perDayQuestions[dayOffset] += 1;
+            if (correct) {
+                perDayCorrect[dayOffset] += 1;
+            } else {
+                wrong++;
+            }
             jdbcTemplate.update(
                     "INSERT INTO question_attempt (user_id, question_id, result, answer, duration_ms, "
-                            + "wrong_count, retry_correct_count, first_wrong_at, mastered_at) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "wrong_count, retry_correct_count, first_wrong_at, mastered_at, answered_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     demoUserId, question.getId(), correct ? 1 : 0,
                     correct ? firstOption(question) : "B",
-                    12_000,
+                    correct ? 9_000 + (i % 40) * 500 : 24_000,
                     correct ? 0 : 1,
-                    0,
-                    correct ? null : java.sql.Timestamp.valueOf(LocalDate.now().minusDays(2).atTime(20, 15)),
-                    null);
+                    correct && i % 5 == 0 ? 1 : 0,
+                    correct ? null : java.sql.Timestamp.valueOf(day.atTime(20, 15)),
+                    correct && i % 4 == 0 ? java.sql.Timestamp.valueOf(day.atTime(20, 20)) : null,
+                    answeredAt);
         }
 
-        // 每日统计：近 3 天各有一点练习量，热力图不至于是空的
-        for (int d = 0; d < 3; d++) {
-            int questionsToday = Math.max(1, DEMO_ATTEMPTS / 3);
+        // 2) 每日统计：与上面的作答分布对齐，热力图/连续打卡才有数据
+        for (int d = 0; d < DEMO_STREAK_DAYS; d++) {
             jdbcTemplate.update(
-                    "INSERT INTO daily_stat (user_id, stat_date, questions, correct, minutes) VALUES (?, ?, ?, ?, ?) "
-                            + "ON DUPLICATE KEY UPDATE questions = VALUES(questions), correct = VALUES(correct), "
-                            + "minutes = VALUES(minutes)",
+                    "INSERT INTO daily_stat (user_id, stat_date, questions, correct, minutes) "
+                            + "VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE "
+                            + "questions = VALUES(questions), correct = VALUES(correct), minutes = VALUES(minutes)",
                     demoUserId, java.sql.Date.valueOf(LocalDate.now().minusDays(d)),
-                    questionsToday, Math.max(0, questionsToday - DEMO_WRONG / 3), questionsToday * 2);
+                    perDayQuestions[d], perDayCorrect[d], perDayQuestions[d] * 2);
         }
 
-        // 背诵卡片：几张今天到期的卡，演示间隔重复入口。
-        // 表结构只有 block_id / box / 复习时间这些字段，卡片正反面是按 block 现算的。
+        // 3) 模拟考试：不同年份、不同分数，包含一次偏低分的
+        List<Integer> years = jdbcTemplate.queryForList(
+                "SELECT year FROM exam_year ORDER BY year DESC LIMIT " + DEMO_MOCK_SESSIONS, Integer.class);
+        int[] autoScores = {62, 71, 58, 74};
+        int[] selfScores = {38, 42, 30, 46};
+        int mocks = 0;
+        for (int i = 0; i < years.size() && i < autoScores.length; i++) {
+            jdbcTemplate.update(
+                    "INSERT INTO mock_session (user_id, exam_year, started_at, duration_minutes, status, "
+                            + "submitted_at, auto_score, self_score, timed_out) VALUES (?, ?, ?, ?, 'submitted', ?, ?, ?, 0)",
+                    demoUserId, years.get(i),
+                    java.sql.Timestamp.valueOf(LocalDate.now().minusDays(3L * i + 2).atTime(14, 0)),
+                    180,
+                    java.sql.Timestamp.valueOf(LocalDate.now().minusDays(3L * i + 2).atTime(17, 5)),
+                    autoScores[i], selfScores[i]);
+            mocks++;
+        }
+
+        // 4) 背诵卡：不同盒、不同到期日（三分之一今天到期，制造"待复习"）
         List<Map<String, Object>> blocks = jdbcTemplate.queryForList(
-                "SELECT block_id FROM knowledge_block ORDER BY block_id LIMIT " + DEMO_CARDS);
+                "SELECT block_id FROM knowledge_block ORDER BY RAND() LIMIT " + DEMO_CARDS_TARGET);
         int cards = 0;
-        for (Map<String, Object> block : blocks) {
+        for (int i = 0; i < blocks.size(); i++) {
+            int box = i % 5;
+            int reviewCount = 1 + i % 4;
+            LocalDate due = i % 3 == 0 ? LocalDate.now() : LocalDate.now().plusDays(1 + i % 7);
             try {
                 jdbcTemplate.update(
                         "INSERT INTO memory_card (user_id, block_id, difficulty, next_review_date, box, "
-                                + "review_count, correct_count) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        demoUserId, block.get("block_id"), 2,
-                        java.sql.Date.valueOf(LocalDate.now()), 1, 0, 0);
+                                + "review_count, correct_count, last_reviewed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        demoUserId, blocks.get(i).get("block_id"), 1 + box % 3,
+                        java.sql.Date.valueOf(due), box, reviewCount,
+                        Math.max(0, reviewCount - (i % 3)), java.sql.Timestamp.valueOf(due.minusDays(1).atTime(21, 0)));
                 cards++;
             } catch (Exception duplicate) {
                 // uk_card_user_block 唯一约束：重复就跳过
             }
         }
-        log.info("演示账号已预置 {} 条作答、3 天统计、{} 张背诵卡", questions.size(), cards);
-    }
 
+        // 5) 知识块进度：从作答反推，让掌握度面板/知识点列表有真实分布
+        int blocksTouched = 0;
+        try {
+            blocksTouched = jdbcTemplate.update(
+                    "INSERT INTO block_progress (user_id, block_id, questions_total, questions_done, questions_correct) "
+                            + "SELECT ?, qk.block_id, COUNT(*), COUNT(a.id), COALESCE(SUM(a.result), 0) "
+                            + "FROM question_knowledge qk "
+                            + "LEFT JOIN question_attempt a ON a.question_id = qk.question_id AND a.user_id = ? "
+                            + "GROUP BY qk.block_id "
+                            + "ON DUPLICATE KEY UPDATE questions_total = VALUES(questions_total), "
+                            + "questions_done = VALUES(questions_done), questions_correct = VALUES(questions_correct)",
+                    demoUserId, demoUserId);
+        } catch (Exception error) {
+            log.warn("演示数据：知识块进度刷新失败（不影响其它数据）：{}", error.getMessage());
+        }
+
+        jdbcTemplate.update(
+                "INSERT INTO app_meta (k, value) VALUES ('demo_seed_version', ?) "
+                        + "ON DUPLICATE KEY UPDATE value = VALUES(value)",
+                String.valueOf(DEMO_SEED_VERSION));
+
+        log.info("演示数据已铺好：{} 条作答（错 {}）、{} 天统计、{} 次模考、{} 张背诵卡、{} 个知识块进度",
+                questions.size(), wrong, DEMO_STREAK_DAYS, mocks, cards, blocksTouched);
+    }
     private String firstOption(Question question) {
         return "choice".equals(question.getQuestionType()) ? "A" : "已完成";
     }

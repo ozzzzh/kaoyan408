@@ -81,7 +81,7 @@ kaoyan:
   demo-admin:
     # 公开可登录的后台演示账号。默认只读：能看概览与账号列表，不能改任何数据。
     # 它与真管理员是两个账号，用户名必须不同（同名时启动会跳过并报错）。
-    enabled: ${KAOYAN_DEMO_ADMIN_ENABLED:true}
+    enabled: ${KAOYAN_DEMO_ADMIN_ENABLED:false}
     username: ${KAOYAN_DEMO_ADMIN_USERNAME:demo-admin}
     password: ${KAOYAN_DEMO_ADMIN_PASSWORD:demo-admin123456}
     read-only: ${KAOYAN_DEMO_ADMIN_READONLY:true}

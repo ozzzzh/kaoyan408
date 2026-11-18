@@ -135,8 +135,8 @@ public class AuthController {
         if (demo.isEnabled()) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("role", "user");
-            item.put("label", "演示用户");
-            item.put("desc", "有做题与背诵数据，能看工作台与看板");
+            item.put("label", "演示账号");
+            item.put("desc", "完整学习数据 + 后台管理视图（只读，不能改数据）");
             item.put("username", demo.getUsername());
             item.put("password", demo.getPassword());
             accounts.add(item);

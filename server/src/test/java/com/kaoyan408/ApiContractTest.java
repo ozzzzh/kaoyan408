@@ -248,9 +248,10 @@ class ApiContractTest {
         mockMvc.perform(get("/api/v1/auth/demo-info"))
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.accounts").isArray())
-                // 两个角色都要有：登录页据此渲染「二选一」
-                .andExpect(jsonPath("$.data.accounts[?(@.role=='user')]").exists())
-                .andExpect(jsonPath("$.data.accounts[?(@.role=='admin')]").exists())
+                // 演示管理员已合并进 demo：只暴露一个入口，它同时具备后台只读视图
+                .andExpect(jsonPath("$.data.accounts.length()").value(1))
+                .andExpect(jsonPath("$.data.accounts[0].role").value("user"))
+                .andExpect(jsonPath("$.data.accounts[0].username").value("demo"))
                 // 公开演示账号带密码（运维改了口令登录页才不会显示旧值）
                 .andExpect(jsonPath("$.data.accounts[0].password").exists());
     }
@@ -325,8 +326,8 @@ class ApiContractTest {
     @Test
     @DisplayName("演示管理员默认只读：能看概览与列表，写操作被服务端拒绝")
     void demoAdminIsReadOnly() throws Exception {
-        // 配置默认 demo-admin / demo-admin123456 / read-only=true
-        String token = tokenOf2("demo-admin", "demo-admin123456");
+        // 演示管理员已合并进 demo：同一个账号既有富数据，也能进只读后台
+        String token = tokenOf2("demo", "demo123456");
 
         mockMvc.perform(get("/api/v1/admin/overview").header("Authorization", "Bearer " + token))
                 .andExpect(jsonPath("$.code").value(0))
@@ -389,8 +390,8 @@ class ApiContractTest {
     @Test
     @DisplayName("演示账号：资料与密码都被锁定，并给出可读原因")
     void demoAccountIsLocked() throws Exception {
-        // 默认配置 demo-admin / demo-admin123456
-        String token = tokenOf2("demo-admin", "demo-admin123456");
+        // 演示管理员已合并进 demo 账号（默认 demo / demo123456）
+        String token = tokenOf2("demo", "demo123456");
 
         mockMvc.perform(patch("/api/v1/user/profile")
                         .header("Authorization", "Bearer " + token)
@@ -401,7 +402,7 @@ class ApiContractTest {
         mockMvc.perform(post("/api/v1/user/password")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"demo-admin123456\",\"newPassword\":\"newpass1234\",\"code\":\"000000\"}"))
+                        .content("{\"currentPassword\":\"demo123456\",\"newPassword\":\"newpass1234\",\"code\":\"000000\"}"))
                 .andExpect(jsonPath("$.code").value(403))
                 .andExpect(jsonPath("$.msg").value(org.hamcrest.Matchers.containsString("演示账号")));
     }
