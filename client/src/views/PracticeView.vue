@@ -479,6 +479,11 @@ async function probeAiGrade() {
 async function requestAiGrade() {
   const ref_ = current.value?.examRef
   if (!ref_ || aiGrading.value) return
+  // 校验放这里而不是 disabled：按钮点不动时用户只会以为功能坏了
+  if (answerDraft.value.trim().length < 20) {
+    aiGradeError.value = `答案太短（当前 ${answerDraft.value.trim().length} 字），至少写 20 字再评`
+    return
+  }
   aiGrading.value = true
   aiGradeError.value = null
   aiGradeResult.value = null
@@ -1021,6 +1026,22 @@ watch(
             </div>
           </div>
 
+          <!--
+            综合题的作答框必须在「提交」之前：先写答案，再提交，然后才谈得上评改。
+            之前放在自评面板里，用户提交前根本没有地方写（等人反馈才发现）。
+          -->
+          <div v-if="question.questionType === 'comprehensive'" class="mt-4">
+            <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">
+              我的作答{{ result ? '（已提交，可在下方重新编辑后评改）' : '' }}
+            </p>
+            <textarea
+              v-model="answerDraft"
+              rows="6"
+              class="mt-1.5 w-full resize-y rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 font-mono text-sm leading-relaxed text-[var(--k-text)] outline-none focus:border-[var(--k-accent)]"
+              placeholder="把解题过程写在这里：先写思路，需要时再写代码（写到哪算到哪，AI 会按给分点逐条评）"
+            />
+          </div>
+
           <div class="mt-6 flex flex-wrap items-center gap-3">
             <button
               class="rounded-lg bg-[var(--k-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--k-on-accent)] transition hover:bg-[var(--k-accent-hover)] disabled:opacity-60"
@@ -1118,25 +1139,28 @@ watch(
               </div>
             </div>
 
-            <!-- 我的作答 + AI 评改：只给建议分，最终由你确认 -->
+            <!-- AI 评改：读上方「我的作答」，只给建议分，最终由你确认 -->
             <div v-if="aiGradeReady" class="mt-3 rounded-lg border border-[var(--k-border)] p-3">
-              <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">我的作答（用于 AI 评改）</p>
-              <textarea
-                v-model="answerDraft"
-                rows="5"
-                class="mt-1.5 w-full resize-y rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 text-sm leading-relaxed text-[var(--k-text)] outline-none focus:border-[var(--k-accent)]"
-                placeholder="把你的解题过程写在这里（写到哪算到哪，AI 会按给分点逐条评）"
-              />
-              <div class="mt-2 flex flex-wrap items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">AI 评改</p>
                 <button
                   type="button"
                   class="rounded-lg border border-[var(--k-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--k-accent-text)] transition hover:bg-[var(--k-accent-soft)] disabled:opacity-50"
-                  :disabled="aiGrading || answerDraft.trim().length < 20"
-                  :title="answerDraft.trim().length < 20 ? '至少写 20 字再评' : '让 AI 按给分点评一次'"
+                  :disabled="aiGrading"
                   @click="requestAiGrade"
                 >
-                  {{ aiGrading ? '评改中…' : 'AI 评改' }}
+                  {{ aiGrading ? '评改中…' : '开始评改' }}
                 </button>
+                <!-- 字数不够时不能只靠 disabled：按钮点不动，用户会以为坏了 -->
+                <span
+                  v-if="answerDraft.trim().length < 20"
+                  class="text-[11px] text-[var(--k-text-faint)]"
+                >
+                  先在上方「我的作答」里写至少 20 字（当前 {{ answerDraft.trim().length }} 字）
+                </span>
+                <span v-else class="text-[11px] text-[var(--k-text-faint)]">
+                  已写 {{ answerDraft.trim().length }} 字
+                </span>
                 <span v-if="aiGradeError" class="text-[11px] text-[var(--k-warn)]">{{ aiGradeError }}</span>
               </div>
 
