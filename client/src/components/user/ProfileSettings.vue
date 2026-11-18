@@ -169,24 +169,13 @@ const field =
       </div>
 
       <div class="space-y-3 px-5 py-4">
-        <div class="flex items-center gap-3">
-          <UserAvatar :name="user.displayName || user.username" :avatar="user.avatar" :size="52" />
-          <div class="min-w-0">
-            <p class="flex flex-wrap items-center gap-2 text-base font-semibold text-[var(--k-text)]">
-              <span class="truncate">{{ user.displayName || user.username }}</span>
-              <span
-                v-if="user.isAdmin"
-                class="rounded bg-[var(--k-accent-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--k-accent-text)]"
-              >管理员</span>
-              <span
-                v-if="user.demo"
-                class="rounded bg-[var(--k-warn-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--k-warn)]"
-              >演示账号</span>
-            </p>
-            <p class="mt-0.5 truncate text-xs text-[var(--k-text-faint)]">
-              {{ user.email || '未绑定邮箱' }}
-            </p>
-          </div>
+        <!--
+          头像与昵称整页只在顶部身份卡展示一次；这里只在编辑时给出「改完长什么样」的预览，
+          否则同一份身份信息会在相隔 20px 的两张卡里各出现一次。
+        -->
+        <div v-if="editing" class="flex items-center gap-3">
+          <UserAvatar :name="draftName || user.displayName || user.username" :avatar="draftAvatar ?? user.avatar" :size="52" />
+          <p class="min-w-0 text-[11px] leading-5 text-[var(--k-text-faint)]">编辑后的头像与昵称预览</p>
         </div>
 
         <dl class="grid gap-2 text-xs sm:grid-cols-2">
@@ -261,10 +250,8 @@ const field =
           </div>
         </div>
 
-        <p v-if="user.demo" class="rounded-lg bg-[var(--k-warn-soft)] px-3 py-2 text-[11px] leading-5 text-[var(--k-warn)]">
-          这是<b>公开展示账号</b>，昵称与头像已锁定：所有人都能用它登录，允许修改会让页面被人随意改掉。
-          想拥有自己的资料，请注册一个账号。
-        </p>
+        <!-- 演示账号的锁定说明已合并到页面顶部的可展开提示 -->
+
       </div>
     </section>
 
@@ -287,18 +274,11 @@ const field =
       <div class="space-y-3 px-5 py-4 text-xs leading-5 text-[var(--k-text-muted)]">
         <p>修改密码需要邮箱验证码；成功后<b>其它设备会全部下线</b>，当前页面会自动续用新凭证。</p>
 
-        <!-- 演示账号的声明：明确说清为什么不能改 -->
+        <!-- 演示账号的锁定说明已合并到页面顶部的可展开提示 -->
+
+        <!-- 上面那段演示账号的 v-if 已移除，这里的 v-else-if 必须独立成 v-if -->
         <p
-          v-if="user.demo"
-          class="rounded-lg bg-[var(--k-warn-soft)] px-3 py-2 text-[11px] leading-5 text-[var(--k-warn)]"
-        >
-          <b>演示账号不支持修改密码。</b>
-          它的用户名和密码是公开的，任何人都能用它登录；一旦被改掉，
-          所有访客都会立刻登不进去，而且没人能把它改回来。
-          需要长期保存自己的学习记录，请注册一个账号（或让管理员帮你重置密码）。
-        </p>
-        <p
-          v-else-if="!user.hasEmail"
+          v-if="!user.hasEmail"
           class="rounded-lg bg-[var(--k-warn-soft)] px-3 py-2 text-[11px] leading-5 text-[var(--k-warn)]"
         >
           该账号没有绑定邮箱，无法接收验证码，因此不能自助修改密码。请联系管理员重置。

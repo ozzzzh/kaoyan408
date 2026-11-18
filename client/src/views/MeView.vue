@@ -9,6 +9,7 @@ import { subjectMeta } from '@/constants/subjects'
 import BrandLogo from '@/components/brand/BrandLogo.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import ProfileSettings from '@/components/user/ProfileSettings.vue'
+import ThemeToggle from '@/components/layout/ThemeToggle.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -302,8 +303,12 @@ watch(user, (next) => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl space-y-5">
-    <header class="space-y-2 text-center">
+  <div class="mx-auto max-w-2xl space-y-4">
+    <!--
+      标题与卡片同轴：原来 header 是 text-center，下面全是左对齐卡片，
+      截图里能明显看到两条视觉轴打架。未登录时品牌 Logo 仍居中（那时它是一个展示位）。
+    -->
+    <header :class="user ? 'space-y-1.5' : 'space-y-2 text-center'">
       <!-- 未登录时展示品牌与标语：这是用户第一次认真看这个平台，值得交代清楚它是谁 -->
       <BrandLogo v-if="!user" :height="52" tagline class="mx-auto" />
       <h1 v-else class="text-2xl font-bold tracking-tight text-[var(--k-text)]">我的</h1>
@@ -312,9 +317,9 @@ watch(user, (next) => {
       </p>
     </header>
 
-    <!-- 已登录：账号卡 + 个人数据 -->
+    <!-- 已登录：身份 → 学习数据 → 设置 → 危险区 -->
     <template v-if="user">
-      <!-- 个人头部：头像 + 昵称 + 角色徽标 + 退出 -->
+      <!-- 身份卡：整页只在这里出现一次头像与昵称（原来「账号与资料」里又重复了一份） -->
       <section
         class="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
       >
@@ -335,16 +340,25 @@ watch(user, (next) => {
             {{ user.username }} · {{ user.email || '未绑定邮箱' }}
           </p>
         </div>
-        <button
-          class="shrink-0 rounded-lg border border-[var(--k-border)] px-3 py-1.5 text-xs text-[var(--k-danger)] transition hover:bg-[var(--k-warn-soft)]"
-          @click="userStore.logout()"
-        >
-          退出登录
-        </button>
       </section>
 
-      <!-- 设置中心：账号与资料 / 安全 -->
-      <ProfileSettings />
+      <!--
+        演示账号的说明合并成一条：原来在「账号与资料」「安全」各有一段三行长文，
+        把真正要看的学习数据往下压了 ~200px，而且两段说的是同一件事。
+        现在折叠成一行，需要理由的人再展开。
+      -->
+      <details
+        v-if="user.demo"
+        class="rounded-xl border border-[var(--k-border)] bg-[var(--k-warn-soft)] px-4 py-2.5 text-xs text-[var(--k-text-muted)]"
+      >
+        <summary class="cursor-pointer font-semibold text-[var(--k-warn)]">
+          这是公开展示的演示账号 · 资料、密码与清空数据已被锁定
+        </summary>
+        <p class="mt-2 leading-relaxed">
+          演示账号的用户名和密码是公开的，任何人都能用它登录。允许改昵称、头像或密码会让页面被人随意改掉
+          （改密码后所有访客都会立刻登不进来，且没人能改回来）。需要长期保存自己的学习记录，请注册一个账号。
+        </p>
+      </details>
 
       <!-- A. 学习概况 -->
       <section v-if="dashboard" class="space-y-3">
@@ -507,6 +521,25 @@ watch(user, (next) => {
         </div>
       </section>
 
+      <!-- 设置：账号与资料 / 安全（原来排在数据前面，改到数据之后——用户来「我的」主要是看数据） -->
+      <ProfileSettings />
+
+      <!-- 偏好：主题与时间跟随（与侧栏的 ThemeToggle 复用同一个组件，两处都能改） -->
+      <section class="space-y-3">
+        <h2 class="text-sm font-bold text-[var(--k-heading)]">偏好</h2>
+        <div
+          class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
+        >
+          <div class="min-w-0">
+            <p class="text-xs font-semibold text-[var(--k-text)]">主题</p>
+            <p class="mt-0.5 text-[11px] text-[var(--k-text-faint)]">
+              跟随时间会在 19:00–07:00 自动切到夜间；也可手动固定日间或夜间。
+            </p>
+          </div>
+          <ThemeToggle />
+        </div>
+      </section>
+
       <!-- C. 数据管理 -->
       <section v-if="dataCounts" class="space-y-3">
         <h2 class="text-sm font-bold text-[var(--k-heading)]">数据管理</h2>
@@ -601,6 +634,31 @@ watch(user, (next) => {
               取消
             </button>
           </div>
+        </div>
+      </section>
+
+      <!--
+        危险区：退出登录原来挤在身份卡右上角，紧挨昵称——低频且不可逆的动作
+        放在全页最显眼的位置，误点成本高。现在下沉到页尾，与「清空数据」同一层级。
+      -->
+      <section class="space-y-3">
+        <h2 class="text-sm font-bold text-[var(--k-heading)]">危险区</h2>
+        <div
+          class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--k-border)] bg-[var(--k-surface)] p-5"
+        >
+          <div class="min-w-0">
+            <p class="text-xs font-semibold text-[var(--k-text)]">退出登录</p>
+            <p class="mt-0.5 text-[11px] text-[var(--k-text-faint)]">
+              记录会保留在账号下，重新登录即可继续。
+            </p>
+          </div>
+          <button
+            type="button"
+            class="shrink-0 rounded-lg border border-[var(--k-border)] px-3 py-1.5 text-xs text-[var(--k-danger)] transition hover:bg-[var(--k-warn-soft)]"
+            @click="userStore.logout()"
+          >
+            退出登录
+          </button>
         </div>
       </section>
     </template>
