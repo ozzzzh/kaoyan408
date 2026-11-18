@@ -612,9 +612,27 @@ export const api = {
   mockState: (sessionId: number) => request<MockState>(`/api/v1/mock/${sessionId}`),
 
   /** 保存单题答案。 */
-  mockAnswer: (sessionId: number, examRef: string, answer: string) =>
+  mockAnswer: (sessionId: number, examRef: string, answer: string, selfScore?: number) =>
     post<{ saved: boolean; remainingSeconds: number }>(
-      `/api/v1/mock/${sessionId}/answer?examRef=${encodeURIComponent(examRef)}&answer=${encodeURIComponent(answer)}`,
+      `/api/v1/mock/${sessionId}/answer?examRef=${encodeURIComponent(examRef)}`
+        + `&answer=${encodeURIComponent(answer)}`
+        + (selfScore == null ? '' : `&selfScore=${selfScore}`),
+      {},
+    ),
+
+  /** 模考综合题 AI 评改：读已保存作答，返回建议分并把 ai_* 落库 */
+  mockAiGrade: (sessionId: number, examRef: string) =>
+    post<{
+      subpoints: Array<{ index: number; max: number; awarded: number; comment: string }>
+      total: number
+      max: number
+      confidence: number
+      rationale: string
+      model: string
+      disclaimer: string
+      saved: boolean
+    }>(
+      `/api/v1/mock/${sessionId}/ai-grade?examRef=${encodeURIComponent(examRef)}`,
       {},
     ),
 

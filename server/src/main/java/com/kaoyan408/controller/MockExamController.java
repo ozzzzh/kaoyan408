@@ -56,6 +56,13 @@ public class MockExamController {
     }
 
     /** 交卷并判分。 */
+    /** 模考综合题 AI 评改：读取已保存作答，返回建议分并落 ai_* 字段。 */
+    @PostMapping("/{sessionId}/ai-grade")
+    public Result<Map<String, Object>> aiGrade(@PathVariable Long sessionId,
+                                               @RequestParam String examRef,
+                                               Authentication authentication) {
+        return Result.ok(mockExamService.aiGrade(requireUserId(authentication), sessionId, examRef));
+    }
     @PostMapping("/{sessionId}/submit")
     public Result<Map<String, Object>> submit(@PathVariable Long sessionId,
                                               @RequestParam(required = false, defaultValue = "false")

@@ -34,5 +34,11 @@ public class MockAnswer {
     /** 综合题自评分（0..该题满分）。 */
     private Integer selfScore;
 
+    /** AI 建议分（模型给的，不覆盖 selfScore） */
+    private Integer aiScore;
+    /** AI 逐点评分 JSON，留作校准分析 */
+    private String aiRubric;
+    private String aiModel;
+    private LocalDateTime aiAt;
     private LocalDateTime updatedAt;
 }

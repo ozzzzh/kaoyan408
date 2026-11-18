@@ -54,6 +54,7 @@ public class MockExamService {
     private final QuestionSubQuestionMapper subquestionMapper;
     /** 游客会话（内存态）。登录用户的会话仍走 sessionMapper。 */
     private final GuestMockStore guestStore;
+    private final AiGradeService aiGradeService;
 
     public MockExamService(MockSessionMapper sessionMapper,
                            MockAnswerMapper answerMapper,
@@ -61,7 +62,8 @@ public class MockExamService {
                            QuestionMapper questionMapper,
                            QuestionOptionMapper optionMapper,
                            QuestionSubQuestionMapper subquestionMapper,
-                           GuestMockStore guestStore) {
+                           GuestMockStore guestStore,
+                           AiGradeService aiGradeService) {
         this.sessionMapper = sessionMapper;
         this.answerMapper = answerMapper;
         this.examYearMapper = examYearMapper;
@@ -69,6 +71,7 @@ public class MockExamService {
         this.optionMapper = optionMapper;
         this.subquestionMapper = subquestionMapper;
         this.guestStore = guestStore;
+        this.aiGradeService = aiGradeService;
     }
 
     /** 开始一场考试。若该用户在此年份已有进行中的场次，直接返回那一场，避免重复开考。 */
@@ -276,6 +279,46 @@ public class MockExamService {
     }
 
     /* ---------- 内部方法 ---------- */
+
+    /**
+     * 模考里的 AI 评改。
+     *
+     * <p>读该题已保存的作答文本 → 让 AI 按给分点评 → 把建议分与逐点 JSON 存到
+     * mock_answer.ai_* 字段（不覆盖 self_score）。这样"AI 建议分"和"用户确认分"
+     * 会同时留下，之后能算两者的偏差。
+     */
+    public Map<String, Object> aiGrade(Long userId, Long sessionId, String examRef) {
+        MockSession session = requireSession(userId, sessionId);
+        Question question = requireQuestion(examRef);
+        if (!"comprehensive".equals(question.getQuestionType())) {
+            throw new BusinessException(400, "只有综合题需要 AI 评改。");
+        }
+        MockAnswer row = answerMapper.selectOne(new QueryWrapper<MockAnswer>()
+                .eq("session_id", sessionId).eq("question_id", question.getId()).last("LIMIT 1"));
+        String answer = row == null ? null : row.getAnswer();
+        if (answer == null || answer.isBlank()) {
+            throw new BusinessException(400, "还没保存作答内容，先写答案再评改。");
+        }
+
+        Map<String, Object> graded = aiGradeService.grade(question, answer);
+
+        MockAnswer update = row == null ? new MockAnswer() : row;
+        update.setSessionId(sessionId);
+        update.setQuestionId(question.getId());
+        update.setAiScore((Integer) graded.get("total"));
+        update.setAiRubric(String.valueOf(graded.get("subpoints")));
+        update.setAiModel(String.valueOf(graded.get("model")));
+        update.setAiAt(LocalDateTime.now());
+        update.setUpdatedAt(LocalDateTime.now());
+        if (row == null) {
+            answerMapper.insert(update);
+        } else {
+            answerMapper.updateById(update);
+        }
+        graded.put("saved", true);
+        graded.put("sessionSelfScore", update.getSelfScore());
+        return graded;
+    }
 
     private Map<String, Object> saveSelfScore(MockSession session, Question question, Integer selfScore) {
         if (!"comprehensive".equals(question.getQuestionType())) {

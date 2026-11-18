@@ -32,6 +32,58 @@ const subjectName = (code: string) =>
 const isSubmitted = computed(() => state.value?.status === 'submitted')
 const items = computed(() => state.value?.items ?? [])
 const choiceItems = computed(() => items.value.filter((i) => i.questionType === 'choice'))
+/** 每道综合题的 AI 评改状态（按题目 id 索引，避免互相覆盖） */
+type AiRubric = {
+  subpoints: Array<{ index: number; max: number; awarded: number; comment: string }>
+  total: number
+  max: number
+  confidence: number
+  rationale: string
+  disclaimer: string
+}
+const aiResults = ref<Record<string, AiRubric>>({})
+const aiGrading = ref<Record<string, boolean>>({})
+const aiErrors = ref<Record<string, string | null>>({})
+
+/** 保存综合题作答（AI 评改要先有答案） */
+async function saveComprehensive(q: { id: string; examRef?: string }) {
+  const examRef = q.examRef ?? q.id
+  await api.mockAnswer(sessionId, examRef, answers.value[q.id] ?? '')
+}
+
+/** 触发 AI 评改：先保存作答，再请求评分（建议分不覆盖 selfScore） */
+async function gradeComprehensive(q: { id: string; examRef?: string }) {
+  const examRef = q.examRef ?? q.id
+  aiErrors.value = { ...aiErrors.value, [q.id]: null }
+  aiGrading.value = { ...aiGrading.value, [q.id]: true }
+  try {
+    await saveComprehensive(q)
+    const result = await api.mockAiGrade(sessionId, examRef)
+    aiResults.value = { ...aiResults.value, [q.id]: result }
+  } catch (e) {
+    aiErrors.value = {
+      ...aiErrors.value,
+      [q.id]: e instanceof Error ? e.message : 'AI 评改失败，可改用自评',
+    }
+  } finally {
+    aiGrading.value = { ...aiGrading.value, [q.id]: false }
+  }
+}
+
+/** 采纳建议分：写入 selfScore（与 AI 分并存，便于日后校准） */
+async function adoptComprehensive(q: { id: string; examRef?: string }, score: number) {
+  const examRef = q.examRef ?? q.id
+  try {
+    await api.mockAnswer(sessionId, examRef, answers.value[q.id] ?? '', score)
+    aiErrors.value = { ...aiErrors.value, [q.id]: `已采纳 ${score} 分` }
+  } catch (e) {
+    aiErrors.value = {
+      ...aiErrors.value,
+      [q.id]: e instanceof Error ? e.message : '采纳失败',
+    }
+  }
+}
+
 const comprehensiveItems = computed(() =>
   items.value.filter((i) => i.questionType === 'comprehensive'),
 )
@@ -342,6 +394,70 @@ onBeforeUnmount(stopTicker)
                 {{ sub.score }} 分
               </span>
             </div>
+          </div>
+
+          <!-- 综合题作答：模考里也要能写，否则「保存作答 → AI 评改」无从谈起 -->
+          <div class="mt-3">
+            <p class="text-[11px] font-semibold text-[var(--k-text-faint)]">我的作答</p>
+            <textarea
+              v-model="answers[q.id]"
+              rows="6"
+              class="mt-1.5 w-full resize-y rounded-lg border border-[var(--k-border)] bg-[var(--k-surface)] px-3 py-2 font-mono text-sm leading-relaxed text-[var(--k-text)] outline-none focus:border-[var(--k-accent)]"
+              placeholder="先写思路，需要时再写代码；写完点『保存作答』"
+              :disabled="isSubmitted"
+            />
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                class="rounded-lg border border-[var(--k-border)] px-3 py-1.5 text-xs font-semibold text-[var(--k-text-muted)] transition hover:bg-[var(--k-surface-soft)] disabled:opacity-50"
+                :disabled="!answers[q.id]?.trim()"
+                @click="saveComprehensive(q)"
+              >
+                保存作答
+              </button>
+              <button
+                type="button"
+                class="rounded-lg border border-[var(--k-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--k-accent-text)] transition hover:bg-[var(--k-accent-soft)] disabled:opacity-50"
+                :disabled="aiGrading[q.id] || !answers[q.id]?.trim()"
+                @click="gradeComprehensive(q)"
+              >
+                {{ aiGrading[q.id] ? '评改中…' : 'AI 评改' }}
+              </button>
+              <span class="text-[11px] text-[var(--k-text-faint)]">
+                先保存作答再评改；AI 分只是建议，最终分数以你确认为准
+              </span>
+            </div>
+
+            <div v-if="aiResults[q.id]" class="mt-2 space-y-1 rounded-lg border border-[var(--k-border)] p-3">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-sm font-bold text-[var(--k-heading)]">
+                  建议 {{ aiResults[q.id].total }}/{{ aiResults[q.id].max }} 分
+                </p>
+                <button
+                  type="button"
+                  class="rounded-lg bg-[var(--k-accent)] px-2.5 py-1 text-[11px] font-bold text-[var(--k-on-accent)]"
+                  @click="adoptComprehensive(q, aiResults[q.id].total)"
+                >
+                  采纳这个分数
+                </button>
+                <span class="text-[11px] text-[var(--k-text-faint)]">
+                  把握 {{ Math.round(aiResults[q.id].confidence * 100) }}%
+                </span>
+              </div>
+              <p v-if="aiResults[q.id].rationale" class="text-xs leading-5 text-[var(--k-text-muted)]">
+                {{ aiResults[q.id].rationale }}
+              </p>
+              <div
+                v-for="point in aiResults[q.id].subpoints"
+                :key="point.index"
+                class="flex items-start gap-2 text-[11px] text-[var(--k-text-muted)]"
+              >
+                <span class="shrink-0 font-semibold">({{ point.index }})</span>
+                <span class="min-w-0 flex-1">{{ point.comment }}</span>
+                <span class="shrink-0 font-bold tabular-nums">{{ point.awarded }}/{{ point.max }}</span>
+              </div>
+            </div>
+            <p v-if="aiErrors[q.id]" class="mt-1 text-[11px] text-[var(--k-warn)]">{{ aiErrors[q.id] }}</p>
           </div>
 
           <p class="mt-3 text-[11px] text-[var(--k-text-faint)]">
