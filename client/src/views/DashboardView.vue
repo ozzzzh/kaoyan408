@@ -240,6 +240,7 @@ onMounted(async () => {
           :subjects="dashboard.subjects"
           :mastery-rate="dashboard.masteryRate"
         />
+
         <TodayPanel
           :done-today="todayStat.questions"
           :correct-today="todayStat.correct"

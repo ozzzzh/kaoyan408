@@ -276,4 +276,17 @@ public interface QuestionMapper extends BaseMapper<Question> {
             WHERE kb.point_id = #{pointId}
             """)
     long distinctQuestionsOfPoint(@Param("pointId") String pointId);
+
+    /** 按年份聚合练习进度：总题数 / 已作答 / 选择题答对。 */
+    @Select("""
+            SELECT e.year AS examYear,
+                   COUNT(q.id) AS total,
+                   COUNT(a.id) AS done,
+                   COALESCE(SUM(CASE WHEN q.question_type = 'choice' THEN a.result ELSE 0 END), 0) AS correct
+            FROM question q
+            JOIN exam_year e ON e.id = q.exam_id
+            LEFT JOIN question_attempt a ON a.question_id = q.id AND a.user_id = #{userId}
+            GROUP BY e.year
+            """)
+    List<java.util.Map<String, Object>> practiceByExamYear(@Param("userId") Long userId);
 }

@@ -34,4 +34,15 @@ public interface MockSessionMapper extends BaseMapper<MockSession> {
             LIMIT #{limit}
             """)
     List<Map<String, Object>> history(@Param("userId") Long userId, @Param("limit") int limit);
+
+    /** 已交卷的模考记录，用于按年份聚合最好分/最近一次。 */
+    @Select("""
+            SELECT exam_year AS examYear,
+                   (auto_score + self_score) AS totalScore,
+                   submitted_at AS submittedAt,
+                   duration_minutes AS durationMinutes
+            FROM mock_session
+            WHERE user_id = #{userId} AND status = 'submitted' AND submitted_at IS NOT NULL
+            """)
+    List<Map<String, Object>> submittedByYear(@Param("userId") Long userId);
 }

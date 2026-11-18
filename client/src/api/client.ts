@@ -404,6 +404,21 @@ export const api = {
    */
   dashboard: () => dedupe('dashboard', () => request<Dashboard>('/api/v1/stats/dash')),
 
+  /** 真题卷进度：每卷的练习进度与模考成绩（两种口径分开返回） */
+  examProgress: () =>
+    request<
+      Array<{
+        year: number
+        practice?: { total: number; done: number; correct: number }
+        mock?: {
+          attempts: number
+          bestScore: number
+          lastScore: number
+          lastAt: string | null
+          durationMinutes: number
+        }
+      }>
+    >('/api/v1/exams/progress'),
   exams: () => cachedContent('exams', () => request<ExamSummary[]>('/api/v1/exams')),
 
   exam: (year: number) =>
